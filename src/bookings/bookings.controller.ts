@@ -1,5 +1,6 @@
-import { Controller, Post, Get, Body } from '@nestjs/common';
+import { Controller, Post, Get, Body, Patch, Param } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
+import { Booking } from './entities/booking.entity';
 
 @Controller('api/v1/external/request')
 export class BookingsController {
@@ -20,10 +21,9 @@ export class BookingsController {
   @Patch(':id/status')
   async updateStatus(
     @Param('id') id: number,
-    @Body('status') status: string,
-    @Body('adminMemo') adminMemo?: string
+    @Body() updateData: Partial<Booking> // status, adminMemo 등을 포함한 객체
   ) {
-    return await this.bookingsService.update(id, { status, adminMemo });
+    return await this.bookingsService.update(id, updateData);
   }
 
   // GET: 전체 리스트 확인 (테스트용)
