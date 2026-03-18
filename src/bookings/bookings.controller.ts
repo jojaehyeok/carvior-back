@@ -2,7 +2,7 @@ import { Controller, Post, Get, Body, Patch, Param } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { Booking } from './entities/booking.entity';
 
-@Controller('api/v1/external/request')
+@Controller('v1/external/request')
 export class BookingsController {
   constructor(private readonly bookingsService: BookingsService) { }
 
@@ -16,7 +16,6 @@ export class BookingsController {
       data: result,
     };
   }
-
   // NestJS: bookings.controller.ts 에 추가
   @Patch(':id/status')
   async updateStatus(

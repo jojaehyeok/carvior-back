@@ -8,33 +8,31 @@ export class BookingsService {
   constructor(
     @InjectRepository(Booking)
     private readonly bookingRepository: Repository<Booking>,
-  ) { }
+  ) {}
 
-  // 단일 생성 (프론트엔드 신청용)
+  // 1. 신규 신청 저장 (POST용)
   async create(data: Partial<Booking>): Promise<Booking> {
     const booking = this.bookingRepository.create(data);
     return await this.bookingRepository.save(booking);
   }
 
-  // ✅ 추가해야 할 update 메서드
-  async update(id: number, updateData: Partial<Booking>): Promise<Booking> {
-    // 1. 해당 데이터가 있는지 먼저 확인
-    const booking = await this.bookingRepository.findOneBy({ id });
-    if (!booking) {
-      throw new NotFoundException(`ID ${id}번에 해당하는 신청 내역이 없습니다.`);
-    }
-
-    // 2. 데이터 업데이트 (Object.assign으로 기존 객체에 덮어쓰기)
-    Object.assign(booking, updateData);
-
-    // 3. 저장 후 반환
-    return await this.bookingRepository.save(booking);
-  }
-
-  // 전체 조회 (관리자 페이지용 - 여기서 Booking[] 배열 타입 사용)
+  // 2. 전체 리스트 조회 (GET /list용)
   async findAll(): Promise<Booking[]> {
     return await this.bookingRepository.find({
       order: { createdAt: 'DESC' }, // 최신순 정렬
     });
+  }
+
+  // ✅ 3. 상태 변경 및 메모 업데이트 (PATCH용 - 이게 없어서 에러난 겁니다!)
+  async update(id: number, updateData: Partial<Booking>): Promise<Booking> {
+    const booking = await this.bookingRepository.findOneBy({ id });
+    
+    if (!booking) {
+      throw new NotFoundException(`ID ${id}번에 해당하는 내역을 찾을 수 없습니다.`);
+    }
+
+    // 데이터 병합 및 저장
+    Object.assign(booking, updateData);
+    return await this.bookingRepository.save(booking);
   }
 }
