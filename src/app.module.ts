@@ -4,18 +4,31 @@ import { AppService } from './app.service';
 import { BookingsModule } from './bookings/bookings.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Booking } from './bookings/entities/booking.entity';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 
 @Module({
   imports: [
-    TypeOrmModule.forRoot({
-      type: 'mysql',
-      host: 'localhost', // 같은 서버면 localhost, 외부면 IP 주소
-      port: 3306,
-      username: 'jjhst2285',
-      password: '3289',
-      database: 'chavata_db',
-      entities: [Booking],
-      synchronize: true, // ⚠️ 개발 환경에서만 true: 엔티티 수정 시 DB 테이블 자동 업데이트
+  // 1. ConfigModule 설정 (글로벌 전역 설정)
+    ConfigModule.forRoot({
+      isGlobal: true,
+      envFilePath: '.env',
+    }),
+
+    // 2. TypeOrmModule 설정 (환경변수 로드)
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        type: 'mysql',
+        host: configService.get<string>('DB_HOST'),
+        port: configService.get<number>('DB_PORT', 3306),
+        username: configService.get<string>('DB_USER'),
+        password: configService.get<string>('DB_PASSWORD'),
+        database: configService.get<string>('DB_NAME'),
+        entities: [Booking],
+        synchronize: configService.get<string>('NODE_ENV') !== 'production', // 운영 환경에선 false 권장
+        logging: true, // 쿼리 로그 확인용 (선택)
+      }),
     }),
     BookingsModule
   ],
