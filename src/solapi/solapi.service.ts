@@ -17,7 +17,7 @@ export class SolapiService {
         try {
             const templateId = this.configService.get<string>('SOLAPI_TEMPLATE_ID_ASSIGNED');
             const senderNumber = this.configService.get<string>('SOLAPI_SENDER_NUMBER');
-            const pfId = 'KA01PF240318123456...'; // 여기에 본인의 PFID(카카오 채널 아이디)를 넣으세요!
+            const pfId = 'KA01PF260318142913084E66j6BA3JsU'; // 여기에 본인의 PFID(카카오 채널 아이디)를 넣으세요!
 
             const response = await this.messageService.sendOne({
                 to: to,
