@@ -3,6 +3,7 @@ import { BookingsService } from './bookings.service';
 import { BookingsController } from './bookings.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Booking } from './entities/booking.entity';
+import { SolapiService } from 'src/solapi/solapi.service';
 
 @Module({
   imports: [
@@ -10,6 +11,6 @@ import { Booking } from './entities/booking.entity';
     TypeOrmModule.forFeature([Booking])
   ],
   controllers: [BookingsController],
-  providers: [BookingsService],
+  providers: [BookingsService, SolapiService],
 })
 export class BookingsModule { }

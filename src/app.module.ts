@@ -5,6 +5,7 @@ import { BookingsModule } from './bookings/bookings.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Booking } from './bookings/entities/booking.entity';
 import { ConfigModule, ConfigService } from '@nestjs/config';
+import { SolapiService } from './solapi/solapi.service';
 
 @Module({
   imports: [
@@ -33,6 +34,6 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
     BookingsModule
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, SolapiService],
 })
 export class AppModule { }
