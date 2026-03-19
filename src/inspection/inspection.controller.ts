@@ -1,4 +1,4 @@
-import { Controller, Post, UseInterceptors, UploadedFile, Body, BadRequestException, Req } from '@nestjs/common';
+import { Controller, Post, UseInterceptors, UploadedFile, Body, BadRequestException, Req, Delete, Query } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import express from 'express'; // 추가
 import { InspectionService } from './inspection.service';
@@ -23,5 +23,10 @@ export class InspectionController {
     const s3Url = await this.inspectionService.uploadToS3(file, requestId, category, carNumber);
 
     return { url: s3Url };
+  }
+
+  @Delete('upload')
+  async deleteFile(@Query('url') url: string) {
+    return await this.inspectionService.deleteFromS3(url);
   }
 }
