@@ -130,4 +130,16 @@ export class InspectionService {
       return { success: false, message: error.message };
     }
   }
+
+  async getInspectionByBookingId(bookingId: number) {
+  const inspection = await this.inspectionRepository.findOne({
+    where: { bookingId },
+  });
+  
+  if (!inspection) {
+    throw new BadRequestException('해당 예약의 진단 내역을 찾을 수 없습니다.');
+  }
+  
+  return inspection;
+}
 }

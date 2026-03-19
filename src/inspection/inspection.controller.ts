@@ -1,4 +1,4 @@
-import { Controller, Post, UseInterceptors, UploadedFile, Body, BadRequestException, Delete, Query } from '@nestjs/common';
+import { Controller, Post, UseInterceptors, UploadedFile, Body, BadRequestException, Delete, Query, Get, Param } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { InspectionService } from './inspection.service';
 
@@ -29,7 +29,7 @@ export class InspectionController {
     // 여기서 실제 DB 저장 로직이 들어갑니다.
     // 보통 서비스(InspectionService)로 데이터를 넘겨서 DB에 박습니다.
     const result = await this.inspectionService.saveInspectionResult(inspectionData);
-    
+
     return { success: true, data: result };
   }
 
@@ -37,5 +37,10 @@ export class InspectionController {
   @Delete('upload')
   async deleteFile(@Query('url') url: string) {
     return await this.inspectionService.deleteFromS3(url);
+  }
+
+  @Get(':bookingId')
+  async getInspection(@Param('bookingId') bookingId: string) {
+    return await this.inspectionService.getInspectionByBookingId(parseInt(bookingId));
   }
 }
