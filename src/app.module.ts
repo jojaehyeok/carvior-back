@@ -6,6 +6,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Booking } from './bookings/entities/booking.entity';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { SolapiService } from './solapi/solapi.service';
+import { InspectionModule } from './inspection/inspection.module';
+import { S3Service } from './s3/s3.service';
 
 @Module({
   imports: [
@@ -31,9 +33,10 @@ import { SolapiService } from './solapi/solapi.service';
         logging: true, // 쿼리 로그 확인용 (선택)
       }),
     }),
-    BookingsModule
+    BookingsModule,
+    InspectionModule
   ],
   controllers: [AppController],
-  providers: [AppService, SolapiService],
+  providers: [AppService, SolapiService, S3Service],
 })
 export class AppModule { }
