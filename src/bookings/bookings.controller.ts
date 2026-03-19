@@ -16,16 +16,29 @@ export class BookingsController {
       data: result,
     };
   }
-  // NestJS: bookings.controller.ts 에 추가
+
+  // PATCH: 예약 상태 및 진단사 배정 업데이트
   @Patch(':id/status')
   async updateStatus(
     @Param('id') id: number,
-    @Body() updateData: Partial<Booking> // status, adminMemo 등을 포함한 객체
+    @Body() updateData: Partial<Booking> // status, assignedDriverId, adminMemo 등 포함
   ) {
-    return await this.bookingsService.update(id, updateData);
+    // 1. DB 업데이트 수행
+    const updatedBooking = await this.bookingsService.update(id, updateData);
+
+    // 2. [추가 포인트] 상태가 'CONFIRMED'로 바뀔 때 알림톡 발송 로직을 여기서 트리거하면 좋습니다.
+    // if (updateData.status === 'CONFIRMED') {
+    //   await this.bookingsService.sendAlimTalk(id, '진단사배정');
+    // }
+
+    return {
+      success: true,
+      message: '상태가 업데이트되었습니다.',
+      data: updatedBooking,
+    };
   }
 
-  // GET: 전체 리스트 확인 (테스트용)
+  // GET: 전체 리스트 확인
   @Get('list')
   async getList() {
     return await this.bookingsService.findAll();
