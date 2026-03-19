@@ -2,11 +2,19 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeor
 
 @Entity('bookings')
 export class Booking {
-    @PrimaryGeneratedColumn()
-    id: number;
+  @PrimaryGeneratedColumn()
+  id: number;
 
-  @Column({ default: 'PENDING' }) // 접수 상태값 추가
+  @Column({ default: 'PENDING' })
   status: string;
+
+  // --- 진단사 배정 관련 컬럼 추가 ---
+  @Column({ nullable: true })
+  assignedDriverId: string; // 진단사 고유 ID (알림톡 보낼 때 필요)
+
+  @Column({ nullable: true })
+  assignedDriverName: string; // 진단사 이름 (화면 표시용)
+  // ------------------------------
 
   @Column()
   carNumber: string;
@@ -27,7 +35,7 @@ export class Booking {
   detailAddress: string;
 
   @Column()
-  preferredDateTime: string; // "2026-03-20 14:00" 형식
+  preferredDateTime: string;
 
   @Column({ type: 'text', nullable: true })
   additionalMemo: string;
