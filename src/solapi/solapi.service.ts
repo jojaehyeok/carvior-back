@@ -4,35 +4,36 @@ const { SolapiMessageService } = require('solapi');
 
 @Injectable()
 export class SolapiService {
-  private messageService;
+    private messageService;
 
-  constructor(private configService: ConfigService) {
-    // .env에서 키 가져오기
-    const apiKey = this.configService.get<string>('SOLAPI_API_KEY');
-    const apiSecret = this.configService.get<string>('SOLAPI_API_SECRET');
-    this.messageService = new SolapiMessageService(apiKey, apiSecret);
-  }
-
-  async sendAlimTalk(to: string, variables: any) {
-    try {
-      const templateId = this.configService.get<string>('SOLAPI_TEMPLATE_ID_ASSIGNED');
-      const senderNumber = this.configService.get<string>('SOLAPI_SENDER_NUMBER');
-      const pfId = 'YOUR_PF_ID'; // 이건 카카오 채널 관리자 센터의 고유 ID(PFID)를 넣어야 합니다.
-
-      const response = await this.messageService.sendOne({
-        to: to,
-        from: senderNumber,
-        type: 'ALIMTALK',
-        kakaoOptions: {
-          pfId: pfId,
-          templateId: templateId,
-          variables: variables,
-        },
-      });
-      return response;
-    } catch (error) {
-      console.error('솔라피 발송 에러:', error);
-      throw error;
+    constructor(private configService: ConfigService) {
+        // .env에서 키 가져오기
+        const apiKey = this.configService.get<string>('SOLAPI_API_KEY');
+        const apiSecret = this.configService.get<string>('SOLAPI_API_SECRET');
+        this.messageService = new SolapiMessageService(apiKey, apiSecret);
     }
-  }
+
+    async sendAlimTalk(to: string, variables: any) {
+        try {
+            const templateId = this.configService.get<string>('SOLAPI_TEMPLATE_ID_ASSIGNED');
+            const senderNumber = this.configService.get<string>('SOLAPI_SENDER_NUMBER');
+            const pfId = 'KA01PF240318123456...'; // 여기에 본인의 PFID(카카오 채널 아이디)를 넣으세요!
+
+            const response = await this.messageService.sendOne({
+                to: to,
+                from: senderNumber,
+                type: 'ATA', // 👈 'ALIMTALK'에서 'ATA'로 변경!
+                kakaoOptions: {
+                    pfId: pfId,
+                    templateId: templateId,
+                    variables: variables,
+                },
+            });
+            return response;
+        } catch (error) {
+            // 에러 객체를 더 자세히 찍어보기 위해 수정
+            console.error('솔라피 발송 상세 에러:', JSON.stringify(error, null, 2));
+            throw error;
+        }
+    }
 }
