@@ -2,7 +2,7 @@ import { Controller, Post, UseInterceptors, UploadedFile, Body } from '@nestjs/c
 import { FileInterceptor } from '@nestjs/platform-express';
 import { InspectionService } from './inspection.service';
 
-@Controller('api/v1/external/inspection')
+@Controller('v1/external/inspection')
 export class InspectionController {
   constructor(private readonly inspectionService: InspectionService) {}
 
