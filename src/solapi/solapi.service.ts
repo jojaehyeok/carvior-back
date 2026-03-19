@@ -17,12 +17,22 @@ export class SolapiService {
         try {
             const templateId = this.configService.get<string>('SOLAPI_TEMPLATE_ID_ASSIGNED');
             const senderNumber = this.configService.get<string>('SOLAPI_SENDER_NUMBER');
-            const pfId = this.configService.get<string>('SOLAPI_PF_ID'); // .env에서 가져오기
+            const pfId = this.configService.get<string>('SOLAPI_PF_ID');
+
+            // 🚨 로그 추가: 값이 undefined라면 .env를 못 읽는 것임
+            console.log('--- 솔라피 설정값 확인 ---');
+            console.log('pfId:', pfId);
+            console.log('templateId:', templateId);
+            console.log('senderNumber:', senderNumber);
+
+            if (!pfId) {
+                throw new Error('PF_ID가 설정되지 않았습니다. .env 파일을 확인하세요.');
+            }
 
             const response = await this.messageService.sendOne({
                 to: to,
                 from: senderNumber,
-                type: 'ATA', // 👈 'ALIMTALK'에서 'ATA'로 변경!
+                type: 'ATA',
                 kakaoOptions: {
                     pfId: pfId,
                     templateId: templateId,
@@ -31,7 +41,6 @@ export class SolapiService {
             });
             return response;
         } catch (error) {
-            // 에러 객체를 더 자세히 찍어보기 위해 수정
             console.error('솔라피 발송 상세 에러:', JSON.stringify(error, null, 2));
             throw error;
         }
