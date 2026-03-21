@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 import { Booking } from './entities/booking.entity';
 import { SolapiService } from '../solapi/solapi.service'; // 1. 임포트 추가
 
@@ -12,6 +12,22 @@ export class BookingsService {
     private readonly solapiService: SolapiService, // 2. 의존성 주입 추가!
   ) { }
 
+  // ✅ 진행 중인 예약이 있는지 확인하는 메서드
+  async checkOngoingBooking(carNumber: string): Promise<boolean> {
+    // 공백 제거 (DB 조회 정확도)
+    const cleanCarNumber = carNumber.replace(/\s/g, '');
+
+    const existing = await this.bookingRepository.findOne({
+      where: {
+        carNumber: cleanCarNumber,
+        // 상태가 'COMPLETED'나 'CANCELLED'가 아닌 것들만 찾음
+        status: Not(In(['COMPLETED', 'CANCELLED'])),
+      },
+    });
+
+    return !!existing; // 존재하면 true, 없으면 false
+  }
+  
   async create(data: Partial<Booking>): Promise<Booking> {
     const booking = this.bookingRepository.create(data);
     return await this.bookingRepository.save(booking);

@@ -1,4 +1,4 @@
-import { Controller, Post, Get, Body, Patch, Param } from '@nestjs/common';
+import { Controller, Post, Get, Body, Patch, Param, BadRequestException, Query } from '@nestjs/common';
 import { BookingsService } from './bookings.service';
 import { Booking } from './entities/booking.entity';
 
@@ -6,9 +6,29 @@ import { Booking } from './entities/booking.entity';
 export class BookingsController {
   constructor(private readonly bookingsService: BookingsService) { }
 
+  // ✅ GET: 차량 번호 중복 체크 (신청 가능 여부 확인)
+  // 프론트엔드에서: https://carvior.store/api/v1/external/request/check-duplicate?carNumber=123가4567
+  @Get('check-duplicate')
+  async checkDuplicate(@Query('carNumber') carNumber: string) {
+    if (!carNumber) {
+      throw new BadRequestException('차량 번호를 입력해주세요.');
+    }
+    const isDuplicate = await this.bookingsService.checkOngoingBooking(carNumber);
+    return {
+      success: true,
+      isDuplicate, // true면 이미 진행중인 예약이 있다는 뜻
+    };
+  }
+
   // POST: 간편 신청 저장
   @Post()
   async handleRequest(@Body() createBookingDto: any) {
+    // 🛑 POST 시점에서도 한 번 더 체크 (DB 무결성 방어)
+    const isDuplicate = await this.bookingsService.checkOngoingBooking(createBookingDto.carNumber);
+    if (isDuplicate) {
+      throw new BadRequestException('이미 진단 신청이 접수된 차량입니다.');
+    }
+
     const result = await this.bookingsService.create(createBookingDto);
     return {
       success: true,
