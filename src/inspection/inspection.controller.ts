@@ -2,11 +2,11 @@ import { Controller, Post, UseInterceptors, UploadedFile, Body, BadRequestExcept
 import { FileInterceptor } from '@nestjs/platform-express';
 import { InspectionService } from './inspection.service';
 
-@Controller('v1/external/inspection')
+@Controller('v1/external/inspection') // 👈 현재 기본 경로
 export class InspectionController {
   constructor(private readonly inspectionService: InspectionService) { }
 
-  // 1. 이미지 업로드 (이미 있는 코드)
+  // 1. 이미지 업로드/삭제/제출 로직 (기존 코드 유지)
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))
   async uploadFile(
@@ -16,31 +16,52 @@ export class InspectionController {
     @Body('carNumber') carNumber: string,
   ) {
     if (!file) throw new BadRequestException('파일이 없습니다.');
-    const s3Url = await this.inspectionService.uploadToS3(file, requestId, category, carNumber);
-    return { url: s3Url };
+    return { url: await this.inspectionService.uploadToS3(file, requestId, category, carNumber) };
   }
 
-  // 2. 최종 데이터 저장 (새로 추가할 코드!)
-  @Post('submit') // 👈 앱에서 호출하는 /submit 경로 생성
+  @Post('submit')
   async submitInspection(@Body() inspectionData: any) {
-    console.log('--- 앱에서 들어온 최종 데이터 ---');
-    console.log(inspectionData);
-
-    // 여기서 실제 DB 저장 로직이 들어갑니다.
-    // 보통 서비스(InspectionService)로 데이터를 넘겨서 DB에 박습니다.
     const result = await this.inspectionService.saveInspectionResult(inspectionData);
-
     return { success: true, data: result };
   }
 
-  // 3. 이미지 삭제 (이미 있는 코드)
   @Delete('upload')
   async deleteFile(@Query('url') url: string) {
     return await this.inspectionService.deleteFromS3(url);
   }
 
-  @Get(':bookingId')
-  async getInspection(@Param('bookingId') bookingId: string) {
-    return await this.inspectionService.getInspectionByBookingId(parseInt(bookingId));
+ @Get('report/:bookingId') // 👈 여기에 'report/' 가 정확히 붙어 있는지 확인!
+  async getReportData(@Param('bookingId') bookingId: string) {
+    console.log('요청 들어옴! ID:', bookingId); // 로그를 찍어서 터미널에 찍히는지 보세요
+    const inspection = await this.inspectionService.getInspectionByBookingId(parseInt(bookingId));
+    
+    if (!inspection) {
+      throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
+    }
+
+    // 형님의 Entity 구조를 프론트엔드가 기대하는 구조로 변환
+    return {
+      car_info: {
+        number: inspection.carNumber,
+        type: inspection.carModel,
+        mileage: inspection.mileage,
+      },
+      // ✅ 엔티티의 inspectionDetails를 evaluation으로 매핑
+      evaluation: {
+        accidentDesc: inspection.inspectionDetails?.accidentDesc,
+        leakDesc: inspection.inspectionDetails?.leakDesc,
+        tireDesc: inspection.inspectionDetails?.tireDesc,
+        tuningDesc: inspection.inspectionDetails?.tuningDesc,
+        warningDesc: inspection.inspectionDetails?.warningDesc,
+        notice: inspection.inspectionDetails?.notice,
+        merit: inspection.inspectionDetails?.merit,
+      },
+      // ✅ 엔티티의 photos를 images로 매핑 (필요시 추가 이미지 포함)
+      images: {
+        ...inspection.photos, // exterior, wheel, undercarriage 등
+        dashboard: inspection.dashboardImage ? [inspection.dashboardImage] : [],
+        registration: inspection.regImage ? [inspection.regImage] : [],
+      }
+    };
   }
 }
