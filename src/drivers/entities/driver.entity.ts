@@ -1,3 +1,4 @@
+// driver.entity.ts 수정본
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
 
 @Entity('drivers')
@@ -6,10 +7,10 @@ export class Driver {
   id: number;
 
   @Column({ unique: true })
-  accountId: string; // 로그인 아이디
+  accountId: string;
 
-  @Column()
-  password: string; // 비밀번호 (해싱 필요)
+  @Column() // 비번은 필수
+  password: string;
 
   @Column()
   name: string;
@@ -17,14 +18,15 @@ export class Driver {
   @Column({ unique: true })
   phone: string;
 
-  @Column({ nullable: true })
-  region: string | null;
+  // 🚀 수정 포인트: 타입을 string으로 고정하고 nullable 설정만 둡니다.
+  @Column({ type: 'varchar', nullable: true }) 
+  region: string; 
 
-  @Column({ nullable: true })
-  experience: string | null;
+  @Column({ type: 'text', nullable: true }) 
+  experience: string;
 
-  @Column({ nullable: true })
-  licenseImageUrl: string | null;
+  @Column({ type: 'varchar', nullable: true })
+  licenseImageUrl: string;
 
   @Column({ default: 'PENDING' })
   status: 'PENDING' | 'APPROVED' | 'REJECTED';

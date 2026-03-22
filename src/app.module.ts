@@ -49,6 +49,6 @@ import { AuthController } from './auth/auth.controller';
     DriversModule
   ],
   controllers: [AppController, AuthController],
-  providers: [AppService, SolapiService, S3Service, DriversService],
+  providers: [AppService, SolapiService, S3Service],
 })
 export class AppModule { }
