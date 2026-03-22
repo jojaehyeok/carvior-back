@@ -33,6 +33,14 @@ export class BookingsService {
     return await this.bookingRepository.save(booking);
   }
 
+  // ✅ Step 4: 특정 진단사 ID로 예약 목록 조회
+  async findByDriver(driverId: string) {
+    return await this.bookingRepository.find({
+      where: { assignedDriverId: driverId }, // assignedDriverId 컬럼이 예약 테이블에 있어야 함
+      order: { createdAt: 'DESC' }
+    });
+  }
+  
   async findAll(): Promise<Booking[]> {
     return await this.bookingRepository.find({
       order: { createdAt: 'DESC' },

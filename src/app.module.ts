@@ -8,6 +8,9 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { SolapiService } from './solapi/solapi.service';
 import { InspectionModule } from './inspection/inspection.module';
 import { S3Service } from './s3/s3.service';
+import { DriversService } from './drivers/drivers.service';
+import { DriversModule } from './drivers/drivers.module';
+import { AuthController } from './auth/auth.controller';
 
 @Module({
   imports: [
@@ -42,9 +45,10 @@ import { S3Service } from './s3/s3.service';
       }),
     }),
     BookingsModule,
-    InspectionModule
+    InspectionModule,
+    DriversModule
   ],
-  controllers: [AppController],
-  providers: [AppService, SolapiService, S3Service],
+  controllers: [AppController, AuthController],
+  providers: [AppService, SolapiService, S3Service, DriversService],
 })
 export class AppModule { }
