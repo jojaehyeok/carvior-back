@@ -6,19 +6,14 @@ import { extname } from 'path';
 
 @Controller('v1/drivers')
 export class DriversController {
-  constructor(private readonly driversService: DriversService) {}
+  constructor(private readonly driversService: DriversService) { }
 
   @Post('register')
-  @UseInterceptors(FileInterceptor('licenseFile', {
-    storage: diskStorage({
-      destination: './uploads/licenses',
-      filename: (req, file, cb) => {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-        cb(null, file.fieldname + '-' + uniqueSuffix + extname(file.originalname));
-      },
-    }),
-  }))
+  @UseInterceptors(FileInterceptor('licenseFile'))
   async register(@Body() driverInfo: any, @UploadedFile() file: Express.Multer.File) {
+    console.log('--- 요청 들어옴! ---'); // 👈 이게 터미널에 안 찍히면 Multer 설정 오류입니다.
+    console.log('Body:', driverInfo);
+    console.log('File:', file);
     return await this.driversService.create(driverInfo, file);
   }
 
