@@ -8,7 +8,7 @@ export class DriversService {
   constructor(
     @InjectRepository(Driver)
     private readonly driverRepository: Repository<Driver>,
-  ) {}
+  ) { }
 
   // 가입 신청 (생성)
   async create(driverInfo: any, file?: Express.Multer.File) {
@@ -21,6 +21,13 @@ export class DriversService {
       status: 'PENDING',
     });
     return await this.driverRepository.save(newDriver);
+  }
+
+  async findAll() {
+    // 모든 진단사를 생성일 역순(최신순)으로 가져옵니다.
+    return await this.driverRepository.find({
+      order: { createdAt: 'DESC' }
+    });
   }
 
   // 승인 상태 변경

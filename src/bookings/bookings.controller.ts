@@ -37,6 +37,11 @@ export class BookingsController {
     };
   }
 
+  @Get('my-list') // 경로는 /api/v1/bookings/my-list 로 바꿉니다.
+  async getMyList(@Query('driverId') driverId: string) {
+    return await this.bookingsService.findByDriver(driverId);
+  }
+
   // PATCH: 예약 상태 및 진단사 배정 업데이트
   @Patch(':id/status')
   async updateStatus(
@@ -62,5 +67,13 @@ export class BookingsController {
   @Get('list')
   async getList() {
     return await this.bookingsService.findAll();
+  }
+
+  @Patch(':id/assign')
+  async assignDriver(
+    @Param('id') id: string,
+    @Body() driverInfo: { id: string; name: string } // ID와 이름을 객체로 받음
+  ) {
+    return await this.bookingsService.assign(Number(id), driverInfo);
   }
 }

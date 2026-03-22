@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UploadedFile, UseInterceptors, Patch, Param } from '@nestjs/common';
+import { Controller, Post, Body, UploadedFile, UseInterceptors, Patch, Param, Get } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DriversService } from './drivers.service';
 import { diskStorage } from 'multer'; // ✅ 추가
@@ -7,7 +7,7 @@ import { existsSync, mkdirSync } from 'fs'; // ✅ 추가
 
 @Controller('v1/drivers')
 export class DriversController {
-  constructor(private readonly driversService: DriversService) {}
+  constructor(private readonly driversService: DriversService) { }
 
   @Post('register')
   @UseInterceptors(
@@ -32,6 +32,11 @@ export class DriversController {
     console.log('Body:', driverInfo);
     console.log('File:', file);
     return await this.driversService.create(driverInfo, file);
+  }
+
+  @Get() // 👈 아무것도 적지 않아야 /api/v1/drivers (GET) 경로가 생성됩니다!
+  async findAll() {
+    return this.driversService.findAll();
   }
 
   @Patch(':id/approve')

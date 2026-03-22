@@ -27,25 +27,27 @@ export class BookingsService {
 
     return !!existing; // 존재하면 true, 없으면 false
   }
-  
+
   async create(data: Partial<Booking>): Promise<Booking> {
     const booking = this.bookingRepository.create(data);
     return await this.bookingRepository.save(booking);
   }
 
   // ✅ Step 4: 특정 진단사 ID로 예약 목록 조회
+  // 🚀 수정 포인트: driverId를 인자로 받아 해당 진단사 것만 조회합니다.
   async findByDriver(driverId: string) {
     return await this.bookingRepository.find({
-      where: { assignedDriverId: driverId }, // assignedDriverId 컬럼이 예약 테이블에 있어야 함
-      order: { createdAt: 'DESC' }
+      where: { assignedDriverId: driverId }, // DB에서 내 ID가 찍힌 것만!
+      order: { createdAt: 'DESC' },
     });
   }
-  
+
   async findAll(): Promise<Booking[]> {
     return await this.bookingRepository.find({
       order: { createdAt: 'DESC' },
     });
   }
+
 
   async update(id: number, updateData: Partial<Booking>): Promise<Booking> {
     const booking = await this.bookingRepository.findOneBy({ id });
@@ -78,5 +80,22 @@ export class BookingsService {
     }
 
     return updated;
+  }
+
+  // ✅ 배정 함수 추가
+  // ✅ 진단사 배정 로직 (컬럼명: assignedDriverId, assignedDriverName)
+  async assign(id: number, driverInfo: { id: string; name: string }) {
+    // 1. 해당 신청건 찾기
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking) {
+      throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+    }
+
+    // 2. 데이터 업데이트
+    booking.assignedDriverId = driverInfo.id;     // 진단사 고유 ID 저장
+    booking.assignedDriverName = driverInfo.name; // 진단사 이름 저장
+    booking.status = 'ASSIGNED';                  // 상태를 배정완료로 변경
+
+    return await this.bookingRepository.save(booking);
   }
 }
