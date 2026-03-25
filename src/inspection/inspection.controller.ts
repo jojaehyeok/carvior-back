@@ -50,6 +50,7 @@ export class InspectionController {
         number: inspection.carNumber,
         type: inspection.carModel,
         mileage: inspection.mileage,
+        color: inspection.color,
         repairCost: inspection.repairCost, // 검수 전용
       },
       // 상세 진단 내용

@@ -77,6 +77,7 @@ export class InspectionService {
     inspection.carNumber = data.carNumber;
     inspection.carModel = data.carModel || '알수없음';
     inspection.mileage = Number(data.mileage) || 0;
+    inspection.color = data.color || '';
     inspection.repairCost = Number(data.repairCost) || 0;
 
     // [이미지]

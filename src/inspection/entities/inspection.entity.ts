@@ -23,6 +23,9 @@ export class Inspection {
     @Column({ type: 'int', default: 0 })
     mileage: number;
 
+    @Column({ nullable: true })
+    color: string;
+
     // 추가: 검수 전용 예상 복구 비용
     @Column({ type: 'int', nullable: true })
     repairCost: number;
