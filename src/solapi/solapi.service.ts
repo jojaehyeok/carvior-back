@@ -45,4 +45,32 @@ export class SolapiService {
             throw error;
         }
     }
+
+    async sendCompletionAlimTalk(variables: { '#{차량번호}': string; '#{완료시간}': string; '#{예약번호}': string }) {
+        try {
+            const templateId = this.configService.get<string>('SOLAPI_TEMPLATE_ID_COMPLETED');
+            const senderNumber = this.configService.get<string>('SOLAPI_SENDER_NUMBER');
+            const pfId = this.configService.get<string>('SOLAPI_PF_ID');
+            const recipientNumber = '01022856017';
+
+            console.log('--- 진단완료 알림톡 발송 ---');
+            console.log('to:', recipientNumber);
+            console.log('templateId:', templateId);
+
+            const response = await this.messageService.sendOne({
+                to: recipientNumber,
+                from: senderNumber,
+                type: 'ATA',
+                kakaoOptions: {
+                    pfId: pfId,
+                    templateId: templateId,
+                    variables: variables,
+                },
+            });
+            return response;
+        } catch (error) {
+            console.error('진단완료 알림톡 발송 에러:', JSON.stringify(error, null, 2));
+            // 알림톡 실패해도 진단 저장은 성공으로 처리
+        }
+    }
 }

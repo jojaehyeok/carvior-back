@@ -46,6 +46,7 @@ export class InspectionController {
     }
 
     return {
+      completedAt: inspection.completedAt,
       car_info: {
         number: inspection.carNumber,
         type: inspection.carModel,

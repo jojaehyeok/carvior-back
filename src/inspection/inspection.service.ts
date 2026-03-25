@@ -3,8 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Booking } from 'src/bookings/entities/booking.entity'; 
+import { Booking } from 'src/bookings/entities/booking.entity';
 import { Inspection } from './entities/inspection.entity';
+import { SolapiService } from 'src/solapi/solapi.service';
 
 @Injectable()
 export class InspectionService {
@@ -12,6 +13,7 @@ export class InspectionService {
 
   constructor(
     private configService: ConfigService,
+    private readonly solapiService: SolapiService,
     @InjectRepository(Inspection)
     private readonly inspectionRepository: Repository<Inspection>,
     @InjectRepository(Booking)
@@ -121,6 +123,14 @@ export class InspectionService {
       
       // 예약 테이블의 상태를 'COMPLETED'로 변경
       await this.bookingRepository.update(bId, { status: 'COMPLETED' });
+
+      // 진단 완료 알림톡 발송
+      const completedAt = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+      await this.solapiService.sendCompletionAlimTalk({
+        '#{차량번호}': inspection.carNumber,
+        '#{완료시간}': completedAt,
+        '#{예약번호}': String(bId),
+      });
 
       console.log(`[Success] ID ${bId} 모든 진단 데이터 저장 완료`);
       return { success: true, id: savedResult.id };
