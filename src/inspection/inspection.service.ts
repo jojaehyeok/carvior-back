@@ -124,8 +124,11 @@ export class InspectionService {
       // 예약 테이블의 상태를 'COMPLETED'로 변경
       await this.bookingRepository.update(bId, { status: 'COMPLETED' });
 
-      // 진단 완료 알림톡 발송
-      const completedAt = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+      // 진단 완료 알림톡 발송 (서버 환경 안전한 KST 포맷)
+      const now = new Date(Date.now() + 9 * 60 * 60 * 1000); // UTC+9
+      const pad = (n: number) => String(n).padStart(2, '0');
+      const completedAt = `${now.getUTCFullYear()}.${pad(now.getUTCMonth() + 1)}.${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}`;
+      console.log(`[알림톡] 발송 시작 - 차량: ${inspection.carNumber}, 완료시간: ${completedAt}`);
       await this.solapiService.sendCompletionAlimTalk({
         '#{차량번호}': inspection.carNumber,
         '#{완료시간}': completedAt,
