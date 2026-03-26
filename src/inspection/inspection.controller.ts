@@ -1,12 +1,12 @@
-import { Controller, Post, UseInterceptors, UploadedFile, Body, BadRequestException, Delete, Query, Get, Param, Patch } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
+import { Controller, Post, UseInterceptors, UploadedFile, UploadedFiles, Body, BadRequestException, Delete, Query, Get, Param, Patch } from '@nestjs/common';
+import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { InspectionService } from './inspection.service';
 
 @Controller('v1/external/inspection')
 export class InspectionController {
   constructor(private readonly inspectionService: InspectionService) { }
 
-  // 1. 이미지 업로드
+  // 1. 이미지 업로드 (단일)
   @Post('upload')
   @UseInterceptors(FileInterceptor('file'))
   async uploadFile(
@@ -18,6 +18,26 @@ export class InspectionController {
     if (!file) throw new BadRequestException('파일이 없습니다.');
     const url = await this.inspectionService.uploadToS3(file, requestId, category, carNumber);
     return { url };
+  }
+
+  // 1-b. 배치 이미지 업로드 (최대 70장 병렬 처리)
+  @Post('upload/batch')
+  @UseInterceptors(FilesInterceptor('files', 80)) // 최대 80개
+  async uploadBatch(
+    @UploadedFiles() files: Express.Multer.File[],
+    @Body('requestId') requestId: string,
+    @Body('category') category: string,
+    @Body('carNumber') carNumber: string,
+  ) {
+    if (!files || files.length === 0) throw new BadRequestException('파일이 없습니다.');
+    console.log(`[Batch Upload] 요청 | requestId=${requestId} | category=${category} | 파일수=${files.length}`);
+    const results = await this.inspectionService.uploadBatchToS3(files, requestId, category, carNumber);
+    const successUrls = results.filter((r) => r.url !== null).map((r) => r.url);
+    const failures = results.filter((r) => r.url === null);
+    if (failures.length > 0) {
+      console.warn(`[Batch Upload] 일부 실패 | 실패목록=${failures.map((f) => f.originalname).join(', ')}`);
+    }
+    return { urls: successUrls, total: files.length, success: successUrls.length, failed: failures.length };
   }
 
   // 2. 최종 제출 (프런트엔드 payload 전체 수용)
@@ -36,7 +56,17 @@ export class InspectionController {
     return await this.inspectionService.deleteFromS3(url);
   }
 
-  // 4. 레포트 조회 (프런트엔드 요구 포맷으로 변환)
+  // 4. 제출 완료 후 개별 사진 추가 (백그라운드 업로드용)
+  @Patch(':bookingId/photo')
+  async addPhoto(
+    @Param('bookingId') bookingId: string,
+    @Body('category') category: string,
+    @Body('url') url: string,
+  ) {
+    return await this.inspectionService.appendPhoto(parseInt(bookingId), category, url);
+  }
+
+  // 5. 레포트 조회 (프런트엔드 요구 포맷으로 변환)
   @Get('report/:bookingId')
   async getReportData(@Param('bookingId') bookingId: string) {
     const inspection = await this.inspectionService.getInspectionByBookingId(parseInt(bookingId));

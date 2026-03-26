@@ -39,10 +39,13 @@ export class InspectionService {
   ): Promise<string> {
     const bucket = this.configService.get('AWS_S3_BUCKET_NAME') as string;
     const region = this.configService.get('AWS_S3_REGION') || 'ap-northeast-2';
-    const safeCarNumber = carNumber || requestId; 
+    const safeCarNumber = carNumber || requestId;
     const timestamp = Date.now();
     const safeFileName = file.originalname.replace(/\s/g, '_');
     const key = `${safeCarNumber}/${category}/${timestamp}_${safeFileName}`;
+
+    const start = Date.now();
+    console.log(`[S3 Upload] 시작 | key=${key} | size=${file.size}bytes | mime=${file.mimetype}`);
 
     try {
       await this.s3Client.send(
@@ -53,12 +56,83 @@ export class InspectionService {
           ContentType: file.mimetype,
         }),
       );
+      const elapsed = Date.now() - start;
+      console.log(`[S3 Upload] 완료 | key=${key} | 소요=${elapsed}ms`);
       // 실제 접근 가능한 S3 URL 반환
       return `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
     } catch (error) {
-      console.error('S3 Upload Error:', error);
-      throw new BadRequestException('S3 파일 업로드에 실패했습니다.');
+      const elapsed = Date.now() - start;
+      console.error(`[S3 Upload] 실패 | key=${key} | 소요=${elapsed}ms | error=${error?.message || error}`);
+      console.error('[S3 Upload] 상세:', error);
+      throw new BadRequestException(`S3 파일 업로드에 실패했습니다. (${error?.message})`);
     }
+  }
+
+  /**
+   * 1-b. 배치 병렬 업로드 (여러 파일 동시 처리)
+   */
+  async uploadBatchToS3(
+    files: Express.Multer.File[],
+    requestId: string,
+    category: string,
+    carNumber: string,
+  ): Promise<{ url: string | null; originalname: string; error?: string }[]> {
+    const bucket = this.configService.get('AWS_S3_BUCKET_NAME') as string;
+    const region = this.configService.get('AWS_S3_REGION') || 'ap-northeast-2';
+    const safeCarNumber = carNumber || requestId;
+
+    console.log(`[S3 Batch Upload] 시작 | category=${category} | 파일수=${files.length} | carNumber=${safeCarNumber}`);
+    const batchStart = Date.now();
+
+    const CONCURRENCY = 5; // 동시 업로드 수 (S3 연결 과부하 방지)
+    const results: { url: string | null; originalname: string; error?: string }[] = [];
+
+    // 파일을 CONCURRENCY 단위로 청크로 나눠서 병렬 처리
+    for (let i = 0; i < files.length; i += CONCURRENCY) {
+      const chunk = files.slice(i, i + CONCURRENCY);
+      const chunkResults = await Promise.all(
+        chunk.map(async (file) => {
+          const timestamp = Date.now();
+          const safeFileName = file.originalname.replace(/\s/g, '_');
+          const key = `${safeCarNumber}/${category}/${timestamp}_${safeFileName}`;
+          const start = Date.now();
+          console.log(`[S3 Batch] 업로드 시작 | key=${key} | size=${file.size}bytes`);
+
+          try {
+            await this.s3Client.send(
+              new PutObjectCommand({
+                Bucket: bucket,
+                Key: key,
+                Body: file.buffer,
+                ContentType: file.mimetype,
+              }),
+            );
+            const elapsed = Date.now() - start;
+            console.log(`[S3 Batch] 완료 | key=${key} | 소요=${elapsed}ms`);
+            return {
+              url: `https://${bucket}.s3.${region}.amazonaws.com/${key}`,
+              originalname: file.originalname,
+            };
+          } catch (error) {
+            const elapsed = Date.now() - start;
+            console.error(`[S3 Batch] 실패 | key=${key} | 소요=${elapsed}ms | error=${error?.message || error}`);
+            return {
+              url: null,
+              originalname: file.originalname,
+              error: error?.message || '업로드 실패',
+            };
+          }
+        }),
+      );
+      results.push(...chunkResults);
+    }
+
+    const totalElapsed = Date.now() - batchStart;
+    const successCount = results.filter((r) => r.url !== null).length;
+    const failCount = results.length - successCount;
+    console.log(`[S3 Batch Upload] 완료 | 총=${results.length} | 성공=${successCount} | 실패=${failCount} | 총소요=${totalElapsed}ms`);
+
+    return results;
   }
 
   /**
@@ -157,6 +231,19 @@ export class InspectionService {
     } catch (error) {
       return { success: false };
     }
+  }
+
+  /**
+   * 4. 제출 후 개별 사진 URL 추가 (백그라운드 업로드 완료 시 호출)
+   */
+  async appendPhoto(bookingId: number, category: string, url: string) {
+    const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
+    if (!inspection) return { success: false };
+    const photos = { ...(inspection.photos || {}) };
+    photos[category] = [...(photos[category] || []), url];
+    inspection.photos = photos;
+    await this.inspectionRepository.save(inspection);
+    return { success: true };
   }
 
   async getInspectionByBookingId(bookingId: number) {
