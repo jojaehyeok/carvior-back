@@ -160,7 +160,16 @@ export class InspectionService {
     inspection.dashboardImage = data.dashboardImage;
     inspection.regImage = data.regImage;
     inspection.vinImage = data.vinImage;
-    inspection.photos = data.photos; // exterior, wheel, undercarriage 등 포함
+    inspection.photos = {
+      exterior: data.photos?.exterior || [],
+      wheel: data.photos?.wheel || [],
+      undercarriage: data.photos?.undercarriage || [],
+      interior: data.photos?.interior || [],
+      engine: data.photos?.engine || [],
+      damage: data.photos?.damage || [],
+      extra: data.photos?.extra || [],
+      extraMemo: data.photos?.extraMemo || [],
+    };
 
     // [상세 설명]
     inspection.inspectionDetails = {
@@ -177,6 +186,7 @@ export class InspectionService {
         general: Number(data.keys?.general) || 0,
         folding: Number(data.keys?.folding) || 0,
         special: Number(data.keys?.special) || 0,
+        note: data.keys?.note || '',
       },
       paintNeeded: Number(data.paintNeeded) || 0,
       wheelScratch: Number(data.wheelScratch) || 0,

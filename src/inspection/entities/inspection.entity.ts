@@ -1,5 +1,5 @@
 // inspection.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn, CreateDateColumn } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToOne, JoinColumn, Index } from 'typeorm';
 import { Booking } from '../../bookings/entities/booking.entity';
 
 @Entity('inspections')
@@ -11,7 +11,8 @@ export class Inspection {
     @JoinColumn({ name: 'bookingId' })
     booking: Booking;
 
-    @Column() 
+    @Index()
+    @Column()
     bookingId: number;
 
     @Column()
@@ -51,7 +52,7 @@ export class Inspection {
     // 추가: 차키 정보, 타이어 잔존량, 도색/휠 상태 등
     @Column({ type: 'json', nullable: true })
     carStatus: {
-        keys: { smart: number; general: number; folding: number; special: number };
+        keys: { smart: number; general: number; folding: number; special: number; note?: string };
         paintNeeded: number;
         wheelScratch: number;
         tireTread: { front: number; back: number };
@@ -72,11 +73,14 @@ export class Inspection {
         undercarriage: string[];
         interior: string[];
         engine: string[];
+        damage: string[];
+        extra: string[];
+        extraMemo: string[];
     };
 
     @Column({ type: 'text', nullable: true })
     memo: string;
 
-    @CreateDateColumn()
+    @Column({ type: 'timestamp', nullable: true })
     completedAt: Date;
 }
