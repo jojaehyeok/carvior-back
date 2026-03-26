@@ -142,6 +142,10 @@ export class InspectionService {
     const bId = parseInt(data.requestId);
     if (isNaN(bId)) throw new BadRequestException('유효하지 않은 requestId입니다.');
 
+    // 📸 photos 수신 현황 로그
+    const photoLog = Object.entries(data.photos || {}).map(([k, v]) => `${k}:${(v as any[])?.length ?? 0}`).join(' | ');
+    console.log(`[Submit] bId=${bId} | photos → ${photoLog || '없음'}`);
+
     let inspection = await this.inspectionRepository.findOne({ where: { bookingId: bId } });
 
     if (!inspection) {
