@@ -11,13 +11,13 @@ export class DriversService {
   ) { }
 
   // 가입 신청 (생성)
-  async create(driverInfo: any, file?: Express.Multer.File) {
+  async create(driverInfo: any, licenseImageUrl?: string | null) {
     const existing = await this.driverRepository.findOne({ where: { accountId: driverInfo.accountId } });
     if (existing) throw new ConflictException('이미 존재하는 아이디입니다.');
 
     const newDriver = this.driverRepository.create({
       ...driverInfo,
-      licenseImageUrl: file ? file.path : null,
+      licenseImageUrl: licenseImageUrl ?? null,
       status: 'PENDING',
     });
     return await this.driverRepository.save(newDriver);

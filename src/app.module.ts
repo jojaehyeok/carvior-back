@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { BookingsModule } from './bookings/bookings.module';
+import { ReviewsModule } from './reviews/reviews.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Booking } from './bookings/entities/booking.entity';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -46,7 +47,8 @@ import { AuthController } from './auth/auth.controller';
     }),
     BookingsModule,
     InspectionModule,
-    DriversModule
+    DriversModule,
+    ReviewsModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, SolapiService, S3Service],
