@@ -58,25 +58,24 @@ export class BookingsController {
     return await this.bookingsService.findByDriver(driverId);
   }
 
-  // PATCH: 예약 상태 및 진단사 배정 업데이트
+  // PATCH: 예약 상태 업데이트 (진단사 취소 포함)
   @Patch(':id/status')
   async updateStatus(
     @Param('id') id: number,
-    @Body() updateData: Partial<Booking>, // status, assignedDriverId, adminMemo 등 포함
+    @Body() updateData: Partial<Booking> & { cancelReason?: string; cancelledByDriver?: boolean },
   ) {
-    // 1. DB 업데이트 수행
     const updatedBooking = await this.bookingsService.update(id, updateData);
-
-    // 2. [추가 포인트] 상태가 'CONFIRMED'로 바뀔 때 알림톡 발송 로직을 여기서 트리거하면 좋습니다.
-    // if (updateData.status === 'CONFIRMED') {
-    //   await this.bookingsService.sendAlimTalk(id, '진단사배정');
-    // }
-
     return {
       success: true,
       message: '상태가 업데이트되었습니다.',
       data: updatedBooking,
     };
+  }
+
+  // GET: 진단사 취소 통계
+  @Get('driver/:driverId/cancel-stats')
+  async getDriverCancelStats(@Param('driverId') driverId: string) {
+    return await this.bookingsService.getDriverCancelStats(driverId);
   }
 
   // GET: 전체 리스트 확인 (source 필터 옵션)

@@ -10,10 +10,10 @@ export class Booking {
 
   // --- 진단사 배정 관련 컬럼 추가 ---
   @Column({ nullable: true })
-  assignedDriverId: string; // 진단사 고유 ID (알림톡 보낼 때 필요)
+  assignedDriverId: string | null;
 
   @Column({ nullable: true })
-  assignedDriverName: string; // 진단사 이름 (화면 표시용)
+  assignedDriverName: string | null;
   // ------------------------------
 
   @Column()
@@ -59,6 +59,10 @@ export class Booking {
 
   @Column({ type: 'text', nullable: true })
   adminMemo: string;
+
+  // 진단사 취소로 재대기 전환된 시각 (null이면 일반 PENDING)
+  @Column({ type: 'timestamp', nullable: true })
+  cancelledByDriverAt: Date | null;
 
   @CreateDateColumn()
   createdAt: Date;

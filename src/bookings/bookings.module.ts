@@ -6,10 +6,11 @@ import { Booking } from './entities/booking.entity';
 import { SolapiService } from 'src/solapi/solapi.service';
 import { NotificationsService } from 'src/notifications/notifications.service';
 import { Driver } from 'src/drivers/entities/driver.entity';
+import { DriverCancelLog } from 'src/driver-cancel-logs/driver-cancel-log.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Booking, Driver]),
+    TypeOrmModule.forFeature([Booking, Driver, DriverCancelLog]),
   ],
   controllers: [BookingsController],
   providers: [BookingsService, SolapiService, NotificationsService],
