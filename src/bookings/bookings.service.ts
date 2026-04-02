@@ -78,8 +78,8 @@ export class BookingsService {
         await this.solapiService.sendAlimTalk(updated.contact, kakaoVariables);
         console.log(`✅ [알림톡 발송 성공] ${updated.carOwner}님께 배정 알림 전송`);
 
-      } catch (error) {
-        console.error('❌ [알림톡 발송 실패]', error.message);
+      } catch (error: unknown) {
+        console.error('❌ [알림톡 발송 실패]', (error as Error).message);
         // 알림톡이 실패해도 예약 상태는 이미 DB에 반영된 상태입니다.
       }
     }
@@ -110,7 +110,7 @@ export class BookingsService {
         await this.notificationsService.sendPush(
           driver.pushToken,
           '새 예약이 배정되었습니다 🚗',
-          `${saved.carOwner}님 · ${saved.carNumber} · ${saved.scheduledDate} ${saved.scheduledTime}`,
+          `${saved.carOwner}님 · ${saved.carNumber} · ${saved.preferredDateTime}`,
           { bookingId: saved.id },
         );
       }
