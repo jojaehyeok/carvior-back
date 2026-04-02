@@ -28,6 +28,9 @@ export class Driver {
   @Column({ type: 'varchar', nullable: true })
   licenseImageUrl: string;
 
+  @Column({ type: 'varchar', nullable: true })
+  pushToken: string;
+
   @Column({ default: 'PENDING' })
   status: 'PENDING' | 'APPROVED' | 'REJECTED';
 

@@ -44,4 +44,10 @@ export class DriversController {
   async reject(@Param('id') id: string) {
     return await this.driversService.updateStatus(id, 'REJECTED');
   }
+
+  @Patch(':id/push-token')
+  async savePushToken(@Param('id') id: string, @Body('pushToken') pushToken: string) {
+    await this.driversService.savePushToken(Number(id), pushToken);
+    return { success: true };
+  }
 }

@@ -2,14 +2,19 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Not, Repository } from 'typeorm';
 import { Booking } from './entities/booking.entity';
-import { SolapiService } from '../solapi/solapi.service'; // 1. 임포트 추가
+import { SolapiService } from '../solapi/solapi.service';
+import { NotificationsService } from '../notifications/notifications.service';
+import { Driver } from '../drivers/entities/driver.entity';
 
 @Injectable()
 export class BookingsService {
   constructor(
     @InjectRepository(Booking)
     private readonly bookingRepository: Repository<Booking>,
-    private readonly solapiService: SolapiService, // 2. 의존성 주입 추가!
+    @InjectRepository(Driver)
+    private readonly driverRepository: Repository<Driver>,
+    private readonly solapiService: SolapiService,
+    private readonly notificationsService: NotificationsService,
   ) { }
 
   // ✅ 진행 중인 예약이 있는지 확인하는 메서드
@@ -92,10 +97,27 @@ export class BookingsService {
     }
 
     // 2. 데이터 업데이트
-    booking.assignedDriverId = driverInfo.id;     // 진단사 고유 ID 저장
-    booking.assignedDriverName = driverInfo.name; // 진단사 이름 저장
-    booking.status = 'ASSIGNED';                  // 상태를 배정완료로 변경
+    booking.assignedDriverId = driverInfo.id;
+    booking.assignedDriverName = driverInfo.name;
+    booking.status = 'ASSIGNED';
 
-    return await this.bookingRepository.save(booking);
+    const saved = await this.bookingRepository.save(booking);
+
+    // 배정된 진단사에게 앱 푸시 알림 발송
+    try {
+      const driver = await this.driverRepository.findOne({ where: { id: Number(driverInfo.id) } });
+      if (driver?.pushToken) {
+        await this.notificationsService.sendPush(
+          driver.pushToken,
+          '새 예약이 배정되었습니다 🚗',
+          `${saved.carOwner}님 · ${saved.carNumber} · ${saved.scheduledDate} ${saved.scheduledTime}`,
+          { bookingId: saved.id },
+        );
+      }
+    } catch (e) {
+      // push 실패해도 배정은 정상 처리
+    }
+
+    return saved;
   }
 }

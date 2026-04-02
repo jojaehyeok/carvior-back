@@ -42,4 +42,12 @@ export class DriversService {
   async findByAccountId(accountId: string) {
     return await this.driverRepository.findOne({ where: { accountId } });
   }
+
+  async findById(id: number) {
+    return await this.driverRepository.findOne({ where: { id } });
+  }
+
+  async savePushToken(id: number, pushToken: string) {
+    await this.driverRepository.update(id, { pushToken });
+  }
 }
