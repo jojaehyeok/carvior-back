@@ -43,6 +43,23 @@ export class Booking {
   @Column({ default: 'SNS_PROMOTION' })
   source: string;
 
+  // --- 오더 기록 필드 ---
+  @Column({ nullable: true })
+  contractWriter: string; // 계약서 작성자
+
+  @Column({ default: false })
+  vehicleTransferred: boolean; // 차량 이전 여부
+
+  @Column({ type: 'int', nullable: true })
+  purchasePrice: number | null; // 매입가 (만원)
+
+  @Column({ default: false })
+  isOldDealerPurchase: boolean; // 구전 매입 여부
+  // ----------------------
+
+  @Column({ type: 'text', nullable: true })
+  adminMemo: string;
+
   @CreateDateColumn()
   createdAt: Date;
 

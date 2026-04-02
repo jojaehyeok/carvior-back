@@ -47,8 +47,9 @@ export class BookingsService {
     });
   }
 
-  async findAll(): Promise<Booking[]> {
+  async findAll(source?: string): Promise<Booking[]> {
     return await this.bookingRepository.find({
+      where: source ? { source } : {},
       order: { createdAt: 'DESC' },
     });
   }

@@ -79,10 +79,11 @@ export class BookingsController {
     };
   }
 
-  // GET: 전체 리스트 확인
+  // GET: 전체 리스트 확인 (source 필터 옵션)
+  // 예: /api/v1/external/request/list?source=anyone-motors
   @Get('list')
-  async getList() {
-    return await this.bookingsService.findAll();
+  async getList(@Query('source') source?: string) {
+    return await this.bookingsService.findAll(source);
   }
 
   @Patch(':id/assign')
