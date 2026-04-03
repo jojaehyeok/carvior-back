@@ -9,10 +9,10 @@ export class Booking {
   status: string;
 
   // --- 진단사 배정 관련 컬럼 추가 ---
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   assignedDriverId: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   assignedDriverName: string | null;
   // ------------------------------
 
