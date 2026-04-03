@@ -12,6 +12,7 @@ import { S3Service } from './s3/s3.service';
 import { DriversService } from './drivers/drivers.service';
 import { DriversModule } from './drivers/drivers.module';
 import { AuthController } from './auth/auth.controller';
+import { ClassifyModule } from './classify/classify.module';
 
 @Module({
   imports: [
@@ -49,6 +50,7 @@ import { AuthController } from './auth/auth.controller';
     InspectionModule,
     DriversModule,
     ReviewsModule,
+    ClassifyModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, SolapiService, S3Service],
