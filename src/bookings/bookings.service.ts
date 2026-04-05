@@ -97,12 +97,20 @@ export class BookingsService {
 
     if (updateData.status === 'CONFIRMED') {
       try {
+        const driver = updated.assignedDriverId
+          ? await this.driverRepository.findOne({ where: { accountId: updated.assignedDriverId } })
+          : null;
+
+        const driverPhone = driver?.phone || updated.contact;
+        const driverName = updated.assignedDriverName || driver?.name || '진단사';
+
         const kakaoVariables = {
-          '#{진단사명}': updated.assignedDriverName || '조재혁 진단사',
-          '#{진단사연락처}': '010-2285-6017',
+          '#{진단사명}': driverName,
+          '#{진단사연락처}': driverPhone.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3'),
           '#{차량번호}': updated.carNumber,
         };
-        await this.solapiService.sendAlimTalk(updated.contact, kakaoVariables);
+        await this.solapiService.sendAlimTalk(driverPhone, kakaoVariables);
+        console.log(`✅ [알림톡 발송] 진단사 ${driverName}(${driverPhone})께 배정 알림 전송`);
       } catch (error: unknown) {
         console.error('❌ [알림톡 발송 실패]', (error as Error).message);
       }
