@@ -34,7 +34,29 @@ export class BookingsService {
 
   async create(data: Partial<Booking>): Promise<Booking> {
     const booking = this.bookingRepository.create(data);
-    return await this.bookingRepository.save(booking);
+    const saved = await this.bookingRepository.save(booking);
+
+    // 승인된 진단사 전원에게 새 접수 푸시 발송
+    try {
+      const drivers = await this.driverRepository.find({
+        where: { status: 'APPROVED' },
+      });
+      const pushTargets = drivers.filter(d => d.pushToken);
+      await Promise.all(
+        pushTargets.map(d =>
+          this.notificationsService.sendPush(
+            d.pushToken,
+            '새로운 진단 요청이 있습니다 📋',
+            `접수 장소: ${saved.address}`,
+            { bookingId: saved.id },
+          ),
+        ),
+      );
+    } catch (e) {
+      // 푸시 실패해도 예약 저장은 정상 처리
+    }
+
+    return saved;
   }
 
   async findByDriver(driverId: string) {
