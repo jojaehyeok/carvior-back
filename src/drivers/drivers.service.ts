@@ -48,6 +48,8 @@ export class DriversService {
   }
 
   async savePushToken(id: number, pushToken: string) {
+    console.log(`[PushToken] 저장 요청 → driverId: ${id}, token: ${pushToken?.slice(0, 30)}...`);
     await this.driverRepository.update(id, { pushToken });
+    console.log(`[PushToken] DB 저장 완료 → driverId: ${id}`);
   }
 }
