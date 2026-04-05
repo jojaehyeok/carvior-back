@@ -136,7 +136,7 @@ export class SolapiService {
             const pfId = this.configService.get<string>('SOLAPI_PF_ID');
 
             const recipients = ['01022856017'];
-            if (source === '애니원모터스') {
+            if (source === 'anyone-motors') {
                 recipients.push('01073709569');
             }
 

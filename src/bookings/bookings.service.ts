@@ -141,17 +141,6 @@ export class BookingsService {
         );
       }
 
-      // 애니원모터스 출처 예약 배정 시 유대표(01073709569)에게 알림톡 추가 발송
-      if (saved.source === '애니원모터스') {
-        const driver2 = driver ?? await this.driverRepository.findOne({ where: { id: Number(driverInfo.id) } });
-        const driverPhone = driver2?.phone ?? '';
-        await this.solapiService.sendAlimTalk('01073709569', {
-          '#{진단사명}': driverInfo.name,
-          '#{진단사연락처}': driverPhone.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3'),
-          '#{차량번호}': saved.carNumber,
-        });
-        console.log(`[애니원모터스] 유대표 알림톡 발송 완료`);
-      }
     } catch (e) {}
 
     return saved;
