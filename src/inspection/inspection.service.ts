@@ -210,6 +210,7 @@ export class InspectionService {
       const savedResult = await this.inspectionRepository.save(inspection);
       
       // 예약 테이블의 상태를 'COMPLETED'로 변경
+      const booking = await this.bookingRepository.findOne({ where: { id: bId } });
       await this.bookingRepository.update(bId, { status: 'COMPLETED' });
 
       // 진단 완료 알림톡 발송 (서버 환경 안전한 KST 포맷)
@@ -221,7 +222,7 @@ export class InspectionService {
         '#{차량번호}': inspection.carNumber,
         '#{완료시간}': completedAt,
         '#{예약번호}': String(bId),
-      });
+      }, booking?.source);
 
       console.log(`[Success] ID ${bId} 모든 진단 데이터 저장 완료`);
       return { success: true, id: savedResult.id };

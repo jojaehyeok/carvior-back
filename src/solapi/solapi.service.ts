@@ -119,28 +119,42 @@ export class SolapiService {
         }
     }
 
-    async sendCompletionAlimTalk(variables: { '#{차량번호}': string; '#{완료시간}': string; '#{예약번호}': string }) {
+    async sendSms(to: string, text: string) {
+        try {
+            const senderNumber = this.configService.get<string>('SOLAPI_SENDER_NUMBER');
+            await this.messageService.sendOne({ to, from: senderNumber, type: 'SMS', text });
+            console.log(`[SMS 발송] → ${to}`);
+        } catch (error) {
+            console.error('[SMS 발송 실패]', JSON.stringify(error, null, 2));
+        }
+    }
+
+    async sendCompletionAlimTalk(variables: { '#{차량번호}': string; '#{완료시간}': string; '#{예약번호}': string }, source?: string) {
         try {
             const templateId = this.configService.get<string>('SOLAPI_TEMPLATE_ID_COMPLETED');
             const senderNumber = this.configService.get<string>('SOLAPI_SENDER_NUMBER');
             const pfId = this.configService.get<string>('SOLAPI_PF_ID');
-            const recipientNumber = '01022856017';
+
+            const recipients = ['01022856017'];
+            if (source === '애니원모터스') {
+                recipients.push('01073709569');
+            }
 
             console.log('--- 진단완료 알림톡 발송 ---');
-            console.log('to:', recipientNumber);
+            console.log('to:', recipients);
             console.log('templateId:', templateId);
 
-            const response = await this.messageService.sendOne({
-                to: recipientNumber,
-                from: senderNumber,
-                type: 'ATA',
-                kakaoOptions: {
-                    pfId: pfId,
-                    templateId: templateId,
-                    variables: variables,
-                },
-            });
-            return response;
+            const responses = await Promise.all(
+                recipients.map((to) =>
+                    this.messageService.sendOne({
+                        to,
+                        from: senderNumber,
+                        type: 'ATA',
+                        kakaoOptions: { pfId, templateId, variables },
+                    }),
+                ),
+            );
+            return responses;
         } catch (error) {
             console.error('진단완료 알림톡 발송 에러:', JSON.stringify(error, null, 2));
             // 알림톡 실패해도 진단 저장은 성공으로 처리
