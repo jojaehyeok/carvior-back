@@ -66,15 +66,21 @@ export class InspectionController {
     return await this.inspectionService.appendPhoto(parseInt(bookingId), category, url);
   }
 
-  // 5. 레포트 조회 (프런트엔드 요구 포맷으로 변환)
+  // 5. 레포트 조회 - 차량번호 해시 기반 (공개 URL용)
+  @Get('report/by-hash/:carHash')
+  async getReportByHash(@Param('carHash') carHash: string) {
+    const inspection = await this.inspectionService.getInspectionByCarHash(carHash);
+    return this.formatReport(inspection);
+  }
+
+  // 5-b. 레포트 조회 - bookingId 기반 (내부/앱용)
   @Get('report/:bookingId')
   async getReportData(@Param('bookingId') bookingId: string) {
     const inspection = await this.inspectionService.getInspectionByBookingId(parseInt(bookingId));
-    
-    if (!inspection) {
-      throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
-    }
+    return this.formatReport(inspection);
+  }
 
+  private formatReport(inspection: any) {
     return {
       completedAt: inspection.completedAt,
       car_info: {
@@ -82,30 +88,26 @@ export class InspectionController {
         type: inspection.carModel,
         mileage: inspection.mileage,
         color: inspection.color,
-        repairCost: inspection.repairCost, // 검수 전용
+        repairCost: inspection.repairCost,
       },
-      // 상세 진단 내용
       evaluation: {
         ...inspection.inspectionDetails,
         memo: inspection.memo,
       },
-      // 차량 상태 (키, 타이어 등)
       car_status: {
         keys: inspection.carStatus?.keys,
         paintNeeded: inspection.carStatus?.paintNeeded,
         wheelScratch: inspection.carStatus?.wheelScratch,
         tireTread: inspection.carStatus?.tireTread,
       },
-      // 손상 위치 데이터
       damages: inspection.checkedDamages,
       mirror_markers: inspection.mirrorMarkers,
-      // 사진 리스트
       images: {
         ...inspection.photos,
         dashboard: inspection.dashboardImage ? [inspection.dashboardImage] : [],
         registration: inspection.regImage ? [inspection.regImage] : [],
         vin: inspection.vinImage ? [inspection.vinImage] : [],
-      }
+      },
     };
   }
 }

@@ -18,6 +18,10 @@ export class Inspection {
     @Column()
     carNumber: string;
 
+    @Index()
+    @Column({ nullable: true })
+    carHash: string;
+
     @Column({ nullable: true })
     carModel: string;
 

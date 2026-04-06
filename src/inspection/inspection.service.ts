@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -62,9 +63,10 @@ export class InspectionService {
       return `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
     } catch (error) {
       const elapsed = Date.now() - start;
-      console.error(`[S3 Upload] 실패 | key=${key} | 소요=${elapsed}ms | error=${error?.message || error}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`[S3 Upload] 실패 | key=${key} | 소요=${elapsed}ms | error=${msg}`);
       console.error('[S3 Upload] 상세:', error);
-      throw new BadRequestException(`S3 파일 업로드에 실패했습니다. (${error?.message})`);
+      throw new BadRequestException(`S3 파일 업로드에 실패했습니다. (${msg})`);
     }
   }
 
@@ -115,11 +117,12 @@ export class InspectionService {
             };
           } catch (error) {
             const elapsed = Date.now() - start;
-            console.error(`[S3 Batch] 실패 | key=${key} | 소요=${elapsed}ms | error=${error?.message || error}`);
+            const msg = error instanceof Error ? error.message : String(error);
+            console.error(`[S3 Batch] 실패 | key=${key} | 소요=${elapsed}ms | error=${msg}`);
             return {
               url: null,
               originalname: file.originalname,
-              error: error?.message || '업로드 실패',
+              error: msg,
             };
           }
         }),
@@ -155,6 +158,7 @@ export class InspectionService {
 
     // [기본 정보]
     inspection.carNumber = data.carNumber;
+    inspection.carHash = createHash('sha256').update(data.carNumber).digest('hex').slice(0, 16);
     inspection.carModel = data.carModel || '알수없음';
     inspection.mileage = Number(data.mileage) || 0;
     inspection.color = data.color || '';
@@ -263,6 +267,12 @@ export class InspectionService {
 
   async getInspectionByBookingId(bookingId: number) {
     const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
+    if (!inspection) throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
+    return inspection;
+  }
+
+  async getInspectionByCarHash(carHash: string) {
+    const inspection = await this.inspectionRepository.findOne({ where: { carHash } });
     if (!inspection) throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
     return inspection;
   }
