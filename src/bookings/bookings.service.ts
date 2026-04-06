@@ -7,6 +7,7 @@ import { SolapiService } from '../solapi/solapi.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { Driver } from '../drivers/entities/driver.entity';
 import { DriverCancelLog } from '../driver-cancel-logs/driver-cancel-log.entity';
+import { Inspection } from '../inspection/entities/inspection.entity';
 
 @Injectable()
 export class BookingsService {
@@ -17,6 +18,8 @@ export class BookingsService {
     private readonly driverRepository: Repository<Driver>,
     @InjectRepository(DriverCancelLog)
     private readonly cancelLogRepository: Repository<DriverCancelLog>,
+    @InjectRepository(Inspection)
+    private readonly inspectionRepository: Repository<Inspection>,
     private readonly solapiService: SolapiService,
     private readonly notificationsService: NotificationsService,
   ) {}
@@ -66,11 +69,22 @@ export class BookingsService {
     });
   }
 
-  async findAll(source?: string): Promise<Booking[]> {
-    return await this.bookingRepository.find({
+  async findAll(source?: string): Promise<(Booking & { carHash?: string | null })[]> {
+    const bookings = await this.bookingRepository.find({
       where: source ? { source } : {},
       order: { createdAt: 'DESC' },
     });
+
+    const completedIds = bookings.filter(b => b.status === 'COMPLETED').map(b => b.id);
+    if (completedIds.length === 0) return bookings;
+
+    const inspections = await this.inspectionRepository.find({
+      where: { bookingId: In(completedIds) },
+      select: ['bookingId', 'carHash'],
+    });
+    const hashMap = new Map(inspections.map(i => [i.bookingId, i.carHash]));
+
+    return bookings.map(b => ({ ...b, carHash: hashMap.get(b.id) ?? null }));
   }
 
   async update(id: number, updateData: Partial<Booking> & { cancelReason?: string; cancelledByDriver?: boolean }): Promise<Booking> {
