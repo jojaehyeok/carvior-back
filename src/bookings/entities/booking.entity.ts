@@ -19,10 +19,10 @@ export class Booking {
   @Column()
   carNumber: string;
 
-  @Column()
+  @Column({ nullable: true })
   carOwner: string;
 
-  @Column()
+  @Column({ nullable: true })
   dealerName: string;
 
   @Column()
@@ -36,6 +36,9 @@ export class Booking {
 
   @Column()
   preferredDateTime: string;
+
+  @Column({ nullable: true })
+  desiredPrice: string;
 
   @Column({ type: 'text', nullable: true })
   additionalMemo: string;
