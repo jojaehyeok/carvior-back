@@ -13,6 +13,7 @@ import { DriversService } from './drivers/drivers.service';
 import { DriversModule } from './drivers/drivers.module';
 import { AuthController } from './auth/auth.controller';
 import { ClassifyModule } from './classify/classify.module';
+import { BuyerRequestModule } from './buyer-request/buyer-request.module';
 
 @Module({
   imports: [
@@ -51,6 +52,7 @@ import { ClassifyModule } from './classify/classify.module';
     DriversModule,
     ReviewsModule,
     ClassifyModule,
+    BuyerRequestModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, SolapiService, S3Service],
