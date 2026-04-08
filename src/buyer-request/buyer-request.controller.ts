@@ -80,4 +80,21 @@ export class BuyerRequestController {
       data: result,
     };
   }
+
+  /**
+   * POST /api/v1/external/buyer-request/:id/convert
+   * 상담을 진단 신청(booking)으로 전환
+   */
+  @Post(':id/convert')
+  async convertToBooking(
+    @Param('id') id: string,
+    @Body() body: { carNumber: string; carOwner: string },
+  ) {
+    const result = await this.service.convertToBooking(Number(id), body.carNumber, body.carOwner);
+    return {
+      success: true,
+      message: '진단 접수가 생성되었습니다.',
+      data: result,
+    };
+  }
 }

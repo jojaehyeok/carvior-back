@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { BuyerRequest } from './entities/buyer-request.entity';
 import { CreateBuyerRequestDto } from './dto/create-buyer-request.dto';
 import { SolapiService } from '../solapi/solapi.service';
+import { Booking } from '../bookings/entities/booking.entity';
 
 // 관리자 수신 번호
 const ADMIN_PHONE = '01022856017';
@@ -13,6 +14,8 @@ export class BuyerRequestService {
   constructor(
     @InjectRepository(BuyerRequest)
     private readonly repo: Repository<BuyerRequest>,
+    @InjectRepository(Booking)
+    private readonly bookingRepo: Repository<Booking>,
     private readonly solapiService: SolapiService,
   ) {}
 
@@ -90,5 +93,33 @@ export class BuyerRequestService {
     item.assignedDriverName = driverInfo.name;
     item.status = 'ASSIGNED';
     return this.repo.save(item);
+  }
+
+  async convertToBooking(id: number, carNumber: string, carOwner: string): Promise<Booking> {
+    const item = await this.findOne(id);
+
+    const booking = this.bookingRepo.create({
+      carNumber,
+      carOwner,
+      dealerName: item.buyerName,    // 구매 의뢰인이 딜러 역할
+      contact: item.contact,
+      address: item.address,
+      detailAddress: item.detailAddress,
+      preferredDateTime: item.preferredDateTime,
+      additionalMemo: item.additionalMemo,
+      source: item.source,
+      assignedDriverId: item.assignedDriverId,
+      assignedDriverName: item.assignedDriverName,
+      status: item.assignedDriverId ? 'ASSIGNED' : 'PENDING',
+    });
+
+    const saved = await this.bookingRepo.save(booking);
+
+    // 상담 상태를 COMPLETED로 변경 (진단 접수로 전환됨)
+    item.status = 'COMPLETED';
+    item.adminMemo = (item.adminMemo ? item.adminMemo + '\n' : '') + `진단 접수 전환 → booking #${saved.id}`;
+    await this.repo.save(item);
+
+    return saved;
   }
 }
