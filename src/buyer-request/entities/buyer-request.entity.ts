@@ -57,11 +57,11 @@ export class BuyerRequest {
   privacyAgreed: boolean;
 
   /** 배정된 진단사 ID */
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   assignedDriverId: string | null;
 
   /** 배정된 진단사 이름 */
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   assignedDriverName: string | null;
 
   /** 관리자 메모 */
