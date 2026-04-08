@@ -225,7 +225,7 @@ export class InspectionService {
       await this.solapiService.sendCompletionAlimTalk({
         '#{차량번호}': inspection.carNumber,
         '#{완료시간}': completedAt,
-        '#{예약번호}': String(bId),
+        '#{예약번호}': savedResult.carHash,
       }, booking?.source);
 
       console.log(`[Success] ID ${bId} 모든 진단 데이터 저장 완료`);
