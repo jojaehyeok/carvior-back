@@ -40,6 +40,9 @@ export class Booking {
   @Column({ nullable: true })
   desiredPrice: string;
 
+  @Column({ default: false })
+  privacyAgreed: boolean;
+
   @Column({ type: 'text', nullable: true })
   additionalMemo: string;
 
