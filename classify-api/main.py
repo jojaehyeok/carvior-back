@@ -29,7 +29,7 @@ async def lifespan(app: FastAPI):
     get_classifier()  # 서버 시작 시 모델 미리 로드
     yield
 
-app = FastAPI(title="차량 사진 분류 API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="차량 사진 분류 API", version="1.0.0", lifespan=lifespan, root_path="/classify-api")
 templates = Jinja2Templates(directory="templates")
 
 
