@@ -14,6 +14,7 @@ import { DriversModule } from './drivers/drivers.module';
 import { AuthController } from './auth/auth.controller';
 import { ClassifyModule } from './classify/classify.module';
 import { BuyerRequestModule } from './buyer-request/buyer-request.module';
+import { BlurModule } from './blur/blur.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { BuyerRequestModule } from './buyer-request/buyer-request.module';
     ReviewsModule,
     ClassifyModule,
     BuyerRequestModule,
+    BlurModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, SolapiService, S3Service],
