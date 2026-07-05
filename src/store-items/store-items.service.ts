@@ -17,7 +17,7 @@ export class StoreItemsService {
   async create(data: Partial<StoreItem>): Promise<StoreItem> {
     const item = this.repo.create({
       ...data,
-      status: 'active',
+      status: 'pending',
     });
     return this.repo.save(item);
   }
