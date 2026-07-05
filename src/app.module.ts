@@ -36,6 +36,7 @@ import { StoreItemsModule } from './store-items/store-items.module';
         username: configService.get<string>('DB_USER'),
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_NAME'),
+        charset: 'utf8mb4',
 
         // 🚀 수정 1: 직접 클래스를 넣는 대신 파일 패턴으로 찾기
         // 빌드된 후의 js 파일들을 다 긁어오도록 설정합니다.
