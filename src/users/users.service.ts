@@ -39,8 +39,11 @@ export class UsersService {
       return this.repo.save(user);
     }
     const newUser = this.repo.create({
-      ...data,
-      email: data.email ?? null,
+      provider:     data.provider,
+      providerId:   data.providerId,
+      email:        data.email,
+      name:         data.name,
+      profileImage: data.profileImage,
     });
     return this.repo.save(newUser);
   }
