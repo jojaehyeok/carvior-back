@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import * as sharp from 'sharp';
+import sharp from 'sharp';
 import * as https from 'https';
 import * as http from 'http';
 
@@ -97,7 +97,7 @@ export class BlurService implements OnModuleInit {
     try {
       return await this.hfObjectDetect(imageBuffer, 'Xenova/yolov8n-face');
     } catch (e) {
-      this.logger.warn('[Blur] 얼굴 감지 실패: ' + e.message);
+      this.logger.warn('[Blur] 얼굴 감지 실패: ' + (e as Error).message);
       return [];
     }
   }
@@ -109,7 +109,7 @@ export class BlurService implements OnModuleInit {
         'nickmuchi/yolos-small-rego-plates-detection',
       );
     } catch (e) {
-      this.logger.warn('[Blur] 번호판 감지 실패: ' + e.message);
+      this.logger.warn('[Blur] 번호판 감지 실패: ' + (e as Error).message);
       return [];
     }
   }
