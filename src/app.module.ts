@@ -15,6 +15,7 @@ import { AuthController } from './auth/auth.controller';
 import { ClassifyModule } from './classify/classify.module';
 import { BuyerRequestModule } from './buyer-request/buyer-request.module';
 import { BlurModule } from './blur/blur.module';
+import { StoreItemsModule } from './store-items/store-items.module';
 
 @Module({
   imports: [
@@ -55,6 +56,7 @@ import { BlurModule } from './blur/blur.module';
     ClassifyModule,
     BuyerRequestModule,
     BlurModule,
+    StoreItemsModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, SolapiService, S3Service],
