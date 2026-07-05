@@ -59,6 +59,21 @@ export class BookingsService {
       // 푸시 실패해도 예약 저장은 정상 처리
     }
 
+    // 관리자(01022856017)에게 새 예약 접수 알림톡 발송
+    try {
+      const now = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+      await this.solapiService.sendReservationAlimTalk('01022856017', {
+        '#{dealerName}': '관리자',
+        '#{carNumber}': saved.carNumber,
+        '#{carOwner}': saved.contact || '미입력',
+        '#{preferredDate}': saved.preferredDateTime || '미입력',
+        '#{createdAt}': now,
+      });
+      console.log(`✅ [관리자 알림톡] 새 예약 접수 → 01022856017 (${saved.carNumber})`);
+    } catch (e) {
+      console.error('❌ [관리자 알림톡 실패]', (e as Error).message);
+    }
+
     return saved;
   }
 
