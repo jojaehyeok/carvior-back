@@ -25,18 +25,28 @@ export class UsersService {
     name: string;
     phone?: string;
     role?: string;
+    dealerLicenseUrl?: string;
+    businessRegUrl?: string;
+    businessNumber?: string;
+    companyName?: string;
   }): Promise<User> {
     const existing = await this.findByEmail(data.email);
     if (existing) throw new ConflictException('이미 사용 중인 이메일입니다.');
 
     const hashed = await bcrypt.hash(data.password, 10);
+    const isDealer = data.role === 'dealer';
     const user = this.repo.create({
-      email:    data.email,
-      password: hashed,
-      name:     data.name,
-      phone:    data.phone,
-      role:     data.role ?? 'user',
-      provider: 'local',
+      email:            data.email,
+      password:         hashed,
+      name:             data.name,
+      phone:            data.phone,
+      role:             data.role ?? 'user',
+      provider:         'local',
+      dealerLicenseUrl: data.dealerLicenseUrl,
+      businessRegUrl:   data.businessRegUrl,
+      businessNumber:   data.businessNumber,
+      companyName:      data.companyName,
+      dealerStatus:     isDealer ? 'pending' : 'none',
     });
     return this.repo.save(user);
   }

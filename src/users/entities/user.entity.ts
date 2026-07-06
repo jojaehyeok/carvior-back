@@ -27,7 +27,23 @@ export class User {
   profileImage: string;
 
   @Column({ default: 'user' })
-  role: string; // 'user' | 'admin'
+  role: string; // 'user' | 'dealer' | 'admin'
+
+  // 딜러 전용 서류
+  @Column({ nullable: true })
+  dealerLicenseUrl: string; // 자동차 매매종사원증
+
+  @Column({ nullable: true })
+  businessRegUrl: string; // 사업자등록증
+
+  @Column({ nullable: true })
+  businessNumber: string; // 사업자번호
+
+  @Column({ nullable: true })
+  companyName: string; // 상호명
+
+  @Column({ default: 'none' })
+  dealerStatus: string; // 'none' | 'pending' | 'approved' | 'rejected'
 
   @CreateDateColumn()
   createdAt: Date;

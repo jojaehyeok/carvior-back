@@ -1,12 +1,30 @@
-import { Controller, Post, Body, Get, Query, Patch, Param } from '@nestjs/common';
+import { Controller, Post, Body, Get, Query, Patch, Param, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { UsersService } from './users.service';
+import { S3Service } from '../s3/s3.service';
 
 @Controller('v1/users')
 export class UsersController {
-  constructor(private readonly svc: UsersService) {}
+  constructor(
+    private readonly svc: UsersService,
+    private readonly s3: S3Service,
+  ) {}
+
+  @Post('upload-doc')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async uploadDoc(@UploadedFile() file: Express.Multer.File) {
+    const ext = file.originalname.split('.').pop();
+    const key = `dealer-docs/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const url = await this.s3.uploadFile(file, key);
+    return { url };
+  }
 
   @Post('register')
-  register(@Body() body: { email: string; password: string; name: string; phone?: string; role?: string }) {
+  register(@Body() body: {
+    email: string; password: string; name: string; phone?: string; role?: string;
+    dealerLicenseUrl?: string; businessRegUrl?: string; businessNumber?: string; companyName?: string;
+  }) {
     return this.svc.register(body);
   }
 
