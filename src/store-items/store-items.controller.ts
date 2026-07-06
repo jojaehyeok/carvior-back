@@ -28,7 +28,7 @@ export class StoreItemsController {
     try {
       const priceMan = item.priceKRW ? Math.round(Number(item.priceKRW) / 10_000) : 0;
       const contact = item.adminMemo?.match(/연락처:([^\s/\n]+)/)?.[1]?.trim() ?? '';
-      const msg = `[카비어 셀프등록]\n차량: ${item.titleKo} (${item.carNumber})\n가격: ${priceMan}만원\n연락처: ${contact}\n→ 대시보드 확인`;
+      const msg = `[카비어]${item.carNumber} ${priceMan}만 ${contact}`;
       await this.solapiService.sendSms('01022856017', msg);
     } catch {
       // 알림 실패해도 등록은 정상 처리
