@@ -120,7 +120,9 @@ export class BlurService implements OnModuleInit {
   private async reuploadToS3(buffer: Buffer, originalUrl: string): Promise<string> {
     const after = originalUrl.split('.amazonaws.com/')[1];
     if (!after) throw new Error('S3 URL 파싱 실패: ' + originalUrl);
-    const key = `store/${after}`;
+    // store/ 중복 방지
+    const cleanAfter = after.startsWith('store/') ? after.slice('store/'.length) : after;
+    const key = `store/${cleanAfter}`;
 
     await this.s3.send(
       new PutObjectCommand({
@@ -128,6 +130,7 @@ export class BlurService implements OnModuleInit {
         Key: key,
         Body: buffer,
         ContentType: 'image/jpeg',
+        ACL: 'public-read',
       }),
     );
     return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
@@ -145,21 +148,23 @@ export class BlurService implements OnModuleInit {
       const results = await Promise.all(
         slice.map(async (url, j): Promise<[number, string]> => {
           const idx = i + j;
-          // store/ 경로로 이미 처리된 이미지는 재처리 생략
-          if (url.includes('/store/')) return [idx, url];
+          // store/ URL이면 원본 경로로 복원해서 재처리
+          const effectiveUrl = url.includes('.amazonaws.com/store/')
+            ? url.replace('.amazonaws.com/store/', '.amazonaws.com/')
+            : url;
 
           try {
-            const buf = await this.fetchBuffer(url);
+            const buf = await this.fetchBuffer(effectiveUrl);
             const [faces, plates] = await Promise.all([
               this.detectFaces(buf),
-              this.detectPlates(buf, url),
+              this.detectPlates(buf, effectiveUrl),
             ]);
             const boxes = [...faces, ...plates];
             this.logger.log(
-              `[Blur] 얼굴:${faces.length} 번호판:${plates.length} ← ${url.split('/').pop()}`,
+              `[Blur] 얼굴:${faces.length} 번호판:${plates.length} ← ${effectiveUrl.split('/').pop()}`,
             );
             const blurred = await this.blurRegions(buf, boxes);
-            const newUrl = await this.reuploadToS3(blurred, url);
+            const newUrl = await this.reuploadToS3(blurred, effectiveUrl);
             return [idx, newUrl];
           } catch (e) {
             this.logger.error(`[Blur] 실패(원본유지): ${(e as Error).message}`);
