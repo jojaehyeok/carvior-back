@@ -14,6 +14,10 @@ export class StoreItemsService {
     return this.repo.find({ order: { registeredAt: 'DESC' } });
   }
 
+  async findByUser(userId: number): Promise<StoreItem[]> {
+    return this.repo.find({ where: { userId }, order: { registeredAt: 'DESC' } });
+  }
+
   async create(data: Partial<StoreItem>): Promise<StoreItem> {
     const item = this.repo.create({
       ...data,

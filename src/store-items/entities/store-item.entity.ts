@@ -89,6 +89,15 @@ export class StoreItem {
   @Column({ type: 'text', nullable: true })
   adminMemo: string;
 
+  @Column({ nullable: true })
+  userId: number;
+
+  @Column({ nullable: true })
+  sellerName: string;
+
+  @Column({ nullable: true })
+  sellerContact: string;
+
   @CreateDateColumn()
   registeredAt: Date;
 

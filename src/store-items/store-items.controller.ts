@@ -15,6 +15,11 @@ export class StoreItemsController {
     return this.service.findAll();
   }
 
+  @Get('my')
+  findByUser(@Query('userId') userId: string) {
+    return this.service.findByUser(Number(userId));
+  }
+
   @Post()
   async create(@Body() body: Partial<StoreItem>) {
     const item = await this.service.create(body);
