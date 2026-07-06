@@ -2,12 +2,14 @@ import { Controller, Get, Post, Patch, Delete, Body, Query, NotFoundException } 
 import { StoreItemsService } from './store-items.service';
 import { StoreItem } from './entities/store-item.entity';
 import { SolapiService } from '../solapi/solapi.service';
+import { BlurService } from '../blur/blur.service';
 
 @Controller('v1/admin/store-items')
 export class StoreItemsController {
   constructor(
     private readonly service: StoreItemsService,
     private readonly solapiService: SolapiService,
+    private readonly blurService: BlurService,
   ) {}
 
   @Get()
@@ -32,6 +34,20 @@ export class StoreItemsController {
       await this.solapiService.sendSms('01022856017', msg);
     } catch {
       // 알림 실패해도 등록은 정상 처리
+    }
+
+    // 번호판·얼굴 blur (비동기 백그라운드 — 응답 블로킹 없음)
+    if (item.photos && typeof item.photos === 'object') {
+      setImmediate(async () => {
+        try {
+          const photos = item.photos as Record<string, string[]>;
+          const blurred: Record<string, string[]> = {};
+          for (const [cat, urls] of Object.entries(photos)) {
+            blurred[cat] = await this.blurService.blurPhotoUrls(urls ?? []);
+          }
+          await this.service.update(item.id, { photos: blurred });
+        } catch { /* blur 실패해도 원본 유지 */ }
+      });
     }
 
     return item;
