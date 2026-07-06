@@ -274,7 +274,7 @@ async def detect_plates(
 def _find_plate_boxes(image: Image.Image):
     """
     PIL + numpy 기반 번호판 감지.
-    한국 번호판: 밝은 직사각형, 가로세로비 3.5~5.5:1, 이미지 하단부 위치.
+    한국 번호판: 흰색 직사각형, 가로세로비 3.5~5.5:1, 이미지 하단 50% 위치.
     """
     import numpy as np
     from PIL import ImageFilter
@@ -284,13 +284,22 @@ def _find_plate_boxes(image: Image.Image):
     gray = np.array(gray_pil, dtype=np.float32)
     edges = np.array(gray_pil.filter(ImageFilter.FIND_EDGES), dtype=np.float32)
 
+    # RGB 기반 흰색 마스크 (한국 번호판은 흰색)
+    rgb = np.array(image.convert("RGB"))
+    white_mask = (
+        (rgb[:, :, 0] > 200) &
+        (rgb[:, :, 1] > 200) &
+        (rgb[:, :, 2] > 200)
+    ).astype(np.float32)
+
     best_score = 0.0
     best_box: dict | None = None
 
-    # 번호판 높이 후보: 이미지 높이의 5~13%
+    # 번호판은 이미지 하단 50%에 위치 (상단 50% 제외로 건물·하늘 오감지 방지)
+    y_start = int(h * 0.5)
+
     for ph_ratio in [0.06, 0.08, 0.10, 0.12]:
         ph = max(10, int(h * ph_ratio))
-        # 가로세로비 3.5~5.5
         for aspect in [3.5, 4.2, 5.0, 5.5]:
             pw = int(ph * aspect)
             if pw > w * 0.65 or pw < 40:
@@ -299,22 +308,27 @@ def _find_plate_boxes(image: Image.Image):
             step_y = max(ph // 3, 4)
             step_x = max(pw // 5, 6)
 
-            # 번호판은 이미지 하단 60% 에 주로 위치
-            for y in range(int(h * 0.3), h - ph, step_y):
+            for y in range(y_start, h - ph, step_y):
                 for x in range(int(w * 0.05), w - pw - int(w * 0.05), step_x):
+                    region_white = white_mask[y:y+ph, x:x+pw]
+                    white_score  = float(region_white.mean())
+
+                    # 흰색 비율 40% 미만이면 번호판 아님
+                    if white_score < 0.40:
+                        continue
+
                     region_gray  = gray[y:y+ph, x:x+pw]
                     region_edges = edges[y:y+ph, x:x+pw]
+                    bright_score = float((region_gray > 180).mean())
+                    edge_score   = float(region_edges.mean() / 255.0)
 
-                    bright_score = float((region_gray > 155).mean())  # 밝은 픽셀 비율
-                    edge_score   = float(region_edges.mean() / 255.0) # 엣지 밀도
-
-                    score = bright_score * 0.55 + edge_score * 0.45
+                    score = white_score * 0.40 + bright_score * 0.30 + edge_score * 0.30
                     if score > best_score:
                         best_score = score
                         best_box = {"xmin": int(x), "ymin": int(y),
                                     "xmax": int(x + pw), "ymax": int(y + ph)}
 
-    if best_box and best_score > 0.38:
+    if best_box and best_score > 0.45:
         return [best_box]
     return []
 
