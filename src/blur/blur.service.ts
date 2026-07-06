@@ -13,9 +13,8 @@ export class BlurService implements OnModuleInit {
   private readonly s3: S3Client;
   private readonly bucket: string;
   private readonly region: string;
-  private readonly hfToken: string;
 
-  constructor(private readonly config: ConfigService) {
+  constructor(config: ConfigService) {
     this.s3 = new S3Client({
       region: config.get('AWS_S3_REGION') || 'ap-northeast-2',
       credentials: {
@@ -25,11 +24,10 @@ export class BlurService implements OnModuleInit {
     });
     this.bucket = config.get('AWS_S3_BUCKET_NAME') as string;
     this.region = config.get('AWS_S3_REGION') || 'ap-northeast-2';
-    this.hfToken = config.get('HF_TOKEN') || '';
   }
 
   async onModuleInit() {
-    this.logger.log('[Blur] 서비스 준비 완료 (Hugging Face API 사용)');
+    this.logger.log('[Blur] 서비스 준비 완료 (로컬 classify-api 사용)');
   }
 
   private fetchBuffer(url: string, redirectCount = 0): Promise<Buffer> {
@@ -49,57 +47,41 @@ export class BlurService implements OnModuleInit {
     });
   }
 
-  private hfRequest(imageBuffer: Buffer, model: string): Promise<Box[] | 'loading'> {
+  private detectPlatesLocal(imageUrl: string): Promise<Box[]> {
     return new Promise((resolve) => {
+      const body = `url=${encodeURIComponent(imageUrl)}`;
       const options = {
-        hostname: 'api-inference.huggingface.co',
-        path: `/models/${model}`,
+        hostname: '127.0.0.1',
+        port: 8001,
+        path: '/detect-plates',
         method: 'POST',
         headers: {
-          'Content-Type': 'application/octet-stream',
-          'Content-Length': imageBuffer.length,
-          ...(this.hfToken ? { Authorization: `Bearer ${this.hfToken}` } : {}),
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(body),
         },
       };
-      const req = https.request(options, (res) => {
+      const req = http.request(options, (res) => {
         const chunks: Buffer[] = [];
         res.on('data', (c: Buffer) => chunks.push(c));
         res.on('end', () => {
           try {
             const json = JSON.parse(Buffer.concat(chunks).toString());
-            if (!Array.isArray(json)) {
-              const wait = json?.estimated_time ?? 20;
-              this.logger.warn(`[Blur] 모델 로딩 중 (${model}), 약 ${wait}s 대기`);
-              resolve('loading');
-              return;
-            }
-            resolve(json.filter((r: any) => r.score > 0.4 && r.box).map((r: any) => r.box as Box));
+            resolve(Array.isArray(json.boxes) ? json.boxes as Box[] : []);
           } catch { resolve([]); }
         });
       });
       req.on('error', () => resolve([]));
-      req.write(imageBuffer);
+      req.write(body);
       req.end();
     });
   }
 
-  private async hfObjectDetect(imageBuffer: Buffer, model: string): Promise<Box[]> {
-    for (let attempt = 0; attempt < 3; attempt++) {
-      const result = await this.hfRequest(imageBuffer, model);
-      if (result !== 'loading') return result;
-      if (attempt < 2) await new Promise(r => setTimeout(r, 25_000));
-    }
-    this.logger.warn(`[Blur] 모델 응답 없음, 건너뜀: ${model}`);
+  private async detectFaces(_imageBuffer: Buffer): Promise<Box[]> {
     return [];
   }
 
-  private async detectFaces(_imageBuffer: Buffer): Promise<Box[]> {
-    return []; // 차량 사진에서 얼굴 감지 불필요 — 번호판 처리에 집중
-  }
-
-  private async detectPlates(imageBuffer: Buffer): Promise<Box[]> {
-    // keremberke: 한국 포함 다국가 번호판 학습, 500k+ 다운로드
-    return this.hfObjectDetect(imageBuffer, 'keremberke/yolov8n-license-plate-detection').catch(() => []);
+  private async detectPlates(_imageBuffer: Buffer, imageUrl: string): Promise<Box[]> {
+    return this.detectPlatesLocal(imageUrl).catch(() => []);
   }
 
   private async blurRegions(imageBuffer: Buffer, boxes: Box[]): Promise<Buffer> {
@@ -170,7 +152,7 @@ export class BlurService implements OnModuleInit {
             const buf = await this.fetchBuffer(url);
             const [faces, plates] = await Promise.all([
               this.detectFaces(buf),
-              this.detectPlates(buf),
+              this.detectPlates(buf, url),
             ]);
             const boxes = [...faces, ...plates];
             this.logger.log(
