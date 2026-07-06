@@ -93,13 +93,13 @@ export class BlurService implements OnModuleInit {
     return [];
   }
 
-  private async detectFaces(imageBuffer: Buffer): Promise<Box[]> {
-    // fd-640: 경량 face detection, HF inference API 호환
-    return this.hfObjectDetect(imageBuffer, 'deepghs/face_detect_640').catch(() => []);
+  private async detectFaces(_imageBuffer: Buffer): Promise<Box[]> {
+    return []; // 차량 사진에서 얼굴 감지 불필요 — 번호판 처리에 집중
   }
 
   private async detectPlates(imageBuffer: Buffer): Promise<Box[]> {
-    return this.hfObjectDetect(imageBuffer, 'nickmuchi/yolos-small-rego-plates-detection').catch(() => []);
+    // keremberke: 한국 포함 다국가 번호판 학습, 500k+ 다운로드
+    return this.hfObjectDetect(imageBuffer, 'keremberke/yolov8n-license-plate-detection').catch(() => []);
   }
 
   private async blurRegions(imageBuffer: Buffer, boxes: Box[]): Promise<Buffer> {
