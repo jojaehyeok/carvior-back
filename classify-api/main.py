@@ -273,64 +273,56 @@ async def detect_plates(
 
 def _find_plate_boxes(image: Image.Image):
     """
-    PIL + numpy 기반 번호판 감지.
-    한국 번호판: 흰색 직사각형, 가로세로비 3.5~5.5:1, 이미지 하단 50% 위치.
+    OpenCV 기반 번호판 감지.
+    엣지 → 모폴로지 클로징 → 컨투어로 흰색 직사각형 찾기.
     """
+    import cv2
     import numpy as np
-    from PIL import ImageFilter
 
     w, h = image.size
-    gray_pil = image.convert("L")
-    gray = np.array(gray_pil, dtype=np.float32)
-    edges = np.array(gray_pil.filter(ImageFilter.FIND_EDGES), dtype=np.float32)
+    img_rgb = np.array(image.convert("RGB"))
+    img_bgr = img_rgb[:, :, ::-1].copy()
 
-    # RGB 기반 흰색 마스크 (한국 번호판은 흰색)
-    rgb = np.array(image.convert("RGB"))
-    white_mask = (
-        (rgb[:, :, 0] > 200) &
-        (rgb[:, :, 1] > 200) &
-        (rgb[:, :, 2] > 200)
-    ).astype(np.float32)
+    # 이미지 하단 60%만 탐색 (상단 40% 제외 → 하늘·건물 오감지 방지)
+    roi_y = int(h * 0.4)
+    roi = img_bgr[roi_y:]
+    roi_h, roi_w = roi.shape[:2]
 
-    best_score = 0.0
-    best_box: dict | None = None
+    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    edges = cv2.Canny(blurred, 50, 150)
 
-    # 번호판은 이미지 하단 50%에 위치 (상단 50% 제외로 건물·하늘 오감지 방지)
-    y_start = int(h * 0.5)
+    # 가로로 긴 형태 강조 (번호판 모양)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (17, 5))
+    closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, kernel)
 
-    for ph_ratio in [0.06, 0.08, 0.10, 0.12]:
-        ph = max(10, int(h * ph_ratio))
-        for aspect in [3.5, 4.2, 5.0, 5.5]:
-            pw = int(ph * aspect)
-            if pw > w * 0.65 or pw < 40:
-                continue
+    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-            step_y = max(ph // 3, 4)
-            step_x = max(pw // 5, 6)
+    candidates = []
+    for cnt in contours:
+        x, y, cw, ch = cv2.boundingRect(cnt)
+        if ch == 0:
+            continue
+        aspect = cw / ch
+        area = cw * ch
+        # 한국 번호판: 가로세로비 2.5~7, 최소 면적 3000px², 이미지 폭의 70% 이하
+        if 2.5 <= aspect <= 7.0 and area > 3000 and cw < roi_w * 0.7:
+            candidates.append({
+                "xmin": int(x),
+                "ymin": int(y + roi_y),
+                "xmax": int(x + cw),
+                "ymax": int(y + roi_y + ch),
+                "area": area,
+            })
 
-            for y in range(y_start, h - ph, step_y):
-                for x in range(int(w * 0.05), w - pw - int(w * 0.05), step_x):
-                    region_white = white_mask[y:y+ph, x:x+pw]
-                    white_score  = float(region_white.mean())
+    if not candidates:
+        return []
 
-                    # 흰색 비율 40% 미만이면 번호판 아님
-                    if white_score < 0.40:
-                        continue
-
-                    region_gray  = gray[y:y+ph, x:x+pw]
-                    region_edges = edges[y:y+ph, x:x+pw]
-                    bright_score = float((region_gray > 180).mean())
-                    edge_score   = float(region_edges.mean() / 255.0)
-
-                    score = white_score * 0.40 + bright_score * 0.30 + edge_score * 0.30
-                    if score > best_score:
-                        best_score = score
-                        best_box = {"xmin": int(x), "ymin": int(y),
-                                    "xmax": int(x + pw), "ymax": int(y + ph)}
-
-    if best_box and best_score > 0.45:
-        return [best_box]
-    return []
+    # 가장 큰 후보 반환
+    candidates.sort(key=lambda b: b["area"], reverse=True)
+    best = candidates[0]
+    return [{"xmin": best["xmin"], "ymin": best["ymin"],
+             "xmax": best["xmax"], "ymax": best["ymax"]}]
 
 
 # ── 헬퍼 ───────────────────────────────────────────────────────────────────────
