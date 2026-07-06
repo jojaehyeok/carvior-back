@@ -130,7 +130,6 @@ export class BlurService implements OnModuleInit {
         Key: key,
         Body: buffer,
         ContentType: 'image/jpeg',
-        ACL: 'public-read',
       }),
     );
     return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
