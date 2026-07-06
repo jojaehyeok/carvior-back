@@ -271,69 +271,41 @@ async def detect_plates(
         return {"boxes": [], "error": str(e)}
 
 
+_yolo_model = None
+
+def _get_yolo_model():
+    global _yolo_model
+    if _yolo_model is not None:
+        return _yolo_model
+    import os
+    from ultralytics import YOLO
+    model_path = os.path.join(os.path.dirname(__file__), "plate_model.pt")
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"plate_model.pt 없음: {model_path}")
+    _yolo_model = YOLO(model_path)
+    return _yolo_model
+
+
 def _find_plate_boxes(image: Image.Image):
-    """
-    OpenCV 기반 번호판 감지.
-    HSV 흰색 마스크 + Canny 엣지 결합으로 측면·정면 모두 감지.
-    """
-    import cv2
-    import numpy as np
-
-    w, h = image.size
-    img_rgb = np.array(image.convert("RGB"))
-    img_bgr = img_rgb[:, :, ::-1].copy()
-
-    # 이미지 상단 30% 제외 (하늘·천장 오감지 방지), 측면 사진 대비 넓게 탐색
-    roi_y = int(h * 0.3)
-    roi = img_bgr[roi_y:]
-    roi_h, roi_w = roi.shape[:2]
-
-    # --- 방법 1: HSV 흰색 마스크 (한국 번호판 = 흰색 배경) ---
-    hsv = cv2.cvtColor(roi, cv2.COLOR_BGR2HSV)
-    white_mask = cv2.inRange(hsv, np.array([0, 0, 170]), np.array([180, 45, 255]))
-    k1 = cv2.getStructuringElement(cv2.MORPH_RECT, (22, 6))
-    white_closed = cv2.morphologyEx(white_mask, cv2.MORPH_CLOSE, k1)
-
-    # --- 방법 2: Canny 엣지 ---
-    gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    edges = cv2.Canny(blurred, 50, 150)
-    k2 = cv2.getStructuringElement(cv2.MORPH_RECT, (17, 5))
-    edge_closed = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, k2)
-
-    # 두 방법 합산
-    combined = cv2.bitwise_or(white_closed, edge_closed)
-    contours, _ = cv2.findContours(combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    candidates = []
-    for cnt in contours:
-        x, y, cw, ch = cv2.boundingRect(cnt)
-        if ch == 0:
-            continue
-        aspect = cw / ch
-        area = cw * ch
-        if not (2.5 <= aspect <= 7.0 and area > 2000 and cw < roi_w * 0.75):
-            continue
-        # 해당 영역의 흰색 비율 계산
-        region_white = white_mask[y:y+ch, x:x+cw]
-        white_ratio = float((region_white > 0).mean()) if region_white.size > 0 else 0.0
-        # 흰색 비율이 낮으면 번호판 아님
-        if white_ratio < 0.25:
-            continue
-        score = area * (1.0 + white_ratio * 2.0)
-        candidates.append({
-            "xmin": int(x), "ymin": int(y + roi_y),
-            "xmax": int(x + cw), "ymax": int(y + roi_y + ch),
-            "score": score,
-        })
-
-    if not candidates:
+    """YOLOv8 번호판 감지. plate_model.pt 없으면 빈 리스트 반환."""
+    try:
+        model = _get_yolo_model()
+    except Exception:
         return []
 
-    candidates.sort(key=lambda b: b["score"], reverse=True)
-    best = candidates[0]
-    return [{"xmin": best["xmin"], "ymin": best["ymin"],
-             "xmax": best["xmax"], "ymax": best["ymax"]}]
+    import numpy as np
+    img_rgb = np.array(image.convert("RGB"))
+    results = model(img_rgb, verbose=False, conf=0.25)
+
+    boxes = []
+    for r in results:
+        for box in r.boxes:
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+            boxes.append({
+                "xmin": int(x1), "ymin": int(y1),
+                "xmax": int(x2), "ymax": int(y2),
+            })
+    return boxes
 
 
 # ── 헬퍼 ───────────────────────────────────────────────────────────────────────
