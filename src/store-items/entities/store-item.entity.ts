@@ -5,7 +5,7 @@ export class StoreItem {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ nullable: true })
+  @Column({ type: 'bigint', nullable: true })
   bookingId: number;
 
   @Column({ nullable: true })
