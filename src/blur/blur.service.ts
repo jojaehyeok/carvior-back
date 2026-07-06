@@ -4,6 +4,8 @@ import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
 import * as https from 'https';
 import * as http from 'http';
+import * as fs from 'fs';
+import * as path from 'path';
 
 interface Box { xmin: number; ymin: number; xmax: number; ymax: number }
 
@@ -91,6 +93,9 @@ export class BlurService implements OnModuleInit {
     const imgW = meta.width ?? 1;
     const imgH = meta.height ?? 1;
 
+    const logoPath = path.join(__dirname, 'logo.png');
+    const logoBuffer = fs.existsSync(logoPath) ? fs.readFileSync(logoPath) : null;
+
     const overlays = (
       await Promise.all(
         boxes.map(async (box): Promise<sharp.OverlayOptions | null> => {
@@ -99,6 +104,13 @@ export class BlurService implements OnModuleInit {
           const width  = Math.min(imgW - left, Math.ceil(box.xmax - box.xmin));
           const height = Math.min(imgH - top,  Math.ceil(box.ymax - box.ymin));
           if (width < 2 || height < 2) return null;
+
+          if (logoBuffer) {
+            const overlay = await sharp(logoBuffer)
+              .resize(width, height, { fit: 'fill' })
+              .toBuffer();
+            return { input: overlay, left, top };
+          }
 
           const blurred = await sharp(imageBuffer)
             .extract({ left, top, width, height })
