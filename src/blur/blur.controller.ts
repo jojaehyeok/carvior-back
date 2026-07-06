@@ -1,7 +1,7 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { BlurService } from './blur.service';
 
-@Controller('admin/blur')
+@Controller('v1/admin/blur')
 export class BlurController {
   constructor(private readonly blurService: BlurService) {}
 
