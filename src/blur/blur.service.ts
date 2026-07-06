@@ -49,23 +49,18 @@ export class BlurService implements OnModuleInit {
     });
   }
 
-  private async hfObjectDetect(imageBuffer: Buffer, model: string): Promise<Box[]> {
+  private hfRequest(imageBuffer: Buffer, model: string): Promise<Box[] | 'loading'> {
     return new Promise((resolve) => {
-      const body = imageBuffer;
-      const hostname = 'api-inference.huggingface.co';
-      const path = `/models/${model}`;
-
       const options = {
-        hostname,
-        path,
+        hostname: 'api-inference.huggingface.co',
+        path: `/models/${model}`,
         method: 'POST',
         headers: {
           'Content-Type': 'application/octet-stream',
-          'Content-Length': body.length,
+          'Content-Length': imageBuffer.length,
           ...(this.hfToken ? { Authorization: `Bearer ${this.hfToken}` } : {}),
         },
       };
-
       const req = https.request(options, (res) => {
         const chunks: Buffer[] = [];
         res.on('data', (c: Buffer) => chunks.push(c));
@@ -73,45 +68,38 @@ export class BlurService implements OnModuleInit {
           try {
             const json = JSON.parse(Buffer.concat(chunks).toString());
             if (!Array.isArray(json)) {
-              // 모델 로딩 중(503) 이거나 오류
-              resolve([]);
+              const wait = json?.estimated_time ?? 20;
+              this.logger.warn(`[Blur] 모델 로딩 중 (${model}), 약 ${wait}s 대기`);
+              resolve('loading');
               return;
             }
-            resolve(
-              json
-                .filter((r: any) => r.score > 0.45 && r.box)
-                .map((r: any) => r.box as Box)
-            );
-          } catch {
-            resolve([]);
-          }
+            resolve(json.filter((r: any) => r.score > 0.4 && r.box).map((r: any) => r.box as Box));
+          } catch { resolve([]); }
         });
       });
       req.on('error', () => resolve([]));
-      req.write(body);
+      req.write(imageBuffer);
       req.end();
     });
   }
 
-  private async detectFaces(imageBuffer: Buffer): Promise<Box[]> {
-    try {
-      return await this.hfObjectDetect(imageBuffer, 'Xenova/yolov8n-face');
-    } catch (e) {
-      this.logger.warn('[Blur] 얼굴 감지 실패: ' + (e as Error).message);
-      return [];
+  private async hfObjectDetect(imageBuffer: Buffer, model: string): Promise<Box[]> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const result = await this.hfRequest(imageBuffer, model);
+      if (result !== 'loading') return result;
+      if (attempt < 2) await new Promise(r => setTimeout(r, 25_000));
     }
+    this.logger.warn(`[Blur] 모델 응답 없음, 건너뜀: ${model}`);
+    return [];
+  }
+
+  private async detectFaces(imageBuffer: Buffer): Promise<Box[]> {
+    // fd-640: 경량 face detection, HF inference API 호환
+    return this.hfObjectDetect(imageBuffer, 'deepghs/face_detect_640').catch(() => []);
   }
 
   private async detectPlates(imageBuffer: Buffer): Promise<Box[]> {
-    try {
-      return await this.hfObjectDetect(
-        imageBuffer,
-        'nickmuchi/yolos-small-rego-plates-detection',
-      );
-    } catch (e) {
-      this.logger.warn('[Blur] 번호판 감지 실패: ' + (e as Error).message);
-      return [];
-    }
+    return this.hfObjectDetect(imageBuffer, 'nickmuchi/yolos-small-rego-plates-detection').catch(() => []);
   }
 
   private async blurRegions(imageBuffer: Buffer, boxes: Box[]): Promise<Buffer> {
