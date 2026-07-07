@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from classifier import CATEGORY_LABELS, MIN_SAMPLES_TO_TRAIN, get_classifier
 from database import ClassifyLog, FeedbackRecord, TrainingHistory, get_db, init_db
+from export_analysis import router as export_router
 
 # ── 앱 초기화 ──────────────────────────────────────────────────────────────────
 @asynccontextmanager
@@ -30,6 +31,7 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(title="차량 사진 분류 API", version="1.0.0", lifespan=lifespan, root_path="/classify-api")
+app.include_router(export_router)
 templates = Jinja2Templates(directory="templates")
 
 
