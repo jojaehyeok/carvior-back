@@ -107,7 +107,7 @@ export class BlurService implements OnModuleInit {
 
           if (logoBuffer) {
             const overlay = await sharp(logoBuffer)
-              .resize(width, height, { fit: 'contain', background: { r: 255, g: 255, b: 255, alpha: 1 } })
+              .resize(width, height, { fit: 'fill' })
               .flatten({ background: { r: 255, g: 255, b: 255 } })
               .toBuffer();
             return { input: overlay, left, top };
