@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectDataSource } from '@nestjs/typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { StoreItem } from './entities/store-item.entity';
 
 @Injectable()
@@ -8,10 +9,17 @@ export class StoreItemsService {
   constructor(
     @InjectRepository(StoreItem)
     private readonly repo: Repository<StoreItem>,
+    @InjectDataSource()
+    private readonly dataSource: DataSource,
   ) {}
 
-  async findAll(): Promise<StoreItem[]> {
-    return this.repo.find({ order: { registeredAt: 'DESC' } });
+  async findAll(): Promise<any[]> {
+    return this.dataSource.query(`
+      SELECT si.*, i.carHash
+      FROM store_items si
+      LEFT JOIN inspections i ON i.bookingId = si.bookingId
+      ORDER BY si.registeredAt DESC
+    `);
   }
 
   async findByUser(userId: number): Promise<StoreItem[]> {
