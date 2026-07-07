@@ -21,6 +21,102 @@ from database import ExportCar, ExportSetting, ExportUpload, get_db
 
 router = APIRouter(prefix="/export", tags=["export"])
 
+# ── 한글 → 영문 변환 맵 ───────────────────────────────────────────────────────
+_BRAND_KR: dict[str, str] = {
+    "현대": "HYUNDAI", "현대자동차": "HYUNDAI",
+    "기아": "KIA", "기아자동차": "KIA",
+    "제네시스": "GENESIS",
+    "쌍용": "SSANGYONG", "쌍용자동차": "SSANGYONG",
+    "르노": "RENAULT", "르노삼성": "RENAULT",
+    "쉐보레": "CHEVROLET", "쉐보레자동차": "CHEVROLET",
+    "벤츠": "MERCEDES-BENZ", "메르세데스": "MERCEDES-BENZ", "메르세데스벤츠": "MERCEDES-BENZ",
+    "아우디": "AUDI",
+    "폭스바겐": "VOLKSWAGEN", "폭바": "VOLKSWAGEN",
+    "볼보": "VOLVO",
+    "포드": "FORD",
+    "지프": "JEEP", "짚": "JEEP",
+    "랜드로버": "LAND ROVER", "랜로버": "LAND ROVER",
+    "도요타": "TOYOTA", "토요타": "TOYOTA",
+    "닛산": "NISSAN",
+    "혼다": "HONDA",
+    "마쓰다": "MAZDA", "마즈다": "MAZDA",
+    "스바루": "SUBARU",
+    "미쓰비시": "MITSUBISHI",
+    "포르쉐": "PORSCHE", "포르셰": "PORSCHE",
+    "벤틀리": "BENTLEY",
+    "롤스로이스": "ROLLS-ROYCE",
+    "재규어": "JAGUAR",
+    "미니": "MINI",
+    "크라이슬러": "CHRYSLER",
+    "닷지": "DODGE",
+    "링컨": "LINCOLN",
+    "캐딜락": "CADILLAC",
+    "테슬라": "TESLA",
+    "렉서스": "LEXUS",
+    "인피니티": "INFINITI",
+    "뷰익": "BUICK",
+}
+
+_MODEL_KR: dict[str, str] = {
+    # 현대
+    "투싼": "Tucson", "쏘나타": "Sonata", "소나타": "Sonata",
+    "그랜저": "Grandeur", "아반떼": "Avante", "싼타페": "Santa Fe",
+    "팰리세이드": "Palisade", "스타렉스": "Grand Starex", "그랜드스타렉스": "Grand Starex",
+    "코나": "Kona", "아이오닉": "Ioniq", "넥쏘": "Nexo",
+    "벨로스터": "Veloster", "엑센트": "Accent", "i30": "i30", "i40": "i40",
+    # 기아
+    "쏘렌토": "Sorento", "스포티지": "Sportage", "카니발": "Carnival",
+    "셀토스": "Seltos", "스팅어": "Stinger", "모닝": "Morning",
+    "레이": "Ray", "카렌스": "Carens", "모하비": "Mohave",
+    "봉고": "Bongo", "k5": "K5", "k8": "K8", "k3": "K3", "k9": "K9",
+    # 제네시스
+    "g70": "G70", "g80": "G80", "g90": "G90",
+    "gv70": "GV70", "gv80": "GV80", "gv90": "GV90",
+    # 쌍용
+    "티볼리": "Tivoli", "렉스턴": "Rexton", "코란도": "Korando",
+    "무쏘": "Musso",
+    # 쉐보레
+    "트랙스": "Trax", "스파크": "Spark", "말리부": "Malibu",
+    "이쿼녹스": "Equinox", "트래버스": "Traverse",
+    # BMW
+    "3시리즈": "3 Series", "5시리즈": "5 Series", "7시리즈": "7 Series",
+    "1시리즈": "1 Series", "2시리즈": "2 Series", "4시리즈": "4 Series",
+    "6시리즈": "6 Series", "8시리즈": "8 Series",
+    # 벤츠
+    "c클래스": "C-Class", "e클래스": "E-Class", "s클래스": "S-Class",
+    "a클래스": "A-Class", "b클래스": "B-Class", "cla": "CLA",
+    # 지프
+    "랭글러": "Wrangler", "그랜드체로키": "Grand Cherokee",
+    "체로키": "Cherokee", "컴파스": "Compass", "레니게이드": "Renegade",
+    # 포드
+    "익스플로러": "Explorer", "머스탱": "Mustang", "레인저": "Ranger",
+    # 볼보
+    "xc90": "XC90", "xc60": "XC60", "xc40": "XC40",
+}
+
+
+def _translate(text: str, mapping: dict[str, str]) -> str:
+    if not text:
+        return text
+    lower = text.strip().lower()
+    # 정확히 일치
+    for kr, en in mapping.items():
+        if lower == kr.lower():
+            return en
+    # 포함 관계 (긴 것 우선)
+    for kr in sorted(mapping.keys(), key=len, reverse=True):
+        if kr.lower() in lower:
+            return mapping[kr]
+    return text
+
+
+def _translate_brand(text: str) -> str:
+    return _translate(text, _BRAND_KR)
+
+
+def _translate_model(text: str) -> str:
+    return _translate(text, _MODEL_KR)
+
 # ── 컬럼 매핑 ─────────────────────────────────────────────────────────────────
 # 각 필드에 매칭될 수 있는 Excel 헤더 후보 (소문자 비교)
 _COL_CANDIDATES: dict[str, list[str]] = {
@@ -350,9 +446,9 @@ async def list_cars(
 ):
     q = db.query(ExportCar)
     if brand:
-        q = q.filter(ExportCar.brand.ilike(f"%{brand}%"))
+        q = q.filter(ExportCar.brand.ilike(f"%{_translate_brand(brand)}%"))
     if model:
-        q = q.filter(ExportCar.model.ilike(f"%{model}%"))
+        q = q.filter(ExportCar.model.ilike(f"%{_translate_model(model)}%"))
     if country:
         q = q.filter(ExportCar.export_country.ilike(f"%{country}%"))
     if car_type:
@@ -407,11 +503,14 @@ async def simulator(
     other_cost_krw = int(_get_setting(db, "other_cost_krw", "1500000"))
     shipping_per_m3 = float(_get_setting(db, "shipping_per_m3", "50"))  # USD per m3
 
+    brand_q = _translate_brand(brand) if brand else None
+    model_q = _translate_model(model) if model else None
+
     q = db.query(ExportCar).filter(ExportCar.export_price_usd != None)
-    if brand:
-        q = q.filter(ExportCar.brand.ilike(f"%{brand}%"))
-    if model:
-        q = q.filter(ExportCar.model.ilike(f"%{model}%"))
+    if brand_q:
+        q = q.filter(ExportCar.brand.ilike(f"%{brand_q}%"))
+    if model_q:
+        q = q.filter(ExportCar.model.ilike(f"%{model_q}%"))
     if year:
         q = q.filter(ExportCar.year == year)
 
