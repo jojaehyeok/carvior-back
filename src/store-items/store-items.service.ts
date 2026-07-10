@@ -14,12 +14,27 @@ export class StoreItemsService {
   ) {}
 
   async findAll(): Promise<any[]> {
-    return this.dataSource.query(`
-      SELECT si.*, i.carHash
+    const rows = await this.dataSource.query(`
+      SELECT si.*, i.carHash,
+        CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
       FROM store_items si
       LEFT JOIN inspections i ON i.bookingId = si.bookingId
-      ORDER BY si.registeredAt DESC
+      ORDER BY
+        CASE WHEN i.carHash IS NOT NULL THEN 0 ELSE 1 END,
+        si.registeredAt DESC
     `);
+
+    // 검차 완료된 매물은 pending → active 자동 전환
+    const toActivate = rows.filter((r: any) => r.carHash && r.status === 'pending');
+    if (toActivate.length > 0) {
+      const ids = toActivate.map((r: any) => r.id);
+      await this.dataSource.query(
+        `UPDATE store_items SET status = 'active' WHERE id IN (${ids.join(',')})`,
+      );
+      rows.forEach((r: any) => { if (ids.includes(r.id)) r.status = 'active'; });
+    }
+
+    return rows;
   }
 
   async findByUser(userId: number): Promise<StoreItem[]> {
