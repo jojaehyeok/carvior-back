@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
@@ -27,10 +27,11 @@ export class StoreItemsService {
   }
 
   async create(data: Partial<StoreItem>): Promise<StoreItem> {
-    const item = this.repo.create({
-      ...data,
-      status: 'pending',
-    });
+    if (data.carNumber) {
+      const exists = await this.repo.findOne({ where: { carNumber: data.carNumber } });
+      if (exists) throw new ConflictException('이미 등록된 차량번호입니다.');
+    }
+    const item = this.repo.create({ ...data, status: 'pending' });
     return this.repo.save(item);
   }
 
