@@ -26,7 +26,20 @@ export class OcrService {
   async parseRegistration(file: Express.Multer.File) {
     const base64 = file.buffer.toString('base64');
     const format = (file.mimetype || 'image/jpeg').split('/')[1] || 'jpg';
+    return this.callClova(base64, format, 'registration');
+  }
 
+  async parseFromUrl(imageUrl: string, mode: 'registration' | 'insurance') {
+    const imgRes = await fetch(imageUrl);
+    if (!imgRes.ok) return { error: '이미지 다운로드 실패' };
+    const buffer = Buffer.from(await imgRes.arrayBuffer());
+    const contentType = imgRes.headers.get('content-type') ?? 'image/jpeg';
+    const format = contentType.split('/')[1]?.split(';')[0] || 'jpg';
+    const base64 = buffer.toString('base64');
+    return this.callClova(base64, format, mode);
+  }
+
+  private async callClova(base64: string, format: string, mode: 'registration' | 'insurance') {
     const res = await fetch(this.clovaUrl, {
       method: 'POST',
       headers: {
@@ -38,7 +51,7 @@ export class OcrService {
         requestId: crypto.randomUUID(),
         timestamp: Date.now(),
         lang: 'ko',
-        images: [{ format, name: 'reg', data: base64 }],
+        images: [{ format, name: mode, data: base64 }],
         enableTableDetect: false,
       }),
     });
@@ -53,7 +66,19 @@ export class OcrService {
     if (img?.inferResult !== 'SUCCESS') return { error: 'OCR 실패' };
 
     const texts: string[] = (img.fields ?? []).map((f: any) => f.inferText as string);
+    if (mode === 'insurance') return this.extractInsurance(texts);
     return { ...this.extract(texts), _rawTexts: texts };
+  }
+
+  private extractInsurance(texts: string[]) {
+    const blob = texts.map(stripPrefix).join(' ');
+    // 보험이력서에서 가장 최근(큰) 주행거리 숫자 추출
+    const mileageMatches = [...blob.matchAll(/주행거리[^0-9]*(\d{3,6})/g)].map(m => Number(m[1]));
+    // km 단위 숫자들도 수집 (보험이력서에 단독으로 나오는 경우)
+    const kmMatches = [...blob.matchAll(/(\d{4,6})\s*(?:km|KM|Km)/g)].map(m => Number(m[1]));
+    const all = [...mileageMatches, ...kmMatches];
+    const mileage = all.length ? String(Math.max(...all)) : null;
+    return { mileage, _rawTexts: texts };
   }
 
   /**
