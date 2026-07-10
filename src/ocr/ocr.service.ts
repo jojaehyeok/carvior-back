@@ -71,31 +71,10 @@ export class OcrService {
     return { ...this.extract(texts), _rawTexts: texts };
   }
 
-  private extractInsurance(texts: string[]) {
-    const blob = texts.map(stripPrefix).join(' ');
-    const mileageMatches = [...blob.matchAll(/주행거리[^0-9]*(\d{3,6})/g)].map(m => Number(m[1]));
-    const kmMatches = [...blob.matchAll(/(\d{4,6})\s*(?:km|KM|Km)/g)].map(m => Number(m[1]));
-    const all = [...mileageMatches, ...kmMatches];
-    const mileage = all.length ? String(Math.max(...all)) : null;
-    return { mileage, _rawTexts: texts };
-  }
-
-  private extractDashboard(texts: string[]) {
-    const blob = texts.map(stripPrefix).join(' ');
-    // 계기판: 5-6자리 주행거리 숫자 (쉼표 포함 가능, e.g. "69,790" or "169790")
-    const raw = blob.replace(/,/g, '');
-    const numMatches = [...raw.matchAll(/\b(\d{4,6})\b/g)]
-      .map(m => Number(m[1]))
-      .filter(n => n >= 1000 && n <= 999999);
-    // 가장 큰 숫자를 주행거리로 (km 범위 내)
-    const mileage = numMatches.length ? String(Math.max(...numMatches)) : null;
-    return { mileage, _rawTexts: texts };
-  }
-
   /**
    * 인접 토큰을 이어붙여 키워드 매칭.
    * - ①②... 접두사 자동 제거
-   * - "④차" + "명" → "차명" 같은 분리된 라벨 처리
+   * - "자동차등록번호", 번호판 패턴 → 건너뜀 (차명 뒤에 오는 경우)
    */
   private findAfter(texts: string[], keywords: string[]): string | null {
     for (let i = 0; i < texts.length; i++) {
@@ -114,15 +93,18 @@ export class OcrService {
           const colonIdx = label.indexOf(':');
           const rest = colonIdx >= 0 ? label.slice(colonIdx + 1) : label.slice(k.length);
           const restClean = rest.replace(/^\(.*?\)/, '').trim();
-          // rest가 다른 필드 라벨로 시작하면 (예: "차명자동차등록번호") 무시
-          const isAnotherLabel = /^(자동차|성명|차명|차대번호|배기량|연료|연식|승차|색상|주소|최초|형식|제작|원동기|주행거리|모델연도|제원)/.test(restClean);
-          if (restClean && !/^[,./\s-]+$/.test(restClean) && !isAnotherLabel) return restClean;
+          // rest가 다른 필드 라벨이면 무시
+          const isLabelFragment = /^(자동차|성명|차명|차대번호|배기량|연료|연식|승차|색상|주소|최초|형식|제작|원동기|주행거리|모델연도|제원)/.test(restClean);
+          if (restClean && !/^[,./\s-]+$/.test(restClean) && !isLabelFragment) return restClean;
 
           // 다음 토큰에서 값 찾기
           const nextStart = i + labelLen;
-          for (let j = nextStart; j <= Math.min(nextStart + 5, texts.length - 1); j++) {
+          for (let j = nextStart; j <= Math.min(nextStart + 7, texts.length - 1); j++) {
             const next = stripPrefix(texts[j]).trim();
             if (!next || /^[,./\s-]+$/.test(next)) continue;
+            // 자동차등록번호 라벨 또는 번호판 패턴 → 건너뜀
+            if (/^자동차등록번호/.test(next)) continue;
+            if (/^\d{2,3}[가-힣]\d{4}$/.test(next)) continue;
             // 다른 필드 라벨이면 중단
             if (/^(성명|차명|차대번호|배기량|연료|연식|승차|색상|주소|최초|형식|제작|원동기|주행거리|모델연도|제원)/.test(next)) break;
             return next.replace(/,$/, '').trim();
@@ -134,46 +116,64 @@ export class OcrService {
   }
 
   private extract(texts: string[]) {
-    // ①② 접두사 제거한 블롭
     const blob = texts.map(stripPrefix).join(' ');
 
-    // ── 차량번호 ─────────────────────────────────────
-    // "자동차등록번호" 직후 패턴 우선, fallback은 앞에 한글 없는 패턴
+    // ── 차량번호 ─────────────────────────────────────────────────────
     const plateCtx = /자동차등록번호\s*([가-힣]{0,2}\s*\d{2,3}\s*[가-힣]\s*\d{4})/
       .exec(blob)?.[1]?.replace(/\s/g, '') ?? null;
     const plateFallback = /(?<![가-힣])(\d{2,3}[가-힣]\d{4})/.exec(blob)?.[1] ?? null;
     const plate = plateCtx ?? plateFallback;
 
-    // ── 연식 ─────────────────────────────────────────
-    // "모델연도" 또는 "연식" 다음 19xx/20xx 연도 (게으른 매칭으로 중간 코드 건너뜀)
-    const yearRaw = /(?:모델연도|연식)[\s\S]*?(\b(?:19|20)\d{2}\b)/.exec(blob)?.[1] ?? null;
+    // ── 차명: 번호판 바로 뒤, 다음 필드 라벨 앞 (자동차등록증 레이아웃) ──
+    const carNameFromLayout = (() => {
+      if (!plate) return null;
+      const plateIdx = blob.indexOf(plate);
+      if (plateIdx < 0) return null;
+      const afterPl = blob.slice(plateIdx + plate.length).trim();
+      // 다음 필드 구분자 앞까지만
+      const stopMatch = /\s+(?:차\s*종|형식\s*및|용도|②|③|⑤)/.exec(afterPl);
+      if (!stopMatch || stopMatch.index === 0) return null;
+      return afterPl.slice(0, stopMatch.index).trim() || null;
+    })();
 
-    // ── 차대번호 (VIN, 17자리) ────────────────────────
+    // ── 연식 ─────────────────────────────────────────────────────────
+    // "연식/모델연도" 없으면 최초등록일·제작연월에서 추출
+    const yearRaw = /(?:모델연도|연식)[\s\S]*?(\b(?:19|20)\d{2}\b)/.exec(blob)?.[1]
+      ?? /최초등록일[^\d]*(\d{4})/.exec(blob)?.[1]
+      ?? /제작연월[^\d]*(\d{4})/.exec(blob)?.[1]
+      ?? null;
+
+    // ── 차대번호 (VIN, 17자리) ────────────────────────────────────────
     const vin = /\b([A-HJ-NPR-Z0-9]{17})\b/.exec(blob)?.[0] ?? null;
 
-    // ── 배기량 ────────────────────────────────────────
-    const dispNum = /배기량[^0-9]*(\d{3,5})/.exec(blob)?.[1];
+    // ── 배기량 ────────────────────────────────────────────────────────
+    // 1차: "배기량" 라벨 직후 / 2차: "1968 4 기통" 패턴 (테이블 레이아웃 혼재)
+    const dispNum = /배기량[^0-9]*(\d{3,5})/.exec(blob)?.[1]
+      ?? /(\d{3,5})\s+\d+\s*기통/.exec(blob)?.[1];
 
-    // ── 승차정원 ──────────────────────────────────────
-    const seats = /승차\s*(\d{1,2})\s*명/.exec(blob)?.[1]
-               ?? /승차정원[^0-9]*(\d{1,2})/.exec(blob)?.[1]
-               ?? null;
+    // ── 승차정원: "N명" 패턴 (단위 "명"은 승차정원에만 사용) ───────────
+    const seats = /\b([1-9])\s*명\b/.exec(blob)?.[1] ?? null;
 
-    // ── 최초등록일 ────────────────────────────────────
-    const dr = /(?:최초등록일|최초등록)[^0-9]*(\d{4})[.년\-](\d{1,2})[.월\-](\d{1,2})/.exec(blob);
+    // ── 최초등록일 (토큰 분리로 인한 공백 허용) ─────────────────────────
+    const dr = /(?:최초등록일|최초등록)[^0-9]*(\d{4})\s*[.년-]\s*(\d{1,2})\s*[.월-]\s*(\d{1,2})/.exec(blob);
 
-    // ── 주행거리 ──────────────────────────────────────
-    const mileage = /주행거리[^0-9]*(\d{3,6})/.exec(blob)?.[1] ?? null;
+    // ── 주행거리: 공백 포함·쉼표 포함 처리 ──────────────────────────────
+    const mileageMatches = [
+      ...[...blob.matchAll(/주행\s*거리[^0-9]*(\d{1,3},\d{3}|\d{4,6})/g)]
+        .map(m => Number(m[1].replace(/,/g, ''))),
+    ].filter(n => n > 0);
+    const mileage = mileageMatches.length ? String(Math.max(...mileageMatches)) : null;
 
-    // ── 연료: 블롭 전체에서 FUEL_MAP 키 검색 ────────────
+    // ── 연료 ─────────────────────────────────────────────────────────
     const fuelKey = Object.keys(FUEL_MAP).find(k => blob.includes(k));
 
     return {
       plateNumber:      plate,
       ownerName:        this.findAfter(texts, ['성명(명칭)', '성명', '성 명']),
       vin,
-      carName:          this.findAfter(texts, ['차명', '차 명']),
-      carBrand:         this.findAfter(texts, ['제작자', '제조사', '제작회사']),
+      carName:          carNameFromLayout ?? this.findAfter(texts, ['차명', '차 명']),
+      // '제조사'는 배터리셀 제조사로 오인되므로 제외
+      carBrand:         this.findAfter(texts, ['제작자', '제작회사']),
       modelYear:        yearRaw,
       displacement:     dispNum ? `${dispNum}cc` : null,
       fuelType:         fuelKey ? FUEL_MAP[fuelKey] : null,
@@ -181,8 +181,34 @@ export class OcrService {
       seats,
       color:            this.findAfter(texts, ['색상', '차체색상', '색 상']),
       registrationDate: dr ? `${dr[1]}-${dr[2].padStart(2,'0')}-${dr[3].padStart(2,'0')}` : null,
-      ownerAddress:     this.findAfter(texts, ['주소', '주 소']),
+      // 자동차등록증은 '사용본거지' 라벨 사용
+      ownerAddress:     this.findAfter(texts, ['사용본거지', '차사용본거지', '주소', '주 소']),
       mileage,
     };
+  }
+
+  private extractInsurance(texts: string[]) {
+    const blob = texts.map(stripPrefix).join(' ');
+    const mileageMatches = [...blob.matchAll(/주행\s*거리[^0-9]*(\d{1,3},\d{3}|\d{4,6})/g)]
+      .map(m => Number(m[1].replace(/,/g, '')));
+    const kmMatches = [...blob.matchAll(/(\d{4,6})\s*(?:km|KM|Km)/g)].map(m => Number(m[1]));
+    const all = [...mileageMatches, ...kmMatches];
+    const mileage = all.length ? String(Math.max(...all)) : null;
+    return { mileage, _rawTexts: texts };
+  }
+
+  private extractDashboard(texts: string[]) {
+    const blob = texts.join(' ');
+    // 쉼표 포함: "162,827" → 162827
+    const withComma = [...blob.matchAll(/\b(\d{2,3}),(\d{3})\b/g)]
+      .map(m => Number(m[1] + m[2]))
+      .filter(n => n >= 10000 && n <= 999999);
+    // 연속 숫자: "162827"
+    const continuous = [...blob.replace(/,/g, '').matchAll(/\b(\d{4,6})\b/g)]
+      .map(m => Number(m[1]))
+      .filter(n => n >= 1000 && n <= 999999);
+    const all = [...withComma, ...continuous];
+    const mileage = all.length ? String(Math.max(...all)) : null;
+    return { mileage, _rawTexts: texts };
   }
 }
