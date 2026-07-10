@@ -24,4 +24,10 @@ export class OcrController {
     if (!imageUrl) throw new BadRequestException('imageUrl이 없습니다.');
     return this.ocrService.parseFromUrl(imageUrl, 'insurance');
   }
+
+  @Post('dashboard/from-url')
+  async ocrDashboardFromUrl(@Body('imageUrl') imageUrl: string) {
+    if (!imageUrl) throw new BadRequestException('imageUrl이 없습니다.');
+    return this.ocrService.parseFromUrl(imageUrl, 'dashboard');
+  }
 }

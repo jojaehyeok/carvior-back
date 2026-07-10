@@ -29,7 +29,7 @@ export class OcrService {
     return this.callClova(base64, format, 'registration');
   }
 
-  async parseFromUrl(imageUrl: string, mode: 'registration' | 'insurance') {
+  async parseFromUrl(imageUrl: string, mode: 'registration' | 'insurance' | 'dashboard') {
     const imgRes = await fetch(imageUrl);
     if (!imgRes.ok) return { error: '이미지 다운로드 실패' };
     const buffer = Buffer.from(await imgRes.arrayBuffer());
@@ -39,7 +39,7 @@ export class OcrService {
     return this.callClova(base64, format, mode);
   }
 
-  private async callClova(base64: string, format: string, mode: 'registration' | 'insurance') {
+  private async callClova(base64: string, format: string, mode: 'registration' | 'insurance' | 'dashboard') {
     const res = await fetch(this.clovaUrl, {
       method: 'POST',
       headers: {
@@ -67,17 +67,28 @@ export class OcrService {
 
     const texts: string[] = (img.fields ?? []).map((f: any) => f.inferText as string);
     if (mode === 'insurance') return this.extractInsurance(texts);
+    if (mode === 'dashboard') return this.extractDashboard(texts);
     return { ...this.extract(texts), _rawTexts: texts };
   }
 
   private extractInsurance(texts: string[]) {
     const blob = texts.map(stripPrefix).join(' ');
-    // 보험이력서에서 가장 최근(큰) 주행거리 숫자 추출
     const mileageMatches = [...blob.matchAll(/주행거리[^0-9]*(\d{3,6})/g)].map(m => Number(m[1]));
-    // km 단위 숫자들도 수집 (보험이력서에 단독으로 나오는 경우)
     const kmMatches = [...blob.matchAll(/(\d{4,6})\s*(?:km|KM|Km)/g)].map(m => Number(m[1]));
     const all = [...mileageMatches, ...kmMatches];
     const mileage = all.length ? String(Math.max(...all)) : null;
+    return { mileage, _rawTexts: texts };
+  }
+
+  private extractDashboard(texts: string[]) {
+    const blob = texts.map(stripPrefix).join(' ');
+    // 계기판: 5-6자리 주행거리 숫자 (쉼표 포함 가능, e.g. "69,790" or "169790")
+    const raw = blob.replace(/,/g, '');
+    const numMatches = [...raw.matchAll(/\b(\d{4,6})\b/g)]
+      .map(m => Number(m[1]))
+      .filter(n => n >= 1000 && n <= 999999);
+    // 가장 큰 숫자를 주행거리로 (km 범위 내)
+    const mileage = numMatches.length ? String(Math.max(...numMatches)) : null;
     return { mileage, _rawTexts: texts };
   }
 
@@ -103,7 +114,9 @@ export class OcrService {
           const colonIdx = label.indexOf(':');
           const rest = colonIdx >= 0 ? label.slice(colonIdx + 1) : label.slice(k.length);
           const restClean = rest.replace(/^\(.*?\)/, '').trim();
-          if (restClean && !/^[,./\s-]+$/.test(restClean)) return restClean;
+          // rest가 다른 필드 라벨로 시작하면 (예: "차명자동차등록번호") 무시
+          const isAnotherLabel = /^(자동차|성명|차명|차대번호|배기량|연료|연식|승차|색상|주소|최초|형식|제작|원동기|주행거리|모델연도|제원)/.test(restClean);
+          if (restClean && !/^[,./\s-]+$/.test(restClean) && !isAnotherLabel) return restClean;
 
           // 다음 토큰에서 값 찾기
           const nextStart = i + labelLen;
