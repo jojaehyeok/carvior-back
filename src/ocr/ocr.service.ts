@@ -50,7 +50,7 @@ export class OcrService {
     if (img?.inferResult !== 'SUCCESS') return { error: 'OCR 실패' };
 
     const texts: string[] = (img.fields ?? []).map((f: any) => f.inferText as string);
-    return this.extract(texts);
+    return { ...this.extract(texts), _rawTexts: texts };
   }
 
   private findAfter(texts: string[], keywords: string[]): string | null {
@@ -61,12 +61,15 @@ export class OcrService {
         if (!t.startsWith(k)) continue;
         const colonIdx = t.indexOf(':');
         const rest = colonIdx >= 0 ? t.slice(colonIdx + 1) : t.slice(k.length);
-        if (rest.trim()) return rest.trim();
+        // 라벨 뒤에 "(명칭)" 같은 suffix만 남은 경우 무시
+        const restClean = rest.replace(/^\(.*?\)/, '').trim();
+        if (restClean && !/^[,.\-\/]+$/.test(restClean)) return restClean;
         for (let j = i + 1; j <= Math.min(i + 3, texts.length - 1); j++) {
           const next = texts[j].trim();
           if (!next) continue;
+          if (/^[,.\-\/]+$/.test(next)) continue; // 구두점만인 토큰 skip
           if (/^(성명|차명|차대번호|배기량|연료|연식|승차|색상|주소|최초|형식|제작)/.test(next.replace(/\s/g, ''))) continue;
-          return next;
+          return next.replace(/,$/, '').trim(); // 끝 콤마 제거
         }
       }
     }
@@ -76,8 +79,15 @@ export class OcrService {
   private extract(texts: string[]) {
     const blob = texts.join(' ');
 
-    const plate    = /([가-힣]{0,2}\s*\d{2,3}\s*[가-힣]\s*\d{4})/.exec(blob)?.[1]?.replace(/\s/g, '') ?? null;
-    const year     = /(?:연식|형식)[^0-9]*(\d{4})/.exec(blob)?.[1] ?? null;
+    // 번호판: 앞에 한글 없는 신형(12가1234) 또는 지역명 포함 구형
+    const REGIONS = '서울|경기|인천|부산|대구|광주|대전|울산|강원|충북|충남|전북|전남|경북|경남|제주|세종';
+    const plateNew = /(?<![가-힣])(\d{2,3}[가-힣]\d{4})/.exec(blob)?.[1] ?? null;
+    const plateOld = new RegExp(`((?:${REGIONS})\\d{2}[가-힣]\\d{4})`).exec(blob)?.[1]?.replace(/\s/g, '') ?? null;
+    const plate = plateNew ?? plateOld;
+
+    // 연식: "연식"만 매핑, 1980~2030 범위 검증
+    const yearRaw = /연식[^0-9]*(\d{4})/.exec(blob)?.[1];
+    const year = yearRaw && +yearRaw >= 1980 && +yearRaw <= 2030 ? yearRaw : null;
     const dispNum  = /배기량[^0-9]*(\d{3,5})/.exec(blob)?.[1];
     const seats    = /승차정원[^0-9]*(\d{1,2})/.exec(blob)?.[1] ?? null;
     const dr       = /최초등록일[^0-9]*(\d{4})[.년\-](\d{1,2})[.월\-](\d{1,2})/.exec(blob);
@@ -87,7 +97,7 @@ export class OcrService {
 
     return {
       plateNumber:      plate,
-      ownerName:        this.findAfter(texts, ['성명', '성 명']),
+      ownerName:        this.findAfter(texts, ['성명(명칭)', '성명', '성 명']),
       vin:              this.findAfter(texts, ['차대번호']),
       carName:          this.findAfter(texts, ['차명', '차 명']),
       carBrand:         this.findAfter(texts, ['제작자', '제조사', '제작회사']),
