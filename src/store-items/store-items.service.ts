@@ -62,4 +62,20 @@ export class StoreItemsService {
     if (!item) throw new NotFoundException(`스토어 아이템 ${id}를 찾을 수 없습니다.`);
     await this.repo.remove(item);
   }
+
+  async getStats(id: number): Promise<{ views: number; likes: number }> {
+    const row = await this.repo.findOne({ where: { id }, select: ['views', 'likes'] });
+    return { views: row?.views ?? 0, likes: row?.likes ?? 0 };
+  }
+
+  async updateStats(id: number, action: string): Promise<{ views: number; likes: number }> {
+    if (action === 'view') {
+      await this.dataSource.query('UPDATE store_items SET views = views + 1 WHERE id = ?', [id]);
+    } else if (action === 'like') {
+      await this.dataSource.query('UPDATE store_items SET likes = likes + 1 WHERE id = ?', [id]);
+    } else if (action === 'unlike') {
+      await this.dataSource.query('UPDATE store_items SET likes = GREATEST(0, likes - 1) WHERE id = ?', [id]);
+    }
+    return this.getStats(id);
+  }
 }

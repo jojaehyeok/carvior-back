@@ -89,6 +89,12 @@ export class StoreItem {
   @Column({ type: 'text', nullable: true })
   adminMemo: string;
 
+  @Column({ type: 'int', default: 0 })
+  views: number;
+
+  @Column({ type: 'int', default: 0 })
+  likes: number;
+
   @Column({ nullable: true })
   userId: number;
 

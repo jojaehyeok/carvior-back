@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Query, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, NotFoundException } from '@nestjs/common';
 import { StoreItemsService } from './store-items.service';
 import { StoreItem } from './entities/store-item.entity';
 import { SolapiService } from '../solapi/solapi.service';
@@ -64,5 +64,16 @@ export class StoreItemsController {
     if (!id) throw new NotFoundException('id 파라미터가 필요합니다.');
     await this.service.remove(Number(id));
     return { ok: true };
+  }
+
+  // ── 조회수/좋아요 (공개 엔드포인트, Next.js /api 대체) ───────────
+  @Get(':id/stats')
+  getStats(@Param('id') id: string) {
+    return this.service.getStats(Number(id));
+  }
+
+  @Post(':id/stats')
+  updateStats(@Param('id') id: string, @Body('action') action: string) {
+    return this.service.updateStats(Number(id), action);
   }
 }
