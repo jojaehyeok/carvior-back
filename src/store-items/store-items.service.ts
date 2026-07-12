@@ -41,6 +41,12 @@ export class StoreItemsService {
     return this.repo.find({ where: { userId }, order: { registeredAt: 'DESC' } });
   }
 
+  async findOne(id: number): Promise<StoreItem> {
+    const item = await this.repo.findOneBy({ id });
+    if (!item) throw new NotFoundException(`스토어 아이템 ${id}를 찾을 수 없습니다.`);
+    return item;
+  }
+
   async create(data: Partial<StoreItem>): Promise<StoreItem> {
     if (data.carNumber) {
       const exists = await this.repo.findOne({ where: { carNumber: data.carNumber } });
