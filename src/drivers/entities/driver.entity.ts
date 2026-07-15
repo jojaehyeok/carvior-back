@@ -60,4 +60,14 @@ export class Driver {
 
   @Column({ type: 'simple-json', nullable: true })
   vehicleTypes: string[];      // ['승용차', 'SUV', '트럭']
+
+  // ── GPS 위치 ──────────────────────────────────────────
+  @Column({ type: 'double', nullable: true })
+  lat: number | null;
+
+  @Column({ type: 'double', nullable: true })
+  lng: number | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  lastSeenAt: Date | null;
 }

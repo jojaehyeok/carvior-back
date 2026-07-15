@@ -60,4 +60,14 @@ export class DriversController {
     await this.driversService.savePushToken(Number(id), pushToken);
     return { success: true };
   }
+
+  @Patch(':id/location')
+  async updateLocation(@Param('id') id: string, @Body() body: { lat: number; lng: number }) {
+    return this.driversService.updateLocation(Number(id), body.lat, body.lng);
+  }
+
+  @Get('locations/all')
+  async findLocations() {
+    return this.driversService.findLocations();
+  }
 }

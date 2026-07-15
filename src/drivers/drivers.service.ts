@@ -61,6 +61,18 @@ export class DriversService {
     return await this.driverRepository.save(driver);
   }
 
+  async updateLocation(id: number, lat: number, lng: number) {
+    await this.driverRepository.update(id, { lat, lng, lastSeenAt: new Date() });
+    return { success: true };
+  }
+
+  async findLocations() {
+    return this.driverRepository.find({
+      where: { status: 'APPROVED' },
+      select: ['id', 'name', 'phone', 'lat', 'lng', 'lastSeenAt', 'regions'],
+    });
+  }
+
   async savePushToken(id: number, pushToken: string) {
     console.log(`[PushToken] 저장 요청 → driverId: ${id}, token: ${pushToken?.slice(0, 30)}...`);
     await this.driverRepository.update(id, { pushToken });
