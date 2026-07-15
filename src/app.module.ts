@@ -19,6 +19,7 @@ import { StoreItemsModule } from './store-items/store-items.module';
 import { UsersModule } from './users/users.module';
 import { ProposalsModule } from './proposals/proposals.module';
 import { OcrModule } from './ocr/ocr.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -64,6 +65,7 @@ import { OcrModule } from './ocr/ocr.module';
     UsersModule,
     ProposalsModule,
     OcrModule,
+    DashboardModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, SolapiService, S3Service],
