@@ -41,4 +41,23 @@ export class Driver {
 
   @CreateDateColumn()
   createdAt: Date;
+
+  // ── 가용성 (스케줄) ──────────────────────────────────
+  @Column({ type: 'simple-json', nullable: true })
+  regions: string[];           // ['서울', '경기']
+
+  @Column({ type: 'simple-json', nullable: true })
+  availableDays: number[];     // 0=일, 1=월 … 6=토
+
+  @Column({ type: 'varchar', nullable: true })
+  availableStartTime: string;  // '09:00'
+
+  @Column({ type: 'varchar', nullable: true })
+  availableEndTime: string;    // '18:00'
+
+  @Column({ default: 5 })
+  maxDailyBookings: number;
+
+  @Column({ type: 'simple-json', nullable: true })
+  vehicleTypes: string[];      // ['승용차', 'SUV', '트럭']
 }

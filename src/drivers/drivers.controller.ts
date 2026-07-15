@@ -45,6 +45,16 @@ export class DriversController {
     return await this.driversService.updateStatus(id, 'REJECTED');
   }
 
+  @Get(':id')
+  async findOne(@Param('id') id: string) {
+    return this.driversService.findById(Number(id));
+  }
+
+  @Patch(':id/availability')
+  async updateAvailability(@Param('id') id: string, @Body() body: any) {
+    return this.driversService.updateAvailability(Number(id), body);
+  }
+
   @Patch(':id/push-token')
   async savePushToken(@Param('id') id: string, @Body('pushToken') pushToken: string) {
     await this.driversService.savePushToken(Number(id), pushToken);

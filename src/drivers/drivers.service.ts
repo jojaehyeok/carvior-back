@@ -47,6 +47,20 @@ export class DriversService {
     return await this.driverRepository.findOne({ where: { id } });
   }
 
+  async updateAvailability(id: number, data: {
+    regions?: string[];
+    availableDays?: number[];
+    availableStartTime?: string;
+    availableEndTime?: string;
+    maxDailyBookings?: number;
+    vehicleTypes?: string[];
+  }) {
+    const driver = await this.driverRepository.findOne({ where: { id } });
+    if (!driver) throw new NotFoundException('진단사를 찾을 수 없습니다.');
+    Object.assign(driver, data);
+    return await this.driverRepository.save(driver);
+  }
+
   async savePushToken(id: number, pushToken: string) {
     console.log(`[PushToken] 저장 요청 → driverId: ${id}, token: ${pushToken?.slice(0, 30)}...`);
     await this.driverRepository.update(id, { pushToken });
