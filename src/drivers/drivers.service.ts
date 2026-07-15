@@ -69,7 +69,10 @@ export class DriversService {
   async findLocations() {
     return this.driverRepository.find({
       where: { status: 'APPROVED' },
-      select: ['id', 'name', 'phone', 'lat', 'lng', 'lastSeenAt', 'regions'],
+      select: [
+        'id', 'name', 'phone', 'lat', 'lng', 'lastSeenAt', 'regions',
+        'availableDays', 'availableStartTime', 'availableEndTime',
+      ],
     });
   }
 
