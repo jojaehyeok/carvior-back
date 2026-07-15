@@ -52,4 +52,15 @@ export class UsersController {
   updateRole(@Param('id') id: string, @Body() body: { role: string }) {
     return this.svc.updateRole(Number(id), body.role);
   }
+
+  @Patch(':id/password')
+  async updatePassword(@Param('id') id: string, @Body() body: { password: string }) {
+    await this.svc.updatePassword(Number(id), body.password);
+    return { success: true };
+  }
+
+  @Get('admins')
+  findAdmins() {
+    return this.svc.findAdmins();
+  }
 }

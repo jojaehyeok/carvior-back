@@ -106,4 +106,15 @@ export class UsersService {
     user.role = role;
     return this.repo.save(user);
   }
+
+  async updatePassword(id: number, newPassword: string): Promise<void> {
+    const user = await this.repo.findOneBy({ id });
+    if (!user) throw new UnauthorizedException('유저를 찾을 수 없습니다.');
+    user.password = await bcrypt.hash(newPassword, 10);
+    await this.repo.save(user);
+  }
+
+  async findAdmins(): Promise<User[]> {
+    return this.repo.find({ where: { role: 'admin' }, order: { createdAt: 'DESC' } });
+  }
 }
