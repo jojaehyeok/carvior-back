@@ -84,8 +84,12 @@ export class InspectionController {
   // 5-c. 관리자 → 진단사 재촬영/수정 요청 (SMS)
   @Post(':bookingId/request-update')
   @UseGuards(InternalKeyGuard)
-  requestUpdate(@Param('bookingId') bookingId: string, @Body('message') message?: string) {
-    return this.inspectionService.requestUpdateFromEvaluator(parseInt(bookingId), message);
+  requestUpdate(
+    @Param('bookingId') bookingId: string,
+    @Body('message') message?: string,
+    @Body('category') category?: string,
+  ) {
+    return this.inspectionService.requestUpdateFromEvaluator(parseInt(bookingId), message, category);
   }
 
   private formatReport(inspection: any) {

@@ -244,7 +244,7 @@ export class InspectionService {
    * 진단사 본인 수정마감(2h) 이후에도 관리자가 사진/데이터 이상을 발견하면
    * 진단사에게 재촬영·수정을 요청할 수 있도록.
    */
-  async requestUpdateFromEvaluator(bookingId: number, message?: string) {
+  async requestUpdateFromEvaluator(bookingId: number, message?: string, category?: string) {
     const booking = await this.bookingRepository.findOne({ where: { id: bookingId } });
     if (!booking) throw new BadRequestException('예약을 찾을 수 없습니다.');
     if (!booking.assignedDriverId) throw new BadRequestException('배정된 진단사가 없습니다.');
@@ -252,9 +252,12 @@ export class InspectionService {
     const driver = await this.driversService.findByAccountId(booking.assignedDriverId);
     if (!driver?.phone) throw new BadRequestException('진단사 연락처를 찾을 수 없습니다.');
 
-    const text = message?.trim()
-      ? `[카비어] ${booking.carNumber} 재촬영/수정 요청: ${message.trim()}`
-      : `[카비어] ${booking.carNumber} 진단 사진 재촬영/수정이 필요합니다. 확인 부탁드립니다.`;
+    const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
+    const reportLink = inspection?.carHash ? `https://carvior.store/report/${inspection.carHash}` : '';
+
+    const title = category ? `${booking.carNumber} [${category}] 재촬영/수정 요청` : `${booking.carNumber} 재촬영/수정 요청`;
+    const detail = message?.trim() || '사진 확인 후 재촬영/수정 부탁드립니다.';
+    const text = `[카비어] ${title}\n${detail}${reportLink ? `\n확인하기: ${reportLink}` : ''}`;
 
     await this.solapiService.sendSms(driver.phone, text);
     return { ok: true, sentTo: driver.phone, driverName: driver.name };
