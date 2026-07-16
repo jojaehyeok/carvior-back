@@ -19,16 +19,24 @@ export class BlurController {
     urls: string[];
     storeItemId?: string | number;
     categoryMap?: CategoryEntry[];
-  }): Promise<{ ok: boolean; message: string }> {
+  }): Promise<{ ok: boolean; message: string; urls?: string[] }> {
     const urls = Array.isArray(body?.urls) ? body.urls : [];
     const storeItemId = body.storeItemId ? Number(body.storeItemId) : undefined;
     const categoryMap = body.categoryMap;
 
+    // 등록 전 미리보기(스토어 아이템 아직 없음) — 관리자가 결과를 바로 확인/등록해야
+    // 하므로 동기 처리해서 블러된 URL을 그대로 반환
+    if (!storeItemId) {
+      const blurredUrls = await this.blurService.blurPhotoUrls(urls);
+      return { ok: true, message: `${urls.length}장 블러 처리 완료`, urls: blurredUrls };
+    }
+
+    // 이미 등록된 매물의 사진 재처리는 응답을 기다릴 필요 없어 백그라운드로
     setImmediate(async () => {
       try {
         const blurredUrls = await this.blurService.blurPhotoUrls(urls);
 
-        if (storeItemId && categoryMap?.length) {
+        if (categoryMap?.length) {
           const photos: Record<string, string[]> = {};
           let cursor = 0;
           for (const { category, count } of categoryMap) {
