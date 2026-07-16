@@ -47,6 +47,20 @@ export class StoreItemsService {
       r.auctionEndAt = auctionEndAt;
     }
 
+    // auctionStartAt/auctionEndAt이 없는 active 매물(경매 스케줄링 기능 추가 이전에
+    // 이미 게시된 건) → 등록일 기준으로 마감시각을 보정해서 "진행중인데 마감" 오표시 방지
+    const toBackfill = rows.filter((r: any) => r.status === 'active' && !r.auctionEndAt);
+    for (const r of toBackfill) {
+      const start = r.auctionStartAt ? new Date(r.auctionStartAt) : new Date(r.registeredAt ?? now);
+      const auctionEndAt = computeAuctionEndAt(start);
+      await this.dataSource.query(
+        `UPDATE store_items SET auctionStartAt = ?, auctionEndAt = ? WHERE id = ?`,
+        [start, auctionEndAt, r.id],
+      );
+      r.auctionStartAt = start;
+      r.auctionEndAt = auctionEndAt;
+    }
+
     // 마감시각이 지난 경매는 자동 마감 (낙찰 처리는 별도로 어드민이 확인)
     const toClose = rows.filter((r: any) =>
       r.status === 'active' && r.auctionEndAt && new Date(r.auctionEndAt).getTime() < now.getTime(),
