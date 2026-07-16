@@ -291,15 +291,20 @@ def _get_yolo_model():
 
 
 def _find_plate_boxes(image: Image.Image):
-    """YOLOv8 번호판 감지. plate_model.pt 없으면 빈 리스트 반환."""
+    """YOLOv8 번호판 감지. plate_model.pt 없으면(또는 로드/추론 실패 시) 빈 리스트 반환."""
     try:
         model = _get_yolo_model()
-    except Exception:
+    except Exception as e:
+        print(f"[PlateDetect] 모델 로드 실패: {type(e).__name__}: {e}")
         return []
 
-    import numpy as np
-    img_rgb = np.array(image.convert("RGB"))
-    results = model(img_rgb, verbose=False, conf=0.25)
+    try:
+        import numpy as np
+        img_rgb = np.array(image.convert("RGB"))
+        results = model(img_rgb, verbose=False, conf=0.25)
+    except Exception as e:
+        print(f"[PlateDetect] 추론 실패: {type(e).__name__}: {e}")
+        return []
 
     boxes = []
     for r in results:
