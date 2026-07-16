@@ -104,6 +104,14 @@ export class StoreItem {
   @Column({ nullable: true })
   sellerContact: string;
 
+  // 경매 시작/마감 시각 — 자동게시(또는 관리자 등록) 시점에 세팅.
+  // 마감은 기본 48시간, 그 구간에 주말(토/일)이 걸치면 72시간으로 자동 연장.
+  @Column({ type: 'timestamp', nullable: true })
+  auctionStartAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  auctionEndAt: Date;
+
   @CreateDateColumn()
   registeredAt: Date;
 

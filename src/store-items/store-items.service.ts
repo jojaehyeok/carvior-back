@@ -3,6 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { StoreItem } from './entities/store-item.entity';
+import { computeAuctionEndAt } from './auction-time.util';
+
+// 진단완료(firstCompletedAt) 후 이 시간이 지나야 스마트옥션에 자동 게시됨
+// (그 사이 진단사 수정 2h, 매니저 검토 2h 구간)
+const AUTO_PUBLISH_DELAY_MS = 4 * 60 * 60 * 1000;
 
 @Injectable()
 export class StoreItemsService {
@@ -15,7 +20,7 @@ export class StoreItemsService {
 
   async findAll(): Promise<any[]> {
     const rows = await this.dataSource.query(`
-      SELECT si.*, i.carHash,
+      SELECT si.*, i.carHash, i.firstCompletedAt,
         CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
       FROM store_items si
       LEFT JOIN inspections i ON i.bookingId = si.bookingId
@@ -24,14 +29,34 @@ export class StoreItemsService {
         si.registeredAt DESC
     `);
 
-    // 검차 완료된 매물은 pending → active 자동 전환
-    const toActivate = rows.filter((r: any) => r.carHash && r.status === 'pending');
-    if (toActivate.length > 0) {
-      const ids = toActivate.map((r: any) => r.id);
+    const now = new Date();
+
+    // 진단완료 후 4시간(수정 2h + 매니저 검토 2h) 지난 pending 매물 → 자동 게시
+    const toActivate = rows.filter((r: any) => {
+      if (r.status !== 'pending' || !r.carHash || !r.firstCompletedAt) return false;
+      return now.getTime() - new Date(r.firstCompletedAt).getTime() >= AUTO_PUBLISH_DELAY_MS;
+    });
+    for (const r of toActivate) {
+      const auctionEndAt = computeAuctionEndAt(now);
       await this.dataSource.query(
-        `UPDATE store_items SET status = 'active' WHERE id IN (${ids.join(',')})`,
+        `UPDATE store_items SET status = 'active', auctionStartAt = ?, auctionEndAt = ? WHERE id = ?`,
+        [now, auctionEndAt, r.id],
       );
-      rows.forEach((r: any) => { if (ids.includes(r.id)) r.status = 'active'; });
+      r.status = 'active';
+      r.auctionStartAt = now;
+      r.auctionEndAt = auctionEndAt;
+    }
+
+    // 마감시각이 지난 경매는 자동 마감 (낙찰 처리는 별도로 어드민이 확인)
+    const toClose = rows.filter((r: any) =>
+      r.status === 'active' && r.auctionEndAt && new Date(r.auctionEndAt).getTime() < now.getTime(),
+    );
+    if (toClose.length > 0) {
+      const ids = toClose.map((r: any) => r.id);
+      await this.dataSource.query(
+        `UPDATE store_items SET status = 'closed' WHERE id IN (${ids.join(',')})`,
+      );
+      rows.forEach((r: any) => { if (ids.includes(r.id)) r.status = 'closed'; });
     }
 
     return rows;
