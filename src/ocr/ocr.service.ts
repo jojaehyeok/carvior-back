@@ -199,11 +199,27 @@ export class OcrService {
 
   private extractDashboard(texts: string[]) {
     const blob = texts.join(' ');
-    // 쉼표 포함: "162,827" → 162827
+
+    // 1순위: "km" 단위가 바로 붙은 숫자만 사용 — 계기판은 보통 "162827km"처럼
+    // 공백 없이 붙어서 나오는데, 숫자 바로 뒤에 문자가 오면 \b가 성립하지 않아
+    // 기존 "연속 숫자" 매칭이 이런 값을 아예 못 잡고, 날짜("6/9/2026")의 "2026"처럼
+    // 경계가 뚜렷한 엉뚱한 숫자가 최댓값으로 잘못 선택되던 문제
+    const kmMatches = [
+      ...[...blob.matchAll(/\b(\d{1,3},\d{3})\s*(?:km|KM|Km)/g)]
+        .map(m => Number(m[1].replace(/,/g, ''))),
+      ...[...blob.matchAll(/\b(\d{4,6})\s*(?:km|KM|Km)/g)]
+        .map(m => Number(m[1])),
+    ].filter(n => n >= 1000 && n <= 999999);
+
+    if (kmMatches.length) {
+      return { mileage: String(Math.max(...kmMatches)), _rawTexts: texts };
+    }
+
+    // 2순위(폴백): km 단위 표기를 못 찾았을 때만 일반 숫자 후보 중 최댓값 사용
+    // (날짜·시간 등을 오인식할 수 있어 최후의 수단으로만)
     const withComma = [...blob.matchAll(/\b(\d{2,3}),(\d{3})\b/g)]
       .map(m => Number(m[1] + m[2]))
       .filter(n => n >= 10000 && n <= 999999);
-    // 연속 숫자: "162827"
     const continuous = [...blob.replace(/,/g, '').matchAll(/\b(\d{4,6})\b/g)]
       .map(m => Number(m[1]))
       .filter(n => n >= 1000 && n <= 999999);
