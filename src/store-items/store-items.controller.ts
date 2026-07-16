@@ -61,6 +61,38 @@ export class StoreItemsController {
     return item;
   }
 
+  // 방향 보정 로직 배포 이전에 이미 올라간 사진들을 일괄 재처리 (일회성 관리자용)
+  @Post('reprocess-all-photos')
+  @UseGuards(InternalKeyGuard)
+  async reprocessAllPhotos() {
+    const items: any[] = await this.service.findAll();
+    const targets = items.filter((i) => i.photos && typeof i.photos === 'object');
+
+    // 매물 수가 많으면 오래 걸릴 수 있어 백그라운드로 돌리고 즉시 응답
+    setImmediate(async () => {
+      for (const item of targets) {
+        try {
+          const photos = item.photos as Record<string, string[]>;
+          const reprocessed: Record<string, string[]> = {};
+          for (const [cat, urls] of Object.entries(photos)) {
+            reprocessed[cat] = Array.isArray(urls) && urls.length
+              ? await this.blurService.blurPhotoUrls(urls)
+              : urls;
+          }
+          await this.service.update(item.id, { photos: reprocessed });
+        } catch {
+          // 개별 매물 재처리 실패해도 나머지는 계속 진행
+        }
+      }
+    });
+
+    return {
+      ok: true,
+      message: `${targets.length}개 매물의 사진 재처리를 백그라운드에서 시작했습니다.`,
+      totalItems: targets.length,
+    };
+  }
+
   @Patch()
   async update(@Query('id') id: string, @Body() body: Partial<StoreItem>) {
     if (!id) throw new NotFoundException('id 파라미터가 필요합니다.');

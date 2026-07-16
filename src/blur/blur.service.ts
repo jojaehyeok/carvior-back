@@ -49,41 +49,30 @@ export class BlurService implements OnModuleInit {
     });
   }
 
-  private detectPlatesLocal(imageUrl: string): Promise<Box[]> {
-    return new Promise((resolve) => {
-      const body = `url=${encodeURIComponent(imageUrl)}`;
-      const options = {
-        hostname: '127.0.0.1',
-        port: 8001,
-        path: '/detect-plates',
+  // 방향이 정규화된(=올바르게 회전된) buffer를 그대로 전송 — URL로 다시 받으면
+  // Python 쪽이 원본을 재요청해서 방향 보정 전 픽셀 기준으로 박스를 계산해버림
+  private async detectPlatesLocal(imageBuffer: Buffer): Promise<Box[]> {
+    try {
+      const form = new FormData();
+      form.append('file', new Blob([new Uint8Array(imageBuffer)], { type: 'image/jpeg' }), 'photo.jpg');
+      const res = await fetch('http://127.0.0.1:8001/detect-plates', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Content-Length': Buffer.byteLength(body),
-        },
-      };
-      const req = http.request(options, (res) => {
-        const chunks: Buffer[] = [];
-        res.on('data', (c: Buffer) => chunks.push(c));
-        res.on('end', () => {
-          try {
-            const json = JSON.parse(Buffer.concat(chunks).toString());
-            resolve(Array.isArray(json.boxes) ? json.boxes as Box[] : []);
-          } catch { resolve([]); }
-        });
+        body: form,
       });
-      req.on('error', () => resolve([]));
-      req.write(body);
-      req.end();
-    });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return Array.isArray(json.boxes) ? (json.boxes as Box[]) : [];
+    } catch {
+      return [];
+    }
   }
 
   private async detectFaces(_imageBuffer: Buffer): Promise<Box[]> {
     return [];
   }
 
-  private async detectPlates(_imageBuffer: Buffer, imageUrl: string): Promise<Box[]> {
-    return this.detectPlatesLocal(imageUrl).catch(() => []);
+  private async detectPlates(imageBuffer: Buffer): Promise<Box[]> {
+    return this.detectPlatesLocal(imageBuffer).catch(() => []);
   }
 
   private async blurRegions(imageBuffer: Buffer, boxes: Box[]): Promise<Buffer> {
@@ -131,7 +120,9 @@ export class BlurService implements OnModuleInit {
   }
 
   private async reuploadToS3(buffer: Buffer, originalUrl: string): Promise<string> {
-    const after = originalUrl.split('.amazonaws.com/')[1];
+    // 재처리(같은 사진을 다시 blur)로 들어온 ?v= 캐시버스팅 쿼리는 키 계산에서 제외
+    const withoutQuery = originalUrl.split('?')[0];
+    const after = withoutQuery.split('.amazonaws.com/')[1];
     if (!after) throw new Error('S3 URL 파싱 실패: ' + originalUrl);
     // store/ 중복 방지
     const cleanAfter = after.startsWith('store/') ? after.slice('store/'.length) : after;
@@ -145,7 +136,9 @@ export class BlurService implements OnModuleInit {
         ContentType: 'image/jpeg',
       }),
     );
-    return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}`;
+    // 같은 키를 덮어쓰면 브라우저/CDN이 이전(방향 틀어진) 캐시를 계속 보여줄 수 있어
+    // 버전 쿼리로 캐시를 무효화
+    return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}?v=${Date.now()}`;
   }
 
   async blurPhotoUrls(urls: string[]): Promise<string[]> {
@@ -166,10 +159,13 @@ export class BlurService implements OnModuleInit {
             : url;
 
           try {
-            const buf = await this.fetchBuffer(effectiveUrl);
+            const rawBuf = await this.fetchBuffer(effectiveUrl);
+            // EXIF 방향을 실제 픽셀에 반영 + 태그 제거 → 이후 전 단계가 이 buf 기준으로 통일됨
+            // (안 하면 세로로 든 폰/가로로 든 폰 사진이 서로 다른 방향으로 저장되던 문제)
+            const buf = await sharp(rawBuf).rotate().toBuffer();
             const [faces, plates] = await Promise.all([
               this.detectFaces(buf),
-              this.detectPlates(buf, effectiveUrl),
+              this.detectPlates(buf),
             ]);
             const boxes = [...faces, ...plates];
             this.logger.log(

@@ -16,7 +16,7 @@ import httpx
 from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
-from PIL import Image
+from PIL import Image, ImageOps
 from sqlalchemy.orm import Session
 
 from classifier import CATEGORY_LABELS, MIN_SAMPLES_TO_TRAIN, get_classifier
@@ -40,14 +40,16 @@ async def load_image_from_source(
     file: Optional[UploadFile] = None,
     url: Optional[str] = None,
 ) -> Image.Image:
+    # EXIF Orientation 태그를 실제 픽셀에 반영 — 안 하면 세로/가로로 든 폰에 따라
+    # 감지 박스 좌표와 실제 표시 방향이 어긋남
     if file:
         data = await file.read()
-        return Image.open(io.BytesIO(data)).convert("RGB")
+        return ImageOps.exif_transpose(Image.open(io.BytesIO(data))).convert("RGB")
     if url:
         async with httpx.AsyncClient(timeout=15) as client:
             resp = await client.get(url)
             resp.raise_for_status()
-            return Image.open(io.BytesIO(resp.content)).convert("RGB")
+            return ImageOps.exif_transpose(Image.open(io.BytesIO(resp.content))).convert("RGB")
     raise HTTPException(status_code=400, detail="file 또는 url 중 하나가 필요합니다")
 
 
@@ -124,7 +126,7 @@ async def feedback(
         try:
             async with httpx.AsyncClient(timeout=15) as client:
                 resp = await client.get(image_url)
-                image = Image.open(io.BytesIO(resp.content)).convert("RGB")
+                image = ImageOps.exif_transpose(Image.open(io.BytesIO(resp.content))).convert("RGB")
             clf = get_classifier()
             emb = clf.get_image_embedding(image)
             embedding_json = json.dumps(emb.tolist())
