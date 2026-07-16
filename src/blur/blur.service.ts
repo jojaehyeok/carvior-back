@@ -67,6 +67,7 @@ export class BlurService implements OnModuleInit {
           port: 8001,
           path: '/detect-plates',
           method: 'POST',
+          timeout: 25_000,
           headers: {
             'Content-Type': `multipart/form-data; boundary=${boundary}`,
             'Content-Length': body.length,
@@ -89,6 +90,11 @@ export class BlurService implements OnModuleInit {
       );
       req.on('error', (e) => {
         this.logger.error(`[Blur] 번호판 감지 요청 실패: ${e.message}`);
+        resolve([]);
+      });
+      req.on('timeout', () => {
+        this.logger.error('[Blur] 번호판 감지 요청 타임아웃 (classify-api 과부하 의심)');
+        req.destroy();
         resolve([]);
       });
       req.write(body);
@@ -173,10 +179,13 @@ export class BlurService implements OnModuleInit {
   async blurPhotoUrls(urls: string[]): Promise<string[]> {
     if (!urls.length) return [];
 
-    const CONCURRENCY = 3;
+    // 번호판 감지가 CPU 기반 YOLO 추론이라 동시 요청이 많으면 classify-api가
+    // 못 버티고 죽거나 커넥션을 거부할 수 있어 동시성을 낮추고 배치 사이 텀을 둠
+    const CONCURRENCY = 2;
     const out: string[] = new Array(urls.length);
 
     for (let i = 0; i < urls.length; i += CONCURRENCY) {
+      if (i > 0) await new Promise((r) => setTimeout(r, 300));
       const slice = urls.slice(i, i + CONCURRENCY);
 
       const results = await Promise.all(

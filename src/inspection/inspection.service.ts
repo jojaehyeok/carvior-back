@@ -209,6 +209,7 @@ export class InspectionService {
     inspection.mirrorMarkers = data.mirrorMarkers || null;
     inspection.memo = data.memo || '';
     inspection.completedAt = new Date();
+    if (!inspection.firstCompletedAt) inspection.firstCompletedAt = inspection.completedAt;
 
     try {
       const savedResult = await this.inspectionRepository.save(inspection);

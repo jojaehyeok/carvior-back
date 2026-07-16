@@ -83,6 +83,7 @@ export class InspectionController {
   private formatReport(inspection: any) {
     return {
       completedAt: inspection.completedAt,
+      firstCompletedAt: inspection.firstCompletedAt,
       car_info: {
         number: inspection.carNumber,
         type: inspection.carModel,

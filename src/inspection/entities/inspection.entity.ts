@@ -87,4 +87,9 @@ export class Inspection {
 
     @Column({ type: 'timestamp', nullable: true })
     completedAt: Date;
+
+    // 최초 진단완료 시각 — completedAt과 달리 재저장해도 바뀌지 않는 고정 기준점.
+    // 진단사 수정마감(2h)/매니저 검토(2h~4h)/자동게시(4h) 타임라인의 앵커로 사용.
+    @Column({ type: 'timestamp', nullable: true })
+    firstCompletedAt: Date;
 }
