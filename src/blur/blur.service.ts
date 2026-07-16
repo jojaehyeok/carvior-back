@@ -50,21 +50,50 @@ export class BlurService implements OnModuleInit {
   }
 
   // 방향이 정규화된(=올바르게 회전된) buffer를 그대로 전송 — URL로 다시 받으면
-  // Python 쪽이 원본을 재요청해서 방향 보정 전 픽셀 기준으로 박스를 계산해버림
-  private async detectPlatesLocal(imageBuffer: Buffer): Promise<Box[]> {
-    try {
-      const form = new FormData();
-      form.append('file', new Blob([new Uint8Array(imageBuffer)], { type: 'image/jpeg' }), 'photo.jpg');
-      const res = await fetch('http://127.0.0.1:8001/detect-plates', {
-        method: 'POST',
-        body: form,
+  // Python 쪽이 원본을 재요청해서 방향 보정 전 픽셀 기준으로 박스를 계산해버림.
+  // 서버 Node 버전에 따라 전역 fetch/FormData/Blob이 없을 수 있어 http 모듈로 직접 multipart 조립.
+  private detectPlatesLocal(imageBuffer: Buffer): Promise<Box[]> {
+    return new Promise((resolve) => {
+      const boundary = `----carviorBoundary${Date.now()}${Math.random().toString(16).slice(2)}`;
+      const head = Buffer.from(
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="photo.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`,
+      );
+      const tail = Buffer.from(`\r\n--${boundary}--\r\n`);
+      const body = Buffer.concat([head, imageBuffer, tail]);
+
+      const req = http.request(
+        {
+          hostname: '127.0.0.1',
+          port: 8001,
+          path: '/detect-plates',
+          method: 'POST',
+          headers: {
+            'Content-Type': `multipart/form-data; boundary=${boundary}`,
+            'Content-Length': body.length,
+          },
+        },
+        (res) => {
+          const chunks: Buffer[] = [];
+          res.on('data', (c: Buffer) => chunks.push(c));
+          res.on('end', () => {
+            try {
+              const json = JSON.parse(Buffer.concat(chunks).toString());
+              if (json.error) this.logger.warn(`[Blur] 번호판 감지 오류: ${json.error}`);
+              resolve(Array.isArray(json.boxes) ? (json.boxes as Box[]) : []);
+            } catch (e) {
+              this.logger.error(`[Blur] 번호판 감지 응답 파싱 실패: ${(e as Error).message}`);
+              resolve([]);
+            }
+          });
+        },
+      );
+      req.on('error', (e) => {
+        this.logger.error(`[Blur] 번호판 감지 요청 실패: ${e.message}`);
+        resolve([]);
       });
-      if (!res.ok) return [];
-      const json = await res.json();
-      return Array.isArray(json.boxes) ? (json.boxes as Box[]) : [];
-    } catch {
-      return [];
-    }
+      req.write(body);
+      req.end();
+    });
   }
 
   private async detectFaces(_imageBuffer: Buffer): Promise<Box[]> {
