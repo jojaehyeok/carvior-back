@@ -7,6 +7,7 @@ import { Repository } from 'typeorm';
 import { Booking } from 'src/bookings/entities/booking.entity';
 import { Inspection } from './entities/inspection.entity';
 import { SolapiService } from 'src/solapi/solapi.service';
+import { DriversService } from 'src/drivers/drivers.service';
 
 @Injectable()
 export class InspectionService {
@@ -15,6 +16,7 @@ export class InspectionService {
   constructor(
     private configService: ConfigService,
     private readonly solapiService: SolapiService,
+    private readonly driversService: DriversService,
     @InjectRepository(Inspection)
     private readonly inspectionRepository: Repository<Inspection>,
     @InjectRepository(Booking)
@@ -235,6 +237,27 @@ export class InspectionService {
       console.error('DB Save Error:', error);
       throw new BadRequestException('진단 데이터 저장 중 오류가 발생했습니다.');
     }
+  }
+
+  /**
+   * 2-b. 관리자 → 진단사 재촬영/수정 요청 (SMS)
+   * 진단사 본인 수정마감(2h) 이후에도 관리자가 사진/데이터 이상을 발견하면
+   * 진단사에게 재촬영·수정을 요청할 수 있도록.
+   */
+  async requestUpdateFromEvaluator(bookingId: number, message?: string) {
+    const booking = await this.bookingRepository.findOne({ where: { id: bookingId } });
+    if (!booking) throw new BadRequestException('예약을 찾을 수 없습니다.');
+    if (!booking.assignedDriverId) throw new BadRequestException('배정된 진단사가 없습니다.');
+
+    const driver = await this.driversService.findByAccountId(booking.assignedDriverId);
+    if (!driver?.phone) throw new BadRequestException('진단사 연락처를 찾을 수 없습니다.');
+
+    const text = message?.trim()
+      ? `[카비어] ${booking.carNumber} 재촬영/수정 요청: ${message.trim()}`
+      : `[카비어] ${booking.carNumber} 진단 사진 재촬영/수정이 필요합니다. 확인 부탁드립니다.`;
+
+    await this.solapiService.sendSms(driver.phone, text);
+    return { ok: true, sentTo: driver.phone, driverName: driver.name };
   }
 
   /**

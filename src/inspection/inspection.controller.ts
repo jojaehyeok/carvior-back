@@ -1,6 +1,7 @@
-import { Controller, Post, UseInterceptors, UploadedFile, UploadedFiles, Body, BadRequestException, Delete, Query, Get, Param, Patch } from '@nestjs/common';
+import { Controller, Post, UseInterceptors, UploadedFile, UploadedFiles, Body, BadRequestException, Delete, Query, Get, Param, Patch, UseGuards } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
 import { InspectionService } from './inspection.service';
+import { InternalKeyGuard } from '../store-items/internal-key.guard';
 
 @Controller('v1/external/inspection')
 export class InspectionController {
@@ -78,6 +79,13 @@ export class InspectionController {
   async getReportData(@Param('bookingId') bookingId: string) {
     const inspection = await this.inspectionService.getInspectionByBookingId(parseInt(bookingId));
     return this.formatReport(inspection);
+  }
+
+  // 5-c. 관리자 → 진단사 재촬영/수정 요청 (SMS)
+  @Post(':bookingId/request-update')
+  @UseGuards(InternalKeyGuard)
+  requestUpdate(@Param('bookingId') bookingId: string, @Body('message') message?: string) {
+    return this.inspectionService.requestUpdateFromEvaluator(parseInt(bookingId), message);
   }
 
   private formatReport(inspection: any) {
