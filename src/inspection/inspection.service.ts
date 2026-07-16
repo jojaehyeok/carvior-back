@@ -252,12 +252,21 @@ export class InspectionService {
     const driver = await this.driversService.findByAccountId(booking.assignedDriverId);
     if (!driver?.phone) throw new BadRequestException('진단사 연락처를 찾을 수 없습니다.');
 
-    const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
-    const reportLink = inspection?.carHash ? `https://carvior.store/report/${inspection.carHash}` : '';
+    // 웹 리포트(읽기전용)가 아니라 앱의 수정화면으로 바로 열리도록 커스텀 스킴 딥링크 사용
+    // (app.json에 scheme: "chavatarapp" 이미 등록돼 있어 별도 App Links 설정 불필요)
+    // adminRequest=1: 관리자가 명시적으로 재촬영/수정을 요청한 딥링크라는 표시.
+    // 진단사 본인 2시간 제한과 무관하게 편집 가능 — 매니저가 이 링크를 받아
+    // 자기 업무폰에서 열어도 동일하게 편집할 수 있음
+    const appLink = `chavatarapp://CarEvaluationSheet?${new URLSearchParams({
+      requestId: String(bookingId),
+      carNumber: booking.carNumber,
+      mode: 'edit',
+      adminRequest: '1',
+    }).toString()}`;
 
     const title = category ? `${booking.carNumber} [${category}] 재촬영/수정 요청` : `${booking.carNumber} 재촬영/수정 요청`;
     const detail = message?.trim() || '사진 확인 후 재촬영/수정 부탁드립니다.';
-    const text = `[카비어] ${title}\n${detail}${reportLink ? `\n확인하기: ${reportLink}` : ''}`;
+    const text = `[카비어] ${title}\n${detail}\n앱에서 열기: ${appLink}`;
 
     await this.solapiService.sendSms(driver.phone, text);
     return { ok: true, sentTo: driver.phone, driverName: driver.name };
