@@ -84,7 +84,7 @@ export class BookingsService {
     });
   }
 
-  async findAll(source?: string): Promise<(Booking & { carHash?: string | null })[]> {
+  async findAll(source?: string): Promise<(Booking & { carHash?: string | null; firstCompletedAt?: Date | null })[]> {
     const bookings = await this.bookingRepository.find({
       where: source ? { source } : {},
       order: { createdAt: 'DESC' },
@@ -95,11 +95,16 @@ export class BookingsService {
 
     const inspections = await this.inspectionRepository.find({
       where: { bookingId: In(completedIds) },
-      select: ['bookingId', 'carHash'],
+      select: ['bookingId', 'carHash', 'firstCompletedAt'],
     });
     const hashMap = new Map(inspections.map(i => [i.bookingId, i.carHash]));
+    const firstCompletedMap = new Map(inspections.map(i => [i.bookingId, i.firstCompletedAt]));
 
-    return bookings.map(b => ({ ...b, carHash: hashMap.get(b.id) ?? null }));
+    return bookings.map(b => ({
+      ...b,
+      carHash: hashMap.get(b.id) ?? null,
+      firstCompletedAt: firstCompletedMap.get(b.id) ?? null,
+    }));
   }
 
   async update(id: number, updateData: Partial<Booking> & { cancelReason?: string; cancelledByDriver?: boolean }): Promise<Booking> {
