@@ -1,8 +1,9 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, NotFoundException } from '@nestjs/common';
 import { StoreItemsService } from './store-items.service';
 import { StoreItem } from './entities/store-item.entity';
 import { SolapiService } from '../solapi/solapi.service';
 import { BlurService } from '../blur/blur.service';
+import { InternalKeyGuard } from './internal-key.guard';
 
 @Controller('v1/admin/store-items')
 export class StoreItemsController {
@@ -13,6 +14,7 @@ export class StoreItemsController {
   ) {}
 
   @Get()
+  @UseGuards(InternalKeyGuard)
   findAll() {
     return this.service.findAll();
   }
@@ -23,6 +25,7 @@ export class StoreItemsController {
   }
 
   @Get(':id')
+  @UseGuards(InternalKeyGuard)
   findOne(@Param('id') id: string) {
     return this.service.findOne(Number(id));
   }

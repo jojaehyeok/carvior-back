@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { User } from './entities/user.entity';
@@ -116,5 +116,18 @@ export class UsersService {
 
   async findAdmins(): Promise<User[]> {
     return this.repo.find({ where: { role: 'admin' }, order: { createdAt: 'DESC' } });
+  }
+
+  async findDealers(): Promise<User[]> {
+    return this.repo.find({ where: { role: 'dealer' }, order: { createdAt: 'DESC' } });
+  }
+
+  async updateDealerStatus(id: number, status: string): Promise<User> {
+    const ALLOWED = ['none', 'pending', 'approved', 'rejected'];
+    if (!ALLOWED.includes(status)) throw new BadRequestException('잘못된 상태값입니다.');
+    const user = await this.repo.findOneBy({ id });
+    if (!user) throw new UnauthorizedException('유저를 찾을 수 없습니다.');
+    user.dealerStatus = status;
+    return this.repo.save(user);
   }
 }

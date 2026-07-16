@@ -1,8 +1,9 @@
-import { Controller, Post, Body, Get, Query, Patch, Param, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Post, Body, Get, Query, Patch, Param, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { UsersService } from './users.service';
 import { S3Service } from '../s3/s3.service';
+import { InternalKeyGuard } from '../store-items/internal-key.guard';
 
 @Controller('v1/users')
 export class UsersController {
@@ -49,8 +50,20 @@ export class UsersController {
   }
 
   @Patch(':id/role')
+  @UseGuards(InternalKeyGuard)
   updateRole(@Param('id') id: string, @Body() body: { role: string }) {
     return this.svc.updateRole(Number(id), body.role);
+  }
+
+  @Get('dealers')
+  findDealers() {
+    return this.svc.findDealers();
+  }
+
+  @Patch(':id/dealer-status')
+  @UseGuards(InternalKeyGuard)
+  updateDealerStatus(@Param('id') id: string, @Body() body: { dealerStatus: string }) {
+    return this.svc.updateDealerStatus(Number(id), body.dealerStatus);
   }
 
   @Patch(':id/password')
