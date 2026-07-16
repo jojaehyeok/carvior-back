@@ -7,7 +7,7 @@ import * as http from 'http';
 import * as fs from 'fs';
 import * as path from 'path';
 
-interface Box { xmin: number; ymin: number; xmax: number; ymax: number }
+interface Box { xmin: number; ymin: number; xmax: number; ymax: number; kind: 'plate' | 'face' }
 
 @Injectable()
 export class BlurService implements OnModuleInit {
@@ -52,7 +52,7 @@ export class BlurService implements OnModuleInit {
   // 방향이 정규화된(=올바르게 회전된) buffer를 그대로 전송 — URL로 다시 받으면
   // Python 쪽이 원본을 재요청해서 방향 보정 전 픽셀 기준으로 박스를 계산해버림.
   // 서버 Node 버전에 따라 전역 fetch/FormData/Blob이 없을 수 있어 http 모듈로 직접 multipart 조립.
-  private detectPlatesLocal(imageBuffer: Buffer): Promise<Box[]> {
+  private detectBoxesLocal(imageBuffer: Buffer, endpoint: string, label: string): Promise<Omit<Box, 'kind'>[]> {
     return new Promise((resolve) => {
       const boundary = `----carviorBoundary${Date.now()}${Math.random().toString(16).slice(2)}`;
       const head = Buffer.from(
@@ -65,7 +65,7 @@ export class BlurService implements OnModuleInit {
         {
           hostname: '127.0.0.1',
           port: 8001,
-          path: '/detect-plates',
+          path: endpoint,
           method: 'POST',
           timeout: 25_000,
           headers: {
@@ -79,21 +79,21 @@ export class BlurService implements OnModuleInit {
           res.on('end', () => {
             try {
               const json = JSON.parse(Buffer.concat(chunks).toString());
-              if (json.error) this.logger.warn(`[Blur] 번호판 감지 오류: ${json.error}`);
-              resolve(Array.isArray(json.boxes) ? (json.boxes as Box[]) : []);
+              if (json.error) this.logger.warn(`[Blur] ${label} 감지 오류: ${json.error}`);
+              resolve(Array.isArray(json.boxes) ? json.boxes : []);
             } catch (e) {
-              this.logger.error(`[Blur] 번호판 감지 응답 파싱 실패: ${(e as Error).message}`);
+              this.logger.error(`[Blur] ${label} 감지 응답 파싱 실패: ${(e as Error).message}`);
               resolve([]);
             }
           });
         },
       );
       req.on('error', (e) => {
-        this.logger.error(`[Blur] 번호판 감지 요청 실패: ${e.message}`);
+        this.logger.error(`[Blur] ${label} 감지 요청 실패: ${e.message}`);
         resolve([]);
       });
       req.on('timeout', () => {
-        this.logger.error('[Blur] 번호판 감지 요청 타임아웃 (classify-api 과부하 의심)');
+        this.logger.error(`[Blur] ${label} 감지 요청 타임아웃 (classify-api 과부하 의심)`);
         req.destroy();
         resolve([]);
       });
@@ -102,12 +102,15 @@ export class BlurService implements OnModuleInit {
     });
   }
 
-  private async detectFaces(_imageBuffer: Buffer): Promise<Box[]> {
-    return [];
+  // 얼굴은 별도 학습 없이 공개 YOLOv8n(사람 클래스)로 감지 → 머리 부근만 좁혀서 blur 전용으로 처리
+  private async detectFaces(imageBuffer: Buffer): Promise<Box[]> {
+    const boxes = await this.detectBoxesLocal(imageBuffer, '/detect-faces', '얼굴');
+    return boxes.map((b) => ({ ...b, kind: 'face' as const }));
   }
 
   private async detectPlates(imageBuffer: Buffer): Promise<Box[]> {
-    return this.detectPlatesLocal(imageBuffer).catch(() => []);
+    const boxes = await this.detectBoxesLocal(imageBuffer, '/detect-plates', '번호판');
+    return boxes.map((b) => ({ ...b, kind: 'plate' as const }));
   }
 
   private async blurRegions(imageBuffer: Buffer, boxes: Box[]): Promise<Buffer> {
@@ -129,7 +132,8 @@ export class BlurService implements OnModuleInit {
           const height = Math.min(imgH - top,  Math.ceil(box.ymax - box.ymin));
           if (width < 2 || height < 2) return null;
 
-          if (logoBuffer) {
+          // 사람(얼굴)은 로고 대신 항상 블러만 — 로고를 넣으면 진단사진을 너무 많이 가림
+          if (box.kind === 'plate' && logoBuffer) {
             const overlay = await sharp(logoBuffer)
               .resize(width, height, { fit: 'fill' })
               .flatten({ background: { r: 255, g: 255, b: 255 } })

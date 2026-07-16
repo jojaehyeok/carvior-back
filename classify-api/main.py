@@ -312,6 +312,61 @@ def _find_plate_boxes(image: Image.Image):
     return boxes
 
 
+# ── 사람(얼굴) 감지 — 커스텀 학습 없이 공개 YOLOv8n(COCO) 사용 ──────────────────
+@app.post("/detect-faces")
+async def detect_faces(
+    url: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None),
+):
+    """사람 bounding box 중 머리 부근만 좁혀서 반환 → [{xmin,ymin,xmax,ymax}, ...]"""
+    try:
+        image = await load_image_from_source(file, url)
+        boxes = _find_face_boxes(image)
+        return {"boxes": boxes}
+    except Exception as e:
+        return {"boxes": [], "error": str(e)}
+
+
+_yolo_person_model = None
+
+def _get_yolo_person_model():
+    global _yolo_person_model
+    if _yolo_person_model is not None:
+        return _yolo_person_model
+    from ultralytics import YOLO
+    # 로컬에 없으면 ultralytics가 최초 1회 자동 다운로드함 (커스텀 학습 불필요)
+    _yolo_person_model = YOLO("yolov8n.pt")
+    return _yolo_person_model
+
+
+def _find_face_boxes(image: Image.Image):
+    """사람 전신 박스에서 머리 부근(상단 25%, 폭 60%)만 좁혀서 반환.
+    전신을 다 가리면 진단사진이 너무 많이 가려지므로 번호판 정도 크기로 제한."""
+    try:
+        model = _get_yolo_person_model()
+    except Exception:
+        return []
+
+    import numpy as np
+    img_rgb = np.array(image.convert("RGB"))
+    results = model(img_rgb, verbose=False, conf=0.35, classes=[0])  # COCO 0 = person
+
+    boxes = []
+    for r in results:
+        for box in r.boxes:
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+            w = x2 - x1
+            h = y2 - y1
+            head_h = h * 0.25
+            head_w = w * 0.6
+            cx = (x1 + x2) / 2
+            boxes.append({
+                "xmin": int(cx - head_w / 2), "ymin": int(y1),
+                "xmax": int(cx + head_w / 2), "ymax": int(y1 + head_h),
+            })
+    return boxes
+
+
 # ── 헬퍼 ───────────────────────────────────────────────────────────────────────
 _LABEL_MAP = {
     "dashboard": "계기판", "registration": "자동차등록증", "vin": "보험이력",
