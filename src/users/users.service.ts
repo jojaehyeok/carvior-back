@@ -130,4 +130,22 @@ export class UsersService {
     user.dealerStatus = status;
     return this.repo.save(user);
   }
+
+  async applyDealer(id: number, data: {
+    dealerLicenseUrl: string;
+    businessRegUrl?: string;
+    businessNumber?: string;
+    companyName?: string;
+  }): Promise<User> {
+    if (!data.dealerLicenseUrl) throw new BadRequestException('자동차 매매종사원증을 업로드해주세요.');
+    const user = await this.repo.findOneBy({ id });
+    if (!user) throw new UnauthorizedException('유저를 찾을 수 없습니다.');
+    user.role             = 'dealer';
+    user.dealerLicenseUrl = data.dealerLicenseUrl;
+    if (data.businessRegUrl) user.businessRegUrl = data.businessRegUrl;
+    if (data.businessNumber) user.businessNumber = data.businessNumber;
+    if (data.companyName)    user.companyName    = data.companyName;
+    user.dealerStatus = 'pending';
+    return this.repo.save(user);
+  }
 }

@@ -66,6 +66,14 @@ export class UsersController {
     return this.svc.updateDealerStatus(Number(id), body.dealerStatus);
   }
 
+  @Patch(':id/apply-dealer')
+  @UseGuards(InternalKeyGuard)
+  applyDealer(@Param('id') id: string, @Body() body: {
+    dealerLicenseUrl: string; businessRegUrl?: string; businessNumber?: string; companyName?: string;
+  }) {
+    return this.svc.applyDealer(Number(id), body);
+  }
+
   @Patch(':id/password')
   async updatePassword(@Param('id') id: string, @Body() body: { password: string }) {
     await this.svc.updatePassword(Number(id), body.password);
