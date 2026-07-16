@@ -122,8 +122,10 @@ export class SolapiService {
     async sendSms(to: string, text: string) {
         try {
             const senderNumber = this.configService.get<string>('SOLAPI_SENDER_NUMBER');
+            // SMS는 90byte 제한(한글 EUC-KR 기준 약 2byte/자) — 초과하면 접수 자체가 거부됨.
+            // LMS는 비용이 더 들어서 일단은 안 씀 — 호출부에서 90byte 안으로 메시지를 줄여서 보내야 함
             await this.messageService.sendOne({ to, from: senderNumber, type: 'SMS', text });
-            console.log(`[SMS 발송] → ${to}`);
+            console.log(`[SMS 발송] → ${to} (${Buffer.byteLength(text, 'utf-8')}byte)`);
         } catch (error) {
             console.error('[SMS 발송 실패]', JSON.stringify(error, null, 2));
             // 조용히 삼키면 호출부가 "성공"으로 착각함 — 실패는 호출부가 판단해서 처리하도록 다시 던짐

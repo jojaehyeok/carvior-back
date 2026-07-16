@@ -252,21 +252,17 @@ export class InspectionService {
     const driver = await this.driversService.findByAccountId(booking.assignedDriverId);
     if (!driver?.phone) throw new BadRequestException('진단사 연락처를 찾을 수 없습니다.');
 
-    // 웹 리포트(읽기전용)가 아니라 앱의 수정화면으로 바로 열리도록 커스텀 스킴 딥링크 사용
-    // (app.json에 scheme: "chavatarapp" 이미 등록돼 있어 별도 App Links 설정 불필요)
-    // adminRequest=1: 관리자가 명시적으로 재촬영/수정을 요청한 딥링크라는 표시.
-    // 진단사 본인 2시간 제한과 무관하게 편집 가능 — 매니저가 이 링크를 받아
-    // 자기 업무폰에서 열어도 동일하게 편집할 수 있음
-    const appLink = `chavatarapp://CarEvaluationSheet?${new URLSearchParams({
-      requestId: String(bookingId),
-      carNumber: booking.carNumber,
-      mode: 'edit',
-      adminRequest: '1',
-    }).toString()}`;
-
-    const title = category ? `${booking.carNumber} [${category}] 재촬영/수정 요청` : `${booking.carNumber} 재촬영/수정 요청`;
-    const detail = message?.trim() || '사진 확인 후 재촬영/수정 부탁드립니다.';
-    const text = `[카비어] ${title}\n${detail}\n앱에서 열기: ${appLink}`;
+    // 앱 딥링크(chavatarapp://...)는 길어서 SMS 90byte 제한을 넘겨 접수 자체가 거부됨.
+    // 알림톡 템플릿 승인 전까지는 링크 없이 짧은 안내문만 SMS로 보내고,
+    // 진단사는 앱에서 직접 "진단 내역 보기 → 수정하기"로 들어가서 확인
+    const title = category ? `${booking.carNumber} [${category}] 재촬영요청` : `${booking.carNumber} 재촬영요청`;
+    let detail = message?.trim() || '앱에서 확인 후 수정 부탁드립니다.';
+    let text = `[카비어] ${title} ${detail}`;
+    // 90byte(EUC-KR 기준) 안전마진 — 넘으면 상세 문구부터 한 글자씩 잘라냄
+    while (Buffer.byteLength(text, 'utf-8') > 88 && detail.length > 1) {
+      detail = detail.slice(0, -1);
+      text = `[카비어] ${title} ${detail}…`;
+    }
 
     await this.solapiService.sendSms(driver.phone, text);
     return { ok: true, sentTo: driver.phone, driverName: driver.name };
