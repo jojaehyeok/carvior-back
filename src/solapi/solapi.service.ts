@@ -126,6 +126,8 @@ export class SolapiService {
             console.log(`[SMS 발송] → ${to}`);
         } catch (error) {
             console.error('[SMS 발송 실패]', JSON.stringify(error, null, 2));
+            // 조용히 삼키면 호출부가 "성공"으로 착각함 — 실패는 호출부가 판단해서 처리하도록 다시 던짐
+            throw error;
         }
     }
 
