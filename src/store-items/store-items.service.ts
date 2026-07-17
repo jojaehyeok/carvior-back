@@ -106,6 +106,20 @@ export class StoreItemsService {
       const exists = await this.repo.findOne({ where: { carNumber: data.carNumber } });
       if (exists) throw new ConflictException('이미 등록된 차량번호입니다.');
     }
+
+    // 셀프등록(진단 연계 없이 판매자가 직접 등록)은 firstCompletedAt이 절대 안 생기므로
+    // findAll()의 자동게시 로직을 못 타고 pending에 영원히 머무름 — 등록 즉시 active로 시작
+    if (data.selfRegistered) {
+      const now = new Date();
+      const item = this.repo.create({
+        ...data,
+        status: 'active',
+        auctionStartAt: now,
+        auctionEndAt: computeAuctionEndAt(now),
+      });
+      return this.repo.save(item);
+    }
+
     const item = this.repo.create({ ...data, status: 'pending' });
     return this.repo.save(item);
   }

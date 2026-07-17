@@ -104,6 +104,11 @@ export class StoreItem {
   @Column({ nullable: true })
   sellerContact: string;
 
+  // 진단(bookingId) 연계 없이 판매자가 직접 등록한 매물인지 여부.
+  // true면 findAll()의 자동게시 로직(진단완료 기준)을 타지 않고 등록 즉시 경매가 시작됨.
+  @Column({ default: false })
+  selfRegistered: boolean;
+
   // 경매 시작/마감 시각 — 자동게시(또는 관리자 등록) 시점에 세팅.
   // 마감은 기본 48시간, 그 구간에 주말(토/일)이 걸치면 72시간으로 자동 연장.
   @Column({ type: 'timestamp', nullable: true })

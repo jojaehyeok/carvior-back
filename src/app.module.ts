@@ -20,6 +20,7 @@ import { UsersModule } from './users/users.module';
 import { ProposalsModule } from './proposals/proposals.module';
 import { OcrModule } from './ocr/ocr.module';
 import { DashboardModule } from './dashboard/dashboard.module';
+import { BidsModule } from './bids/bids.module';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     ProposalsModule,
     OcrModule,
     DashboardModule,
+    BidsModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, SolapiService, S3Service],
