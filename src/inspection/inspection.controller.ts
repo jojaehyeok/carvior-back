@@ -88,8 +88,11 @@ export class InspectionController {
     @Param('bookingId') bookingId: string,
     @Body('message') message?: string,
     @Body('category') category?: string,
+    @Body('recipientDriverId') recipientDriverId?: number,
   ) {
-    return this.inspectionService.requestUpdateFromEvaluator(parseInt(bookingId), message, category);
+    return this.inspectionService.requestUpdateFromEvaluator(
+      parseInt(bookingId), message, category, recipientDriverId ? Number(recipientDriverId) : undefined,
+    );
   }
 
   // 6. 관리자(진단매니저) → 손상부위 웹 수정

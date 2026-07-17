@@ -260,13 +260,19 @@ export class InspectionService {
    * 진단사 본인 수정마감(2h) 이후에도 관리자가 사진/데이터 이상을 발견하면
    * 진단사에게 재촬영·수정을 요청할 수 있도록.
    */
-  async requestUpdateFromEvaluator(bookingId: number, message?: string, category?: string) {
+  // recipientDriverId를 주면 원 담당 진단사 대신 그 진단사(예: 진단매니저 업무폰 계정)에게 보냄 —
+  // 진단매니저가 자기 폰으로 수정하려면 원 평가사가 아닌 자기 계정으로 링크를 받아야 하기 때문
+  async requestUpdateFromEvaluator(bookingId: number, message?: string, category?: string, recipientDriverId?: number) {
     const booking = await this.bookingRepository.findOne({ where: { id: bookingId } });
     if (!booking) throw new BadRequestException('예약을 찾을 수 없습니다.');
-    if (!booking.assignedDriverId) throw new BadRequestException('배정된 진단사가 없습니다.');
 
-    const driver = await this.driversService.findByAccountId(booking.assignedDriverId);
-    if (!driver?.phone) throw new BadRequestException('진단사 연락처를 찾을 수 없습니다.');
+    const driver = recipientDriverId
+      ? await this.driversService.findById(recipientDriverId)
+      : booking.assignedDriverId
+        ? await this.driversService.findByAccountId(booking.assignedDriverId)
+        : null;
+    if (!driver) throw new BadRequestException('보낼 대상(진단사/매니저)을 찾을 수 없습니다.');
+    if (!driver?.phone) throw new BadRequestException('연락처를 찾을 수 없습니다.');
 
     // 앱 딥링크(chavatarapp://...)는 길어서 SMS 90byte 제한을 넘겨 접수 자체가 거부됨.
     // 알림톡 템플릿 승인 전까지는 링크 없이 짧은 안내문만 SMS로 보내고,
