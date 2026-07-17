@@ -20,7 +20,7 @@ export class StoreItemsService {
 
   async findAll(): Promise<any[]> {
     const rows = await this.dataSource.query(`
-      SELECT si.*, i.carHash, i.firstCompletedAt,
+      SELECT si.*, i.carHash, i.firstCompletedAt, i.checkedDamages,
         CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
       FROM store_items si
       LEFT JOIN inspections i ON i.bookingId = si.bookingId
@@ -28,6 +28,21 @@ export class StoreItemsService {
         CASE WHEN i.carHash IS NOT NULL THEN 0 ELSE 1 END,
         si.registeredAt DESC
     `);
+
+    // store_items.accident은 등록 시 수동 입력값이라 실제 진단 결과(checkedDamages)와
+    // 어긋날 수 있음 — 실제 손상마커가 하나라도 있으면 accident를 무조건 true로 덮어써서
+    // "완전무사고"라고 잘못 표시되는 일이 없게 함(진단 데이터가 항상 최종 근거)
+    for (const r of rows) {
+      if (r.checkedDamages) {
+        try {
+          const damages = typeof r.checkedDamages === 'string' ? JSON.parse(r.checkedDamages) : r.checkedDamages;
+          if (Array.isArray(damages) && damages.some((d: any) => Array.isArray(d) && d.length > 0)) {
+            r.accident = true;
+          }
+        } catch { /* 파싱 실패 시 기존 accident 값 유지 */ }
+      }
+      delete r.checkedDamages;
+    }
 
     const now = new Date();
 
