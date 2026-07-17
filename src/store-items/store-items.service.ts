@@ -7,8 +7,8 @@ import { computeAuctionEndAt } from './auction-time.util';
 import { ComplianceService } from '../compliance/compliance.service';
 
 // 진단완료(firstCompletedAt) 후 이 시간이 지나야 스마트옥션에 자동 게시됨
-// (그 사이 진단사 수정 2h, 매니저 검토 2h 구간)
-const AUTO_PUBLISH_DELAY_MS = 4 * 60 * 60 * 1000;
+// (그 사이 진단사 자체수정 2h + 진단매니저 검수·수정 4h = 총 6h, 스펙을 두 번 검수 후 게시)
+const AUTO_PUBLISH_DELAY_MS = 6 * 60 * 60 * 1000;
 
 @Injectable()
 export class StoreItemsService {
