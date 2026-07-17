@@ -21,6 +21,7 @@ import { ProposalsModule } from './proposals/proposals.module';
 import { OcrModule } from './ocr/ocr.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { BidsModule } from './bids/bids.module';
+import { ComplianceModule } from './compliance/compliance.module';
 
 @Module({
   imports: [
@@ -68,6 +69,7 @@ import { BidsModule } from './bids/bids.module';
     OcrModule,
     DashboardModule,
     BidsModule,
+    ComplianceModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, SolapiService, S3Service],

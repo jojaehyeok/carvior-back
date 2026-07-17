@@ -8,6 +8,7 @@ import { Booking } from 'src/bookings/entities/booking.entity';
 import { Inspection } from './entities/inspection.entity';
 import { SolapiService } from 'src/solapi/solapi.service';
 import { DriversService } from 'src/drivers/drivers.service';
+import { ComplianceService } from 'src/compliance/compliance.service';
 
 @Injectable()
 export class InspectionService {
@@ -17,6 +18,7 @@ export class InspectionService {
     private configService: ConfigService,
     private readonly solapiService: SolapiService,
     private readonly driversService: DriversService,
+    private readonly complianceService: ComplianceService,
     @InjectRepository(Inspection)
     private readonly inspectionRepository: Repository<Inspection>,
     @InjectRepository(Booking)
@@ -232,6 +234,20 @@ export class InspectionService {
       }, booking?.source);
 
       console.log(`[Success] ID ${bId} 모든 진단 데이터 저장 완료`);
+
+      // 자동차관리법 시행규칙 제144조의3 — 등록증 사진으로 3년 보관 기록 스냅샷 생성.
+      // OCR·저장 실패해도 진단 저장 자체는 이미 끝났으므로 절대 블로킹하지 않음
+      if (inspection.regImage) {
+        this.complianceService
+          .captureFromRegistrationImage({
+            imageUrl: inspection.regImage,
+            bookingId: bId,
+            carHash: savedResult.carHash,
+            plateNumberFallback: inspection.carNumber,
+          })
+          .catch(() => { /* 로그는 서비스 내부에서 이미 남김 */ });
+      }
+
       return { success: true, id: savedResult.id };
     } catch (error) {
       console.error('DB Save Error:', error);

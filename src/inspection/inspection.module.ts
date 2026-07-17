@@ -6,11 +6,13 @@ import { Inspection } from './entities/inspection.entity';
 import { Booking } from 'src/bookings/entities/booking.entity';
 import { SolapiService } from 'src/solapi/solapi.service';
 import { DriversModule } from 'src/drivers/drivers.module';
+import { ComplianceModule } from 'src/compliance/compliance.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Inspection, Booking]),
     DriversModule,
+    ComplianceModule,
   ],
   controllers: [InspectionController],
   providers: [InspectionService, SolapiService],

@@ -4,6 +4,7 @@ import { InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { StoreItem } from './entities/store-item.entity';
 import { computeAuctionEndAt } from './auction-time.util';
+import { ComplianceService } from '../compliance/compliance.service';
 
 // 진단완료(firstCompletedAt) 후 이 시간이 지나야 스마트옥션에 자동 게시됨
 // (그 사이 진단사 수정 2h, 매니저 검토 2h 구간)
@@ -16,6 +17,7 @@ export class StoreItemsService {
     private readonly repo: Repository<StoreItem>,
     @InjectDataSource()
     private readonly dataSource: DataSource,
+    private readonly complianceService: ComplianceService,
   ) {}
 
   async findAll(): Promise<any[]> {
@@ -110,8 +112,25 @@ export class StoreItemsService {
     // 셀프등록도 일반 매물과 동일하게 pending으로 시작 — 대시보드의 기존 "입금확인 후
     // 승인" 게이트(store-list.tsx)를 그대로 거쳐야 함. 여기서 바로 active로 만들면
     // 관리자 승인 없이 아무나 등록한 매물이 즉시 노출돼버림.
+    const registrationOcr = (data as any).registrationOcr;
+    delete (data as any).registrationOcr; // StoreItem 컬럼이 아니므로 저장 전에 제거
+
     const item = this.repo.create({ ...data, status: 'pending' });
-    return this.repo.save(item);
+    const saved = await this.repo.save(item);
+
+    // 자동차관리법 시행규칙 제144조의3 — 셀프등록 시 프론트에서 이미 스캔해둔 등록증
+    // OCR 결과가 있으면 3년 보관 기록으로 스냅샷. 실패해도 매물 등록은 이미 끝남.
+    if (registrationOcr) {
+      this.complianceService
+        .captureFromParsedOcr({
+          ocr: registrationOcr,
+          storeItemId: saved.id,
+          plateNumberFallback: saved.carNumber,
+        })
+        .catch(() => { /* 로그는 서비스 내부에서 이미 남김 */ });
+    }
+
+    return saved;
   }
 
   async update(id: number, data: Partial<StoreItem>): Promise<StoreItem> {

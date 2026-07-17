@@ -167,6 +167,12 @@ export class OcrService {
     // ── 연료 ─────────────────────────────────────────────────────────
     const fuelKey = Object.keys(FUEL_MAP).find(k => blob.includes(k));
 
+    // ── 제작연월일 (최초등록일과 별개 필드 — 시행규칙 제144조의3 보관 대상) ──
+    const md = /제작연월일?[^0-9]*(\d{4})\s*[.년-]\s*(\d{1,2})\s*[.월-]\s*(\d{1,2})/.exec(blob);
+
+    // ── 검사유효기간 (시작~끝 날짜 범위로 표기되는 경우가 많음) ────────────
+    const inspRange = /검사유효기간[^0-9]*(\d{4}[.-]\d{1,2}[.-]\d{1,2})\s*[~-]\s*(\d{4}[.-]\d{1,2}[.-]\d{1,2})/.exec(blob);
+
     return {
       plateNumber:      plate,
       ownerName:        this.findAfter(texts, ['성명(명칭)', '성명', '성 명']),
@@ -184,6 +190,13 @@ export class OcrService {
       // 자동차등록증은 '사용본거지' 라벨 사용
       ownerAddress:     this.findAfter(texts, ['사용본거지', '차사용본거지', '주소', '주 소']),
       mileage,
+      // ── 자동차관리법 시행규칙 제144조의3 보관 대상 추가 필드 (best-effort — 등록증 서식에
+      //    따라 라벨 위치가 달라 못 잡을 수 있음. rawOcr._rawTexts로 원본을 항상 같이 보관함) ──
+      vehicleType:      this.findAfter(texts, ['차종', '자동차종류', '종별', '구분']),
+      usageType:        this.findAfter(texts, ['용도']),
+      engineType:       this.findAfter(texts, ['원동기형식', '원동기 형식', '형식']),
+      manufactureDate:  md ? `${md[1]}-${md[2].padStart(2,'0')}-${md[3].padStart(2,'0')}` : null,
+      inspectionValidUntil: inspRange ? inspRange[2].replace(/\./g, '-') : null,
     };
   }
 

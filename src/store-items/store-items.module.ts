@@ -5,9 +5,10 @@ import { StoreItemsService } from './store-items.service';
 import { StoreItemsController } from './store-items.controller';
 import { SolapiService } from '../solapi/solapi.service';
 import { BlurModule } from '../blur/blur.module';
+import { ComplianceModule } from '../compliance/compliance.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([StoreItem]), BlurModule],
+  imports: [TypeOrmModule.forFeature([StoreItem]), BlurModule, ComplianceModule],
   controllers: [StoreItemsController],
   providers: [StoreItemsService, SolapiService],
   exports: [StoreItemsService],
