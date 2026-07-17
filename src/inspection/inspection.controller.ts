@@ -92,6 +92,16 @@ export class InspectionController {
     return this.inspectionService.requestUpdateFromEvaluator(parseInt(bookingId), message, category);
   }
 
+  // 6. 관리자(진단매니저) → 손상부위 웹 수정
+  @Patch(':bookingId/damages')
+  @UseGuards(InternalKeyGuard)
+  updateDamages(
+    @Param('bookingId') bookingId: string,
+    @Body('checkedDamages') checkedDamages: string[][],
+  ) {
+    return this.inspectionService.updateDamages(parseInt(bookingId), checkedDamages);
+  }
+
   private formatReport(inspection: any) {
     return {
       completedAt: inspection.completedAt,

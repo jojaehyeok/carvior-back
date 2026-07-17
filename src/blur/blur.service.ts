@@ -180,6 +180,36 @@ export class BlurService implements OnModuleInit {
     return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}?v=${Date.now()}`;
   }
 
+  // 관리자가 화면에서 직접 지정한 영역을 블러 처리 — 자동감지가 라벨을 놓쳤을 때
+  // 수동으로 보정하는 용도. regions는 미리보기 이미지 기준 0~1 비율 좌표.
+  // kind는 항상 'face' 취급 → 로고 없이 순수 블러만 적용(established 규칙과 동일).
+  async manualBlurRegions(
+    imageUrl: string,
+    regions: { xFrac: number; yFrac: number; wFrac: number; hFrac: number }[],
+  ): Promise<string> {
+    if (!regions.length) return imageUrl;
+    const effectiveUrl = imageUrl.includes('.amazonaws.com/store/')
+      ? imageUrl.replace('.amazonaws.com/store/', '.amazonaws.com/')
+      : imageUrl;
+
+    const rawBuf = await this.fetchBuffer(effectiveUrl);
+    const buf = await sharp(rawBuf).rotate().toBuffer();
+    const meta = await sharp(buf).metadata();
+    const imgW = meta.width ?? 1;
+    const imgH = meta.height ?? 1;
+
+    const boxes: Box[] = regions.map((r) => ({
+      xmin: r.xFrac * imgW,
+      ymin: r.yFrac * imgH,
+      xmax: (r.xFrac + r.wFrac) * imgW,
+      ymax: (r.yFrac + r.hFrac) * imgH,
+      kind: 'face',
+    }));
+
+    const blurred = await this.blurRegions(buf, boxes);
+    return this.reuploadToS3(blurred, effectiveUrl);
+  }
+
   async blurPhotoUrls(urls: string[]): Promise<string[]> {
     if (!urls.length) return [];
 

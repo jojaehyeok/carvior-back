@@ -313,6 +313,16 @@ export class InspectionService {
     return { success: true };
   }
 
+  /**
+   * 6. 관리자(진단매니저) 웹 손상부위 수정 — 앱 마킹 결과를 대시보드에서 그대로 덮어씀
+   */
+  async updateDamages(bookingId: number, checkedDamages: string[][]) {
+    const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
+    if (!inspection) throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
+    inspection.checkedDamages = checkedDamages;
+    return this.inspectionRepository.save(inspection);
+  }
+
   async getInspectionByBookingId(bookingId: number) {
     const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
     if (!inspection) throw new BadRequestException('진단 내역을 찾을 수 없습니다.');

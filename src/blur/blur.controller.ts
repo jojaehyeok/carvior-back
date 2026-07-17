@@ -56,4 +56,14 @@ export class BlurController {
 
     return { ok: true, message: `${urls.length}장 블러 처리를 시작했습니다.` };
   }
+
+  // 자동감지가 라벨을 놓친 사진을 관리자가 직접 영역 지정해서 수동 블러
+  @Post('manual-region')
+  async blurManualRegion(@Body() body: {
+    imageUrl: string;
+    regions: { xFrac: number; yFrac: number; wFrac: number; hFrac: number }[];
+  }): Promise<{ ok: boolean; url: string }> {
+    const url = await this.blurService.manualBlurRegions(body.imageUrl, body.regions ?? []);
+    return { ok: true, url };
+  }
 }
