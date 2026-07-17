@@ -107,19 +107,9 @@ export class StoreItemsService {
       if (exists) throw new ConflictException('이미 등록된 차량번호입니다.');
     }
 
-    // 셀프등록(진단 연계 없이 판매자가 직접 등록)은 firstCompletedAt이 절대 안 생기므로
-    // findAll()의 자동게시 로직을 못 타고 pending에 영원히 머무름 — 등록 즉시 active로 시작
-    if (data.selfRegistered) {
-      const now = new Date();
-      const item = this.repo.create({
-        ...data,
-        status: 'active',
-        auctionStartAt: now,
-        auctionEndAt: computeAuctionEndAt(now),
-      });
-      return this.repo.save(item);
-    }
-
+    // 셀프등록도 일반 매물과 동일하게 pending으로 시작 — 대시보드의 기존 "입금확인 후
+    // 승인" 게이트(store-list.tsx)를 그대로 거쳐야 함. 여기서 바로 active로 만들면
+    // 관리자 승인 없이 아무나 등록한 매물이 즉시 노출돼버림.
     const item = this.repo.create({ ...data, status: 'pending' });
     return this.repo.save(item);
   }
@@ -127,6 +117,16 @@ export class StoreItemsService {
   async update(id: number, data: Partial<StoreItem>): Promise<StoreItem> {
     const item = await this.repo.findOneBy({ id });
     if (!item) throw new NotFoundException(`스토어 아이템 ${id}를 찾을 수 없습니다.`);
+
+    // pending → active로 승인되는 시점(진단완료 자동게시든, 셀프등록 관리자 승인이든)에
+    // 경매 시작/마감 시각이 아직 없으면 그때 처음 세팅 — "등록일"이 아니라 "승인일" 기준으로
+    // 48h/72h 카운트가 시작되게 함
+    if (data.status === 'active' && item.status !== 'active' && !item.auctionStartAt) {
+      const now = new Date();
+      data.auctionStartAt = now;
+      data.auctionEndAt = computeAuctionEndAt(now);
+    }
+
     Object.assign(item, data);
     return this.repo.save(item);
   }
