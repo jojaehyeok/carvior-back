@@ -140,9 +140,10 @@ export class SolapiService {
             const pfId = this.configService.get<string>('SOLAPI_PF_ID');
 
             const recipients = ['01022856017'];
-            if (source === 'anyone-motors') {
-                recipients.push('01073709569');
-            }
+            // Anyone모터스 대표님 발송은 일단 보류 (요청으로 중단, 2026-07-19)
+            // if (source === 'anyone-motors') {
+            //     recipients.push('01073709569');
+            // }
 
             console.log('--- 진단완료 알림톡 발송 ---');
             console.log('to:', recipients);

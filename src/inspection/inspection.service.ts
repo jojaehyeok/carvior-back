@@ -2,6 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import sharp from 'sharp';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Booking } from 'src/bookings/entities/booking.entity';
@@ -34,6 +35,28 @@ export class InspectionService {
   }
 
   /**
+   * 진단 사진은 리포트/앱 그리드에서 항상 작게 표시되는데, 원본(수 MB짜리 카메라 사진)을
+   * 그대로 올리면 리포트 스크롤·앱 렌더링이 느려진다. 가로/세로 최대 1600px, JPEG 78%로
+   * 재인코딩해서 화질은 웹/앱 표시에 충분하면서 용량은 크게 줄인다. 실패하면 원본 그대로 사용.
+   */
+  private async compressImage(buffer: Buffer, mimetype?: string): Promise<{ buffer: Buffer; contentType: string }> {
+    if (mimetype && !mimetype.startsWith('image/')) {
+      return { buffer, contentType: mimetype };
+    }
+    try {
+      const out = await sharp(buffer)
+        .rotate() // EXIF 방향 정보 반영 후 굽기
+        .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 78 })
+        .toBuffer();
+      return { buffer: out, contentType: 'image/jpeg' };
+    } catch (e) {
+      console.error('[이미지 압축 실패, 원본 사용]', e instanceof Error ? e.message : e);
+      return { buffer, contentType: mimetype || 'image/jpeg' };
+    }
+  }
+
+  /**
    * 1. S3 이미지 업로드 (실제 파일 전송)
    */
   async uploadToS3(
@@ -46,23 +69,24 @@ export class InspectionService {
     const region = this.configService.get('AWS_S3_REGION') || 'ap-northeast-2';
     const safeCarNumber = carNumber || requestId;
     const timestamp = Date.now();
-    const safeFileName = file.originalname.replace(/\s/g, '_');
+    const safeFileName = file.originalname.replace(/\s/g, '_').replace(/\.\w+$/, '.jpg');
     const key = `${safeCarNumber}/${category}/${timestamp}_${safeFileName}`;
 
     const start = Date.now();
     console.log(`[S3 Upload] 시작 | key=${key} | size=${file.size}bytes | mime=${file.mimetype}`);
 
     try {
+      const { buffer, contentType } = await this.compressImage(file.buffer, file.mimetype);
       await this.s3Client.send(
         new PutObjectCommand({
           Bucket: bucket,
           Key: key,
-          Body: file.buffer,
-          ContentType: file.mimetype,
+          Body: buffer,
+          ContentType: contentType,
         }),
       );
       const elapsed = Date.now() - start;
-      console.log(`[S3 Upload] 완료 | key=${key} | 소요=${elapsed}ms`);
+      console.log(`[S3 Upload] 완료 | key=${key} | 원본=${file.size}bytes → 압축=${buffer.length}bytes | 소요=${elapsed}ms`);
       // 실제 접근 가능한 S3 URL 반환
       return `https://${bucket}.s3.${region}.amazonaws.com/${key}`;
     } catch (error) {
@@ -99,22 +123,23 @@ export class InspectionService {
       const chunkResults = await Promise.all(
         chunk.map(async (file) => {
           const timestamp = Date.now();
-          const safeFileName = file.originalname.replace(/\s/g, '_');
+          const safeFileName = file.originalname.replace(/\s/g, '_').replace(/\.\w+$/, '.jpg');
           const key = `${safeCarNumber}/${category}/${timestamp}_${safeFileName}`;
           const start = Date.now();
           console.log(`[S3 Batch] 업로드 시작 | key=${key} | size=${file.size}bytes`);
 
           try {
+            const { buffer, contentType } = await this.compressImage(file.buffer, file.mimetype);
             await this.s3Client.send(
               new PutObjectCommand({
                 Bucket: bucket,
                 Key: key,
-                Body: file.buffer,
-                ContentType: file.mimetype,
+                Body: buffer,
+                ContentType: contentType,
               }),
             );
             const elapsed = Date.now() - start;
-            console.log(`[S3 Batch] 완료 | key=${key} | 소요=${elapsed}ms`);
+            console.log(`[S3 Batch] 완료 | key=${key} | 원본=${file.size}bytes → 압축=${buffer.length}bytes | 소요=${elapsed}ms`);
             return {
               url: `https://${bucket}.s3.${region}.amazonaws.com/${key}`,
               originalname: file.originalname,
