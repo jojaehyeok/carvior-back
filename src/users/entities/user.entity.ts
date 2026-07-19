@@ -29,6 +29,11 @@ export class User {
   @Column({ default: 'user' })
   role: string; // 'user' | 'dealer' | 'admin'
 
+  // role='admin'인 경우: null이면 SUPER_ADMIN(전체 조회), 값이 있으면 COMPANY_ADMIN
+  // (chavata-dashboard 로그인 시 그 발주사 소속 의뢰만 보임 — booking.source와 매칭)
+  @Column({ nullable: true })
+  company: string | null;
+
   // 딜러 전용 서류
   @Column({ nullable: true })
   dealerLicenseUrl: string; // 자동차 매매종사원증

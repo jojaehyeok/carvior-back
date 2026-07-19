@@ -23,7 +23,7 @@ export class UsersController {
 
   @Post('register')
   register(@Body() body: {
-    email: string; password: string; name: string; phone?: string; role?: string;
+    email: string; password: string; name: string; phone?: string; role?: string; company?: string;
     dealerLicenseUrl?: string; businessRegUrl?: string; businessNumber?: string; companyName?: string;
   }) {
     return this.svc.register(body);

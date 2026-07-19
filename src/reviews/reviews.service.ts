@@ -1,13 +1,16 @@
 import { Injectable, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, Between } from 'typeorm';
+import { Repository, Between, In } from 'typeorm';
 import { Review } from './entities/review.entity';
+import { Booking } from '../bookings/entities/booking.entity';
 
 @Injectable()
 export class ReviewsService {
   constructor(
     @InjectRepository(Review)
     private readonly reviewRepository: Repository<Review>,
+    @InjectRepository(Booking)
+    private readonly bookingRepository: Repository<Booking>,
   ) {}
 
   async create(data: {
@@ -27,8 +30,19 @@ export class ReviewsService {
     return await this.reviewRepository.save(review);
   }
 
-  async findAll() {
-    return await this.reviewRepository.find({ order: { createdAt: 'DESC' } });
+  // source(발주사)를 주면 그 회사 의뢰의 리뷰만 반환 — Review엔 source가 없어서
+  // bookingId로 Booking을 먼저 조회해 매칭한다(대시보드 회사별 CS리뷰 스코프용).
+  async findAll(source?: string) {
+    if (!source) {
+      return await this.reviewRepository.find({ order: { createdAt: 'DESC' } });
+    }
+    const bookings = await this.bookingRepository.find({ where: { source }, select: ['id'] });
+    const bookingIds = bookings.map((b) => b.id);
+    if (bookingIds.length === 0) return [];
+    return await this.reviewRepository.find({
+      where: { bookingId: In(bookingIds) },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   // 특정 진단사의 오늘 완료분 리뷰

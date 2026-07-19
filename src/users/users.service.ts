@@ -25,6 +25,7 @@ export class UsersService {
     name: string;
     phone?: string;
     role?: string;
+    company?: string | null;
     dealerLicenseUrl?: string;
     businessRegUrl?: string;
     businessNumber?: string;
@@ -41,6 +42,7 @@ export class UsersService {
       name:             data.name,
       phone:            data.phone,
       role:             data.role ?? 'user',
+      company:          data.company || null,
       provider:         'local',
       dealerLicenseUrl: data.dealerLicenseUrl,
       businessRegUrl:   data.businessRegUrl,

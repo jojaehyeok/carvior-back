@@ -1,5 +1,5 @@
 import {
-  Controller, Post, Get, Body, Param,
+  Controller, Post, Get, Body, Param, Query,
   UploadedFiles, UseInterceptors,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
@@ -45,10 +45,10 @@ export class ReviewsController {
     });
   }
 
-  // 대시보드 전체 리뷰 목록
+  // 대시보드 리뷰 목록 — source(발주사) 주면 그 회사 의뢰 리뷰만
   @Get()
-  async findAll() {
-    return await this.reviewsService.findAll();
+  async findAll(@Query('source') source?: string) {
+    return await this.reviewsService.findAll(source);
   }
 
   // 진단사 오늘 CS 현황
