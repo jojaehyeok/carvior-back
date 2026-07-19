@@ -8,10 +8,11 @@ import { NotificationsService } from 'src/notifications/notifications.service';
 import { Driver } from 'src/drivers/entities/driver.entity';
 import { DriverCancelLog } from 'src/driver-cancel-logs/driver-cancel-log.entity';
 import { Inspection } from 'src/inspection/entities/inspection.entity';
+import { User } from 'src/users/entities/user.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Booking, Driver, DriverCancelLog, Inspection]),
+    TypeOrmModule.forFeature([Booking, Driver, DriverCancelLog, Inspection, User]),
   ],
   controllers: [BookingsController],
   providers: [BookingsService, SolapiService, NotificationsService],

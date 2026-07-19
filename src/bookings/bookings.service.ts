@@ -8,7 +8,20 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { Driver } from '../drivers/entities/driver.entity';
 import { DriverCancelLog } from '../driver-cancel-logs/driver-cancel-log.entity';
 import { Inspection } from '../inspection/entities/inspection.entity';
+import { User } from '../users/entities/user.entity';
 import { distanceKm, geocodeAddress, isDriverActiveNow } from './auto-assign.util';
+
+// cavior 내에서 source 값을 고정 문자열로 보내는 B2C 신청 경로들 — 이 값들은
+// 발주사 코드가 아니라서 관리자 등록 여부 체크 대상에서 제외한다.
+const KNOWN_B2C_SOURCES = new Set([
+  'SNS_PROMOTION',
+  'EXPORT_SCRAP_QUOTE',
+  'EVALUATOR_RECRUIT',
+  'CARVIOR_INSPECTION',
+  'INSPECTION',
+  'SIMPLE_FORM',
+  'PRIVATE_DEAL_FORM',
+]);
 
 @Injectable()
 export class BookingsService {
@@ -21,6 +34,8 @@ export class BookingsService {
     private readonly cancelLogRepository: Repository<DriverCancelLog>,
     @InjectRepository(Inspection)
     private readonly inspectionRepository: Repository<Inspection>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
     private readonly solapiService: SolapiService,
     private readonly notificationsService: NotificationsService,
   ) {}
@@ -39,40 +54,56 @@ export class BookingsService {
     return !!existing;
   }
 
+  // B2B 간편신청(/marketing/simple-request/[company])은 URL의 company 값을 그대로 source로
+  // 받아서 QR·링크로 공개 배포되므로, 등록된 발주사 관리자 계정이 없는 임의 코드로도 접수 자체는
+  // 막지 않되(관리자가 신규 발주사인지 스팸인지 육안 확인 가능해야 함) 진단사 자동배정·전체 브로드캐스트는
+  // 하지 않는다 — 검증 안 된 출처의 건이 실제 진단사에게 바로 배차되는 것을 막기 위함.
+  private async isRestrictedSource(source?: string): Promise<boolean> {
+    if (!source || KNOWN_B2C_SOURCES.has(source)) return false;
+    const admin = await this.userRepository.findOne({ where: { role: 'admin', company: source } });
+    return !admin;
+  }
+
   async create(data: Partial<Booking>): Promise<Booking> {
     const booking = this.bookingRepository.create(data);
     let saved = await this.bookingRepository.save(booking);
 
-    // 지역·가용시간 맞는 활성 진단사가 있으면 즉시 자동배정, 없으면 기존처럼 전체 브로드캐스트로 폴백
-    let assignedDriver: Driver | null = null;
-    try {
-      assignedDriver = await this.tryAutoAssign(saved);
-    } catch (e) {
-      // 자동배정 실패는 접수 자체를 막으면 안 됨 — 아래 폴백(전체 브로드캐스트)으로 처리
-    }
+    const restricted = await this.isRestrictedSource(saved.source);
 
-    if (assignedDriver) {
-      saved = await this.assign(saved.id, { id: String(assignedDriver.id), name: assignedDriver.name });
-      console.log(`🤖 [자동배정] ${saved.carNumber} → ${assignedDriver.name}(${assignedDriver.id})`);
+    if (restricted) {
+      console.log(`⛔ [배정제한] 등록되지 않은 발주사 코드(source=${saved.source}) — 자동배정·진단사 브로드캐스트 건너뜀 (건: ${saved.carNumber})`);
     } else {
-      // 자동배정 대상이 없으면 승인된 진단사 전원에게 새 접수 푸시 발송(기존 동작)
+      // 지역·가용시간 맞는 활성 진단사가 있으면 즉시 자동배정, 없으면 기존처럼 전체 브로드캐스트로 폴백
+      let assignedDriver: Driver | null = null;
       try {
-        const drivers = await this.driverRepository.find({
-          where: { status: 'APPROVED' },
-        });
-        const pushTargets = drivers.filter(d => d.pushToken);
-        await Promise.all(
-          pushTargets.map(d =>
-            this.notificationsService.sendPush(
-              d.pushToken,
-              '새로운 진단 요청이 있습니다 📋',
-              `접수 장소: ${saved.address}`,
-              { bookingId: saved.id },
-            ),
-          ),
-        );
+        assignedDriver = await this.tryAutoAssign(saved);
       } catch (e) {
-        // 푸시 실패해도 예약 저장은 정상 처리
+        // 자동배정 실패는 접수 자체를 막으면 안 됨 — 아래 폴백(전체 브로드캐스트)으로 처리
+      }
+
+      if (assignedDriver) {
+        saved = await this.assign(saved.id, { id: String(assignedDriver.id), name: assignedDriver.name });
+        console.log(`🤖 [자동배정] ${saved.carNumber} → ${assignedDriver.name}(${assignedDriver.id})`);
+      } else {
+        // 자동배정 대상이 없으면 승인된 진단사 전원에게 새 접수 푸시 발송(기존 동작)
+        try {
+          const drivers = await this.driverRepository.find({
+            where: { status: 'APPROVED' },
+          });
+          const pushTargets = drivers.filter(d => d.pushToken);
+          await Promise.all(
+            pushTargets.map(d =>
+              this.notificationsService.sendPush(
+                d.pushToken,
+                '새로운 진단 요청이 있습니다 📋',
+                `접수 장소: ${saved.address}`,
+                { bookingId: saved.id },
+              ),
+            ),
+          );
+        } catch (e) {
+          // 푸시 실패해도 예약 저장은 정상 처리
+        }
       }
     }
 
@@ -80,7 +111,7 @@ export class BookingsService {
     try {
       const now = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
       await this.solapiService.sendReservationAlimTalk('01022856017', {
-        '#{dealerName}': '관리자',
+        '#{dealerName}': restricted ? `⚠️미등록발주사(${saved.source})` : '관리자',
         '#{carNumber}': saved.carNumber,
         '#{carOwner}': saved.contact || '미입력',
         '#{preferredDate}': saved.preferredDateTime || '미입력',
