@@ -217,7 +217,7 @@ export class BookingsService {
         const driverName = updated.assignedDriverName || driver?.name || '진단사';
         // 고객에게 노출되는 연락처는 담당 진단사 개인번호가 아니라 회사 대표번호로 고정
         // (진단사 개인정보 보호 + 고객 문의 창구 일원화)
-        const companyContact = '01022856017';
+        const companyContact = '07041382017';
 
         const kakaoVariables = {
           '#{진단사명}': driverName,
