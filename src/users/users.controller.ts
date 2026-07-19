@@ -80,6 +80,11 @@ export class UsersController {
     return { success: true };
   }
 
+  @Patch(':id/admin-info')
+  updateAdminInfo(@Param('id') id: string, @Body() body: { name?: string; phone?: string; company?: string }) {
+    return this.svc.updateAdminInfo(Number(id), body);
+  }
+
   @Get('admins')
   findAdmins() {
     return this.svc.findAdmins();

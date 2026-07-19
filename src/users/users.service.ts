@@ -116,6 +116,17 @@ export class UsersService {
     await this.repo.save(user);
   }
 
+  // 관리자 계정의 이름/연락처/발주사 코드 수정 — 만들고 나서 코드를 잘못 넣었을 때
+  // 계정을 지우고 다시 만들 필요 없이 바로 고칠 수 있게 함
+  async updateAdminInfo(id: number, data: { name?: string; phone?: string; company?: string | null }): Promise<User> {
+    const user = await this.repo.findOneBy({ id });
+    if (!user) throw new UnauthorizedException('유저를 찾을 수 없습니다.');
+    if (data.name !== undefined) user.name = data.name;
+    if (data.phone !== undefined) user.phone = data.phone;
+    if (data.company !== undefined) user.company = data.company || null;
+    return this.repo.save(user);
+  }
+
   async findAdmins(): Promise<User[]> {
     return this.repo.find({ where: { role: 'admin' }, order: { createdAt: 'DESC' } });
   }
