@@ -27,6 +27,9 @@ export class BookingsService {
 
   async checkOngoingBooking(carNumber: string): Promise<boolean> {
     const cleanCarNumber = carNumber.replace(/\s/g, '');
+    // 간편신청에서 차량번호를 모를 때 "미정"으로 자동 접수되는데, 이건 실제 차량번호가
+    // 아니라서 여러 건이 같은 값을 가져도 중복이 아니다 — 중복체크 자체를 건너뛴다.
+    if (cleanCarNumber === '미정') return false;
     const existing = await this.bookingRepository.findOne({
       where: {
         carNumber: cleanCarNumber,
