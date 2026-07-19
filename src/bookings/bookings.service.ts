@@ -64,7 +64,7 @@ export class BookingsService {
     return !admin;
   }
 
-  async create(data: Partial<Booking>): Promise<Booking> {
+  async create(data: Partial<Booking>): Promise<Booking & { restricted?: boolean }> {
     const booking = this.bookingRepository.create(data);
     let saved = await this.bookingRepository.save(booking);
 
@@ -112,7 +112,7 @@ export class BookingsService {
     // 실제 문의가 오면 대시보드 전체 목록에서 source 값으로 확인 가능(레코드는 정상 저장됨).
     if (restricted) {
       console.log(`🔕 [관리자 알림톡 생략] 미등록 발주사(source=${saved.source}) — 대시보드에서 확인 필요 (건: ${saved.carNumber})`);
-      return saved;
+      return { ...saved, restricted: true };
     }
     try {
       const now = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
@@ -128,7 +128,7 @@ export class BookingsService {
       console.error('❌ [관리자 알림톡 실패]', (e as Error).message);
     }
 
-    return saved;
+    return { ...saved, restricted: false };
   }
 
   // 신청 주소·가용시간에 맞는 활성 진단사를 찾아 자동배정 대상을 고른다.

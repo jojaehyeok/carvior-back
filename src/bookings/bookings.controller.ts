@@ -48,7 +48,10 @@ export class BookingsController {
     const result = await this.bookingsService.create(createBookingDto);
     return {
       success: true,
-      message: '접수가 완료되었습니다.',
+      message: result.restricted
+        ? '접수가 완료되었습니다. 다만 등록되지 않은 발주사 코드로 접수되어 자동 배정 전에 담당자와 협의가 필요합니다. 010-2285-6017로 연락 부탁드립니다.'
+        : '접수가 완료되었습니다.',
+      restricted: !!result.restricted,
       data: result,
     };
   }
