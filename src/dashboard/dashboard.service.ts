@@ -33,12 +33,15 @@ export class DashboardService {
     private readonly driverRepo: Repository<Driver>,
   ) {}
 
-  async getStats() {
+  // source(발주사) 주면 진단신청 통계는 그 회사 것만 집계 — 상담/회원/진단사는
+  // 발주사와 무관한 전체 플랫폼 지표라 그대로 둔다(프론트에서 회사 관리자에겐 안 보여줌).
+  async getStats(source?: string) {
     const [todayStart, weekStart, monthStart] = [
       startOf('day'),
       startOf('week'),
       startOf('month'),
     ];
+    const bookingBase = source ? { source } : {};
 
     const [
       bookingTotal,
@@ -63,15 +66,16 @@ export class DashboardService {
       driverApproved,
       driverPending,
     ] = await Promise.all([
-      this.bookingRepo.count(),
-      this.bookingRepo.count({ where: { createdAt: MoreThanOrEqual(todayStart) } }),
-      this.bookingRepo.count({ where: { createdAt: MoreThanOrEqual(weekStart) } }),
-      this.bookingRepo.count({ where: { createdAt: MoreThanOrEqual(monthStart) } }),
-      this.bookingRepo.count({ where: { status: 'PENDING' } }),
-      this.bookingRepo.count({ where: { status: 'ASSIGNED' } }),
-      this.bookingRepo.count({ where: { status: 'COMPLETED' } }),
-      this.bookingRepo.count({ where: { status: 'CANCELLED' } }),
+      this.bookingRepo.count({ where: bookingBase }),
+      this.bookingRepo.count({ where: { ...bookingBase, createdAt: MoreThanOrEqual(todayStart) } }),
+      this.bookingRepo.count({ where: { ...bookingBase, createdAt: MoreThanOrEqual(weekStart) } }),
+      this.bookingRepo.count({ where: { ...bookingBase, createdAt: MoreThanOrEqual(monthStart) } }),
+      this.bookingRepo.count({ where: { ...bookingBase, status: 'PENDING' } }),
+      this.bookingRepo.count({ where: { ...bookingBase, status: 'ASSIGNED' } }),
+      this.bookingRepo.count({ where: { ...bookingBase, status: 'COMPLETED' } }),
+      this.bookingRepo.count({ where: { ...bookingBase, status: 'CANCELLED' } }),
       this.bookingRepo.find({
+        where: bookingBase,
         order: { createdAt: 'DESC' },
         take: 8,
         select: ['id', 'carNumber', 'dealerName', 'status', 'address', 'createdAt', 'source'],
