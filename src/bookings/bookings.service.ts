@@ -107,11 +107,17 @@ export class BookingsService {
       }
     }
 
-    // 관리자(01022856017)에게 새 예약 접수 알림톡 발송 (자동배정 여부와 무관하게 항상 발송)
+    // 관리자(01022856017)에게 새 예약 접수 알림톡 발송 — 건당 비용이 드는 유료 채널이라
+    // 미등록 발주사(스팸/테스트 가능성 있는 건)는 여기서 제외하고 무료 로그로만 남긴다.
+    // 실제 문의가 오면 대시보드 전체 목록에서 source 값으로 확인 가능(레코드는 정상 저장됨).
+    if (restricted) {
+      console.log(`🔕 [관리자 알림톡 생략] 미등록 발주사(source=${saved.source}) — 대시보드에서 확인 필요 (건: ${saved.carNumber})`);
+      return saved;
+    }
     try {
       const now = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
       await this.solapiService.sendReservationAlimTalk('01022856017', {
-        '#{dealerName}': restricted ? `⚠️미등록발주사(${saved.source})` : '관리자',
+        '#{dealerName}': '관리자',
         '#{carNumber}': saved.carNumber,
         '#{carOwner}': saved.contact || '미입력',
         '#{preferredDate}': saved.preferredDateTime || '미입력',
