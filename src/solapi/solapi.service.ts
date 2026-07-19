@@ -133,32 +133,27 @@ export class SolapiService {
         }
     }
 
+    // 완료 알림톡을 임의의 한 번호로 보낸다 — 즉시 발송/예약 발송(크론) 둘 다 이걸 재사용
+    async sendCompletionAlimTalkTo(to: string, variables: { '#{차량번호}': string; '#{완료시간}': string; '#{예약번호}': string }) {
+        const templateId = this.configService.get<string>('SOLAPI_TEMPLATE_ID_COMPLETED');
+        const senderNumber = this.configService.get<string>('SOLAPI_SENDER_NUMBER');
+        const pfId = this.configService.get<string>('SOLAPI_PF_ID');
+
+        return this.messageService.sendOne({
+            to,
+            from: senderNumber,
+            type: 'ATA',
+            kakaoOptions: { pfId, templateId, variables },
+        });
+    }
+
+    // 대표님께는 즉시 발송. 협업 파트너사(Anyone모터스 등)는 1시간 지연 발송이 필요해서
+    // ScheduledNotificationsService가 별도로 예약 처리한다(inspection.service.ts 참고).
     async sendCompletionAlimTalk(variables: { '#{차량번호}': string; '#{완료시간}': string; '#{예약번호}': string }, source?: string) {
         try {
-            const templateId = this.configService.get<string>('SOLAPI_TEMPLATE_ID_COMPLETED');
-            const senderNumber = this.configService.get<string>('SOLAPI_SENDER_NUMBER');
-            const pfId = this.configService.get<string>('SOLAPI_PF_ID');
-
-            const recipients = ['01022856017'];
-            if (source === 'anyone-motors') {
-                recipients.push('01073709569');
-            }
-
-            console.log('--- 진단완료 알림톡 발송 ---');
-            console.log('to:', recipients);
-            console.log('templateId:', templateId);
-
-            const responses = await Promise.all(
-                recipients.map((to) =>
-                    this.messageService.sendOne({
-                        to,
-                        from: senderNumber,
-                        type: 'ATA',
-                        kakaoOptions: { pfId, templateId, variables },
-                    }),
-                ),
-            );
-            return responses;
+            console.log('--- 진단완료 알림톡 발송(즉시) ---');
+            const response = await this.sendCompletionAlimTalkTo('01022856017', variables);
+            return [response];
         } catch (error) {
             console.error('진단완료 알림톡 발송 에러:', JSON.stringify(error, null, 2));
             // 알림톡 실패해도 진단 저장은 성공으로 처리

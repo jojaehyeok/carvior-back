@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { BookingsModule } from './bookings/bookings.module';
@@ -22,6 +23,7 @@ import { OcrModule } from './ocr/ocr.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { BidsModule } from './bids/bids.module';
 import { ComplianceModule } from './compliance/compliance.module';
+import { ScheduledNotificationsModule } from './scheduled-notifications/scheduled-notifications.module';
 
 @Module({
   imports: [
@@ -30,6 +32,9 @@ import { ComplianceModule } from './compliance/compliance.module';
       isGlobal: true,
       envFilePath: '.env',
     }),
+
+    // 예약 발송(1시간 뒤 파트너사 알림 등) 크론잡 활성화
+    ScheduleModule.forRoot(),
 
     // 2. TypeOrmModule 설정 (환경변수 로드)
     TypeOrmModule.forRootAsync({
@@ -70,6 +75,7 @@ import { ComplianceModule } from './compliance/compliance.module';
     DashboardModule,
     BidsModule,
     ComplianceModule,
+    ScheduledNotificationsModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, SolapiService, S3Service],

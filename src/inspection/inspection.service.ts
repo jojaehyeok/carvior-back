@@ -10,6 +10,14 @@ import { Inspection } from './entities/inspection.entity';
 import { SolapiService } from 'src/solapi/solapi.service';
 import { DriversService } from 'src/drivers/drivers.service';
 import { ComplianceService } from 'src/compliance/compliance.service';
+import { ScheduledNotificationsService } from 'src/scheduled-notifications/scheduled-notifications.service';
+
+// source(신청 경로)별로 완료 알림을 1시간 늦춰서 보낼 협업 파트너사 대표번호.
+// 여기 추가하면 다른 파트너사도 같은 방식으로 지연 발송된다.
+const PARTNER_COMPLETION_DELAY_RECIPIENTS: Record<string, string> = {
+  'anyone-motors': '01073709569',
+};
+const PARTNER_COMPLETION_DELAY_MS = 60 * 60 * 1000; // 1시간
 
 @Injectable()
 export class InspectionService {
@@ -20,6 +28,7 @@ export class InspectionService {
     private readonly solapiService: SolapiService,
     private readonly driversService: DriversService,
     private readonly complianceService: ComplianceService,
+    private readonly scheduledNotificationsService: ScheduledNotificationsService,
     @InjectRepository(Inspection)
     private readonly inspectionRepository: Repository<Inspection>,
     @InjectRepository(Booking)
@@ -252,11 +261,26 @@ export class InspectionService {
       const pad = (n: number) => String(n).padStart(2, '0');
       const completedAt = `${now.getUTCFullYear()}.${pad(now.getUTCMonth() + 1)}.${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}`;
       console.log(`[알림톡] 발송 시작 - 차량: ${inspection.carNumber}, 완료시간: ${completedAt}`);
-      await this.solapiService.sendCompletionAlimTalk({
+      const completionVariables = {
         '#{차량번호}': inspection.carNumber,
         '#{완료시간}': completedAt,
         '#{예약번호}': savedResult.carHash,
-      }, booking?.source);
+      };
+      await this.solapiService.sendCompletionAlimTalk(completionVariables, booking?.source);
+
+      // 협업 파트너사 대표님은 1시간 뒤 발송 — 매니저/평가사 검토 시간 확보 목적.
+      // setTimeout이 아니라 DB 예약이라 그 사이 서버가 재배포돼도 유실되지 않는다.
+      const partnerPhone = booking?.source ? PARTNER_COMPLETION_DELAY_RECIPIENTS[booking.source] : undefined;
+      if (partnerPhone) {
+        this.scheduledNotificationsService
+          .schedule({
+            type: 'completion_partner',
+            recipientPhone: partnerPhone,
+            variables: completionVariables,
+            delayMs: PARTNER_COMPLETION_DELAY_MS,
+          })
+          .catch((e) => console.error('[예약알림] 등록 실패', e));
+      }
 
       console.log(`[Success] ID ${bId} 모든 진단 데이터 저장 완료`);
 
