@@ -246,40 +246,47 @@ export class InspectionService {
     inspection.checkedDamages = data.checkedDamages || [];
     inspection.mirrorMarkers = data.mirrorMarkers || null;
     inspection.memo = data.memo || '';
+    // 평가사가 +2시간 자기수정 창 안에서 다시 제출하면 이 함수가 또 호출되는데,
+    // 그때는 이미 firstCompletedAt이 있으므로 "최초 완료"가 아니다 — 알림은 최초 1회만.
+    const isFirstCompletion = !inspection.firstCompletedAt;
     inspection.completedAt = new Date();
-    if (!inspection.firstCompletedAt) inspection.firstCompletedAt = inspection.completedAt;
+    if (isFirstCompletion) inspection.firstCompletedAt = inspection.completedAt;
 
     try {
       const savedResult = await this.inspectionRepository.save(inspection);
-      
+
       // 예약 테이블의 상태를 'COMPLETED'로 변경
       const booking = await this.bookingRepository.findOne({ where: { id: bId } });
       await this.bookingRepository.update(bId, { status: 'COMPLETED' });
 
-      // 진단 완료 알림톡 발송 (서버 환경 안전한 KST 포맷)
-      const now = new Date(Date.now() + 9 * 60 * 60 * 1000); // UTC+9
-      const pad = (n: number) => String(n).padStart(2, '0');
-      const completedAt = `${now.getUTCFullYear()}.${pad(now.getUTCMonth() + 1)}.${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}`;
-      console.log(`[알림톡] 발송 시작 - 차량: ${inspection.carNumber}, 완료시간: ${completedAt}`);
-      const completionVariables = {
-        '#{차량번호}': inspection.carNumber,
-        '#{완료시간}': completedAt,
-        '#{예약번호}': savedResult.carHash,
-      };
-      await this.solapiService.sendCompletionAlimTalk(completionVariables, booking?.source);
+      if (isFirstCompletion) {
+        // 진단 완료 알림톡 발송 (서버 환경 안전한 KST 포맷) — 최초 제출에만, 재제출(수정)엔 재발송 안 함
+        const now = new Date(Date.now() + 9 * 60 * 60 * 1000); // UTC+9
+        const pad = (n: number) => String(n).padStart(2, '0');
+        const completedAt = `${now.getUTCFullYear()}.${pad(now.getUTCMonth() + 1)}.${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}`;
+        console.log(`[알림톡] 발송 시작 - 차량: ${inspection.carNumber}, 완료시간: ${completedAt}`);
+        const completionVariables = {
+          '#{차량번호}': inspection.carNumber,
+          '#{완료시간}': completedAt,
+          '#{예약번호}': savedResult.carHash,
+        };
+        await this.solapiService.sendCompletionAlimTalk(completionVariables, booking?.source);
 
-      // 협업 파트너사 대표님은 1시간 뒤 발송 — 매니저/평가사 검토 시간 확보 목적.
-      // setTimeout이 아니라 DB 예약이라 그 사이 서버가 재배포돼도 유실되지 않는다.
-      const partnerPhone = booking?.source ? PARTNER_COMPLETION_DELAY_RECIPIENTS[booking.source] : undefined;
-      if (partnerPhone) {
-        this.scheduledNotificationsService
-          .schedule({
-            type: 'completion_partner',
-            recipientPhone: partnerPhone,
-            variables: completionVariables,
-            delayMs: PARTNER_COMPLETION_DELAY_MS,
-          })
-          .catch((e) => console.error('[예약알림] 등록 실패', e));
+        // 협업 파트너사 대표님은 1시간 뒤 발송 — 매니저/평가사 검토 시간 확보 목적.
+        // setTimeout이 아니라 DB 예약이라 그 사이 서버가 재배포돼도 유실되지 않는다.
+        const partnerPhone = booking?.source ? PARTNER_COMPLETION_DELAY_RECIPIENTS[booking.source] : undefined;
+        if (partnerPhone) {
+          this.scheduledNotificationsService
+            .schedule({
+              type: 'completion_partner',
+              recipientPhone: partnerPhone,
+              variables: completionVariables,
+              delayMs: PARTNER_COMPLETION_DELAY_MS,
+            })
+            .catch((e) => console.error('[예약알림] 등록 실패', e));
+        }
+      } else {
+        console.log(`[알림톡] 재제출(수정) 감지 - bId=${bId}, 알림 재발송 안 함`);
       }
 
       console.log(`[Success] ID ${bId} 모든 진단 데이터 저장 완료`);
