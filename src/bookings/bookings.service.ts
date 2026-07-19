@@ -214,16 +214,19 @@ export class BookingsService {
           ? await this.driverRepository.findOne({ where: { accountId: updated.assignedDriverId } })
           : null;
 
-        const driverPhone = driver?.phone || updated.contact;
         const driverName = updated.assignedDriverName || driver?.name || '진단사';
+        // 고객에게 노출되는 연락처는 담당 진단사 개인번호가 아니라 회사 대표번호로 고정
+        // (진단사 개인정보 보호 + 고객 문의 창구 일원화)
+        const companyContact = '01022856017';
 
         const kakaoVariables = {
           '#{진단사명}': driverName,
-          '#{진단사연락처}': driverPhone.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3'),
+          '#{진단사연락처}': companyContact.replace(/(\d{3})(\d{4})(\d{4})/, '$1-$2-$3'),
           '#{차량번호}': updated.carNumber,
         };
-        await this.solapiService.sendAlimTalk(driverPhone, kakaoVariables);
-        console.log(`✅ [알림톡 발송] 진단사 ${driverName}(${driverPhone})께 배정 알림 전송`);
+        // 수신자는 고객(예약자) 본인 — 배정된 진단사에게 보내면 자기 이름/번호를 자기가 받는 꼴이었음
+        await this.solapiService.sendAlimTalk(updated.contact, kakaoVariables);
+        console.log(`✅ [알림톡 발송] 고객(${updated.contact})께 배정 완료 알림 전송 (담당: ${driverName})`);
       } catch (error: unknown) {
         console.error('❌ [알림톡 발송 실패]', (error as Error).message);
       }
