@@ -7,16 +7,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Booking } from 'src/bookings/entities/booking.entity';
 import { Inspection } from './entities/inspection.entity';
+import { User } from 'src/users/entities/user.entity';
 import { SolapiService } from 'src/solapi/solapi.service';
 import { DriversService } from 'src/drivers/drivers.service';
 import { ComplianceService } from 'src/compliance/compliance.service';
 import { ScheduledNotificationsService } from 'src/scheduled-notifications/scheduled-notifications.service';
 
-// source(신청 경로)별로 완료 알림을 1시간 늦춰서 보낼 협업 파트너사 대표번호.
-// 여기 추가하면 다른 파트너사도 같은 방식으로 지연 발송된다.
-const PARTNER_COMPLETION_DELAY_RECIPIENTS: Record<string, string> = {
-  'anyone-motors': '01073709569',
-};
 const PARTNER_COMPLETION_DELAY_MS = 60 * 60 * 1000; // 1시간
 
 @Injectable()
@@ -33,6 +29,8 @@ export class InspectionService {
     private readonly inspectionRepository: Repository<Inspection>,
     @InjectRepository(Booking)
     private readonly bookingRepository: Repository<Booking>,
+    @InjectRepository(User)
+    private readonly userRepository: Repository<User>,
   ) {
     this.s3Client = new S3Client({
       region: this.configService.get('AWS_S3_REGION') || 'ap-northeast-2',
@@ -274,7 +272,12 @@ export class InspectionService {
 
         // 협업 파트너사 대표님은 1시간 뒤 발송 — 매니저/평가사 검토 시간 확보 목적.
         // setTimeout이 아니라 DB 예약이라 그 사이 서버가 재배포돼도 유실되지 않는다.
-        const partnerPhone = booking?.source ? PARTNER_COMPLETION_DELAY_RECIPIENTS[booking.source] : undefined;
+        // 수신번호는 "관리자 계정 관리"에 등록된 그 발주사 관리자 계정의 연락처를 그대로 씀 —
+        // 대시보드에서 번호를 바꾸면(업무폰 변경 등) 코드 수정 없이 알림도 그쪽으로 바로 감.
+        const partnerAdmin = booking?.source
+          ? await this.userRepository.findOne({ where: { role: 'admin', company: booking.source } })
+          : null;
+        const partnerPhone = partnerAdmin?.phone;
         if (partnerPhone) {
           this.scheduledNotificationsService
             .schedule({
