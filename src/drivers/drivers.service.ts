@@ -1,6 +1,7 @@
 import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import * as bcrypt from 'bcryptjs';
 import { Driver } from './entities/driver.entity';
 
 @Injectable()
@@ -15,8 +16,10 @@ export class DriversService {
     const existing = await this.driverRepository.findOne({ where: { accountId: driverInfo.accountId } });
     if (existing) throw new ConflictException('이미 존재하는 아이디입니다.');
 
+    const hashedPassword = await bcrypt.hash(driverInfo.password, 10);
     const newDriver = this.driverRepository.create({
       ...driverInfo,
+      password: hashedPassword,
       licenseImageUrl: licenseImageUrl ?? null,
       status: 'PENDING',
     });
@@ -38,9 +41,28 @@ export class DriversService {
     return await this.driverRepository.save(driver);
   }
 
-  // 로그인 검증용
+  // 로그인 검증용 — password는 select:false라 명시적으로 addSelect 해야 함
   async findByAccountId(accountId: string) {
-    return await this.driverRepository.findOne({ where: { accountId } });
+    return await this.driverRepository
+      .createQueryBuilder('driver')
+      .addSelect('driver.password')
+      .where('driver.accountId = :accountId', { accountId })
+      .getOne();
+  }
+
+  // 로그인 시 비밀번호 검증 — 기존에 평문으로 저장돼있던 계정은 로그인 성공 시점에
+  // 자동으로 bcrypt 해시로 전환해서 저장(마이그레이션 스크립트 없이 점진적으로 안전하게 전환)
+  async verifyPassword(driver: Driver, plainPassword: string): Promise<boolean> {
+    const isBcryptHash = driver.password?.startsWith('$2');
+    if (isBcryptHash) {
+      return bcrypt.compare(plainPassword, driver.password);
+    }
+    const matches = driver.password === plainPassword;
+    if (matches) {
+      const hashed = await bcrypt.hash(plainPassword, 10);
+      await this.driverRepository.update(driver.id, { password: hashed });
+    }
+    return matches;
   }
 
   async findById(id: number) {

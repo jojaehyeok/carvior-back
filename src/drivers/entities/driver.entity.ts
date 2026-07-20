@@ -14,7 +14,9 @@ export class Driver {
   @Column({ unique: true })
   accountId: string;
 
-  @Column() // 비번은 필수
+  // select:false — GET /v1/drivers, /v1/drivers/:id 등 기본 조회에 절대 포함되지 않게 함
+  // (이 값이 평문으로 공개 API에 그대로 노출되고 있었음, 로그인 시엔 findByAccountId에서 명시적으로 select)
+  @Column({ select: false })
   password: string;
 
   @Column()

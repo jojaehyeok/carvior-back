@@ -11,9 +11,9 @@ export class AuthController {
     
     // 1. 아이디로 진단사 정보 조회
     const driver = await this.driversService.findByAccountId(accountId);
-    
+
     // 2. 계정이 없거나 비밀번호가 틀린 경우
-    if (!driver || driver.password !== password) {
+    if (!driver || !(await this.driversService.verifyPassword(driver, password))) {
       throw new UnauthorizedException('아이디 또는 비밀번호를 잘못 입력했습니다.');
     }
 
