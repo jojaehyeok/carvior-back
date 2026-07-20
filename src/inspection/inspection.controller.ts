@@ -105,6 +105,19 @@ export class InspectionController {
     return this.inspectionService.updateDamages(parseInt(bookingId), checkedDamages);
   }
 
+  // 7. 관리자/발주사 → 완료된 리포트 오탈자·누락값 직접 수정 (스마트옥션 매물 등록과는 별개)
+  @Patch(':bookingId/report-fields')
+  @UseGuards(InternalKeyGuard)
+  updateReportFields(
+    @Param('bookingId') bookingId: string,
+    @Body() data: {
+      carNumber?: string; carModel?: string; mileage?: number; color?: string; repairCost?: number;
+      memo?: string; inspectionDetails?: { warningDesc?: string; leakDesc?: string; optionsDesc?: string; driveDesc?: string };
+    },
+  ) {
+    return this.inspectionService.updateReportFields(parseInt(bookingId), data);
+  }
+
   private formatReport(inspection: any) {
     return {
       completedAt: inspection.completedAt,

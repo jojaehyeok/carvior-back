@@ -398,6 +398,41 @@ export class InspectionService {
     return this.inspectionRepository.save(inspection);
   }
 
+  // 관리자/발주사가 완료된 리포트의 오탈자·누락값을 직접 고칠 때 사용 — 스마트옥션 매물
+  // 등록/수정(사진·가격 등)과는 별개 기능이라 슈퍼 관리자 제한 없이 열어둠. carHash는
+  // 건드리지 않으므로(최초 생성 후 고정) 이미 발송된 리포트 링크는 계속 유효하다.
+  async updateReportFields(bookingId: number, data: {
+    carNumber?: string;
+    carModel?: string;
+    mileage?: number;
+    color?: string;
+    repairCost?: number;
+    memo?: string;
+    inspectionDetails?: { warningDesc?: string; leakDesc?: string; optionsDesc?: string; driveDesc?: string };
+  }) {
+    const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
+    if (!inspection) throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
+
+    if (data.carNumber !== undefined) inspection.carNumber = data.carNumber;
+    if (data.carModel !== undefined) inspection.carModel = data.carModel;
+    if (data.mileage !== undefined) inspection.mileage = data.mileage;
+    if (data.color !== undefined) inspection.color = data.color;
+    if (data.repairCost !== undefined) inspection.repairCost = data.repairCost;
+    if (data.memo !== undefined) inspection.memo = data.memo;
+    if (data.inspectionDetails) {
+      inspection.inspectionDetails = { ...inspection.inspectionDetails, ...data.inspectionDetails };
+    }
+
+    const saved = await this.inspectionRepository.save(inspection);
+
+    // 차량번호를 고쳤으면 예약 테이블(대시보드 목록에 보이는 차량번호)도 같이 맞춰준다
+    if (data.carNumber !== undefined) {
+      await this.bookingRepository.update(bookingId, { carNumber: data.carNumber });
+    }
+
+    return saved;
+  }
+
   async getInspectionByBookingId(bookingId: number) {
     const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
     if (!inspection) throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
