@@ -8,11 +8,15 @@ export function isDriverActiveNow(d: {
   availableEndTime?: string | null;
   lastSeenAt?: Date | string | null;
 }): boolean {
-  const now = new Date();
+  // new Date().getDay()/getHours()는 서버 로컬 타임존 기준인데, 배포 서버는 UTC로 돌고 있어서
+  // 진단사가 입력한 가용시간(한국시간 기준, 예: 08:00~20:00)과 그대로 비교하면 9시간이 밀려
+  // 실제로는 활성 시간대인데도 비활성으로 잘못 판정됨 — 서버 타임존과 무관하게 항상 KST로 계산.
+  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const day = kst.getUTCDay();
   if (d.availableDays && d.availableDays.length > 0) {
-    if (!d.availableDays.includes(now.getDay())) return false;
+    if (!d.availableDays.includes(day)) return false;
     if (d.availableStartTime && d.availableEndTime) {
-      const cur = now.getHours() * 60 + now.getMinutes();
+      const cur = kst.getUTCHours() * 60 + kst.getUTCMinutes();
       const [sh, sm] = d.availableStartTime.split(':').map(Number);
       const [eh, em] = d.availableEndTime.split(':').map(Number);
       const start = sh * 60 + sm;

@@ -77,8 +77,13 @@ export class BookingsService {
       let assignedDriver: Driver | null = null;
       try {
         assignedDriver = await this.tryAutoAssign(saved);
+        if (!assignedDriver) {
+          console.log(`ℹ️ [자동배정 대상 없음] ${saved.carNumber} (${saved.address}) — 전체 브로드캐스트로 폴백`);
+        }
       } catch (e) {
-        // 자동배정 실패는 접수 자체를 막으면 안 됨 — 아래 폴백(전체 브로드캐스트)으로 처리
+        // 자동배정 실패는 접수 자체를 막으면 안 됨 — 아래 폴백(전체 브로드캐스트)으로 처리하되,
+        // 원인 파악 가능하도록 에러는 반드시 로그로 남긴다(예전엔 조용히 삼켜서 디버깅이 불가능했음)
+        console.error(`❌ [자동배정 실패] ${saved.carNumber}`, (e as Error).message);
       }
 
       if (assignedDriver) {
@@ -145,8 +150,11 @@ export class BookingsService {
     const activeMatched = regionMatched.filter(isDriverActiveNow);
     if (activeMatched.length === 0) return null;
 
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
+    // setHours(0,0,0,0)도 서버 로컬 타임존(UTC) 자정 기준이라 한국 자정과 9시간 어긋남 —
+    // KST 자정을 UTC 기준 시각으로 환산해서 오늘 배정건수를 정확히 셈
+    const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const kstMidnight = new Date(Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), kstNow.getUTCDate()));
+    const todayStart = new Date(kstMidnight.getTime() - 9 * 60 * 60 * 1000);
     const countFor = async (driverId: number) =>
       this.bookingRepository.count({
         where: { assignedDriverId: String(driverId), createdAt: MoreThanOrEqual(todayStart) },
