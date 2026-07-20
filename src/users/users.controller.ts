@@ -21,9 +21,18 @@ export class UsersController {
     return { url };
   }
 
+  @Post('upload-logo')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
+  async uploadLogo(@UploadedFile() file: Express.Multer.File) {
+    const ext = file.originalname.split('.').pop();
+    const key = `company-logos/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+    const url = await this.s3.uploadFile(file, key);
+    return { url };
+  }
+
   @Post('register')
   register(@Body() body: {
-    email: string; password: string; name: string; phone?: string; role?: string; company?: string;
+    email: string; password: string; name: string; phone?: string; role?: string; company?: string; logoUrl?: string;
     dealerLicenseUrl?: string; businessRegUrl?: string; businessNumber?: string; companyName?: string;
   }) {
     return this.svc.register(body);
@@ -81,7 +90,7 @@ export class UsersController {
   }
 
   @Patch(':id/admin-info')
-  updateAdminInfo(@Param('id') id: string, @Body() body: { name?: string; phone?: string; company?: string }) {
+  updateAdminInfo(@Param('id') id: string, @Body() body: { name?: string; phone?: string; company?: string; logoUrl?: string }) {
     return this.svc.updateAdminInfo(Number(id), body);
   }
 

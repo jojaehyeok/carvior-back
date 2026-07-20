@@ -34,6 +34,10 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   company: string | null;
 
+  // 발주사 관리자 계정 전용 — 대시보드 로그인 시 사이드바 로고를 자사 로고로 대체(화이트라벨)
+  @Column({ type: 'varchar', nullable: true })
+  logoUrl: string | null;
+
   // 딜러 전용 서류
   @Column({ nullable: true })
   dealerLicenseUrl: string; // 자동차 매매종사원증
