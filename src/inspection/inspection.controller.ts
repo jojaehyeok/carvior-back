@@ -113,6 +113,7 @@ export class InspectionController {
     @Body() data: {
       carNumber?: string; carModel?: string; mileage?: number; color?: string; repairCost?: number;
       memo?: string; inspectionDetails?: { warningDesc?: string; leakDesc?: string; optionsDesc?: string; driveDesc?: string };
+      photos?: Record<string, string[]>; dashboardImage?: string; regImage?: string; vinImage?: string;
     },
   ) {
     return this.inspectionService.updateReportFields(parseInt(bookingId), data);

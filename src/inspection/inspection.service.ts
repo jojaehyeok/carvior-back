@@ -409,6 +409,10 @@ export class InspectionService {
     repairCost?: number;
     memo?: string;
     inspectionDetails?: { warningDesc?: string; leakDesc?: string; optionsDesc?: string; driveDesc?: string };
+    photos?: Record<string, string[]>;
+    dashboardImage?: string;
+    regImage?: string;
+    vinImage?: string;
   }) {
     const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
     if (!inspection) throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
@@ -422,6 +426,21 @@ export class InspectionService {
     if (data.inspectionDetails) {
       inspection.inspectionDetails = { ...inspection.inspectionDetails, ...data.inspectionDetails };
     }
+    if (data.photos) {
+      inspection.photos = {
+        exterior: data.photos.exterior || [],
+        wheel: data.photos.wheel || [],
+        undercarriage: data.photos.undercarriage || [],
+        interior: data.photos.interior || [],
+        engine: data.photos.engine || [],
+        damage: data.photos.damage || [],
+        extra: data.photos.extra || [],
+        extraMemo: data.photos.extraMemo || [],
+      };
+    }
+    if (data.dashboardImage !== undefined) inspection.dashboardImage = data.dashboardImage;
+    if (data.regImage !== undefined) inspection.regImage = data.regImage;
+    if (data.vinImage !== undefined) inspection.vinImage = data.vinImage;
 
     const saved = await this.inspectionRepository.save(inspection);
 
