@@ -160,18 +160,28 @@ export class BookingsService {
         where: { assignedDriverId: String(driverId), createdAt: MoreThanOrEqual(todayStart) },
       });
 
-    // 거리 계산 가능하면 가까운 순 우선, 그중 하루 최대 배정건수 안 찬 사람을 고름
+    // 거리 계산 가능하면: 제일 가까운 사람 기준 +15km(왕복 30km, 준오지 기준의 절반) 이내에 있는
+    // "가까운 편" 진단사들끼리는 거리보다 오늘 배정건수가 적은 사람을 우선 — 한 명한테 쏠리는 것 방지.
+    // 그 반경 밖은 굳이 균등 배정 명목으로 멀리 보낼 이유가 없으니 그냥 거리순.
+    const NEARBY_RADIUS_KM = 15;
     const coords = await geocodeAddress(booking.address);
     const withLocation = activeMatched.filter(d => d.lat != null && d.lng != null);
     if (coords && withLocation.length > 0) {
       const ranked = withLocation
         .map(d => ({ driver: d, km: distanceKm(coords.lat, coords.lng, d.lat!, d.lng!) }))
         .sort((a, b) => a.km - b.km);
-      for (const { driver } of ranked) {
-        const count = await countFor(driver.id);
+
+      const nearestKm = ranked[0].km;
+      const nearbyCandidates = ranked.filter(r => r.km <= nearestKm + NEARBY_RADIUS_KM);
+      const withCounts = await Promise.all(
+        nearbyCandidates.map(async r => ({ ...r, count: await countFor(r.driver.id) })),
+      );
+      withCounts.sort((a, b) => a.count - b.count || a.km - b.km);
+
+      for (const { driver, count } of withCounts) {
         if (count < (driver.maxDailyBookings ?? 5)) return driver;
       }
-      return ranked[0].driver; // 전원 마감이어도 그중 제일 가까운 사람에게 배정
+      return ranked[0].driver; // 인근 후보 전원 마감이어도 그중 제일 가까운 사람에게 배정
     }
 
     // 거리 계산이 안 되면(지오코딩 실패·위치정보 없음) 오늘 배정건수가 가장 적은 사람 우선
