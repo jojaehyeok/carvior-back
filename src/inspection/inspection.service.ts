@@ -194,7 +194,17 @@ export class InspectionService {
 
     // [기본 정보]
     inspection.carNumber = data.carNumber;
-    inspection.carHash = createHash('sha256').update(data.carNumber).digest('hex').slice(0, 16);
+    // carHash는 최초 1회만 생성하고 이후엔 절대 바꾸지 않는다 — 예전엔 carNumber로만 해시를 만들어서
+    // (1) 접수 시점엔 "미정"이라 알림톡·리포트 링크가 sha256("미정") 기준으로 나갔다가, 평가사가
+    //     +2시간 안에 실제 차량번호로 수정·재제출하면 해시가 통째로 바뀌어 이미 보낸 링크가
+    //     "레포트를 찾을 수 없습니다"로 깨져버렸고 (2) "미정"인 건이 여러 개면 전부 같은 해시라
+    //     서로 다른 고객의 리포트가 충돌할 수도 있었음. bookingId+시각 기반으로 한 번만 생성해서 고정.
+    if (!inspection.carHash) {
+      inspection.carHash = createHash('sha256')
+        .update(`${bId}-${Date.now()}-${Math.random()}`)
+        .digest('hex')
+        .slice(0, 16);
+    }
     inspection.carModel = data.carModel || '알수없음';
     inspection.mileage = Number(data.mileage) || 0;
     inspection.color = data.color || '';
