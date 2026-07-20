@@ -417,6 +417,12 @@ export class InspectionService {
     const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
     if (!inspection) throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
 
+    // 프론트 버튼 비활성화만으론 URL 직접 접근·API 직접 호출을 못 막으므로 서버에서도 검증
+    const REPORT_EDIT_WINDOW_MS = 4 * 60 * 60 * 1000;
+    if (inspection.firstCompletedAt && Date.now() - new Date(inspection.firstCompletedAt).getTime() > REPORT_EDIT_WINDOW_MS) {
+      throw new BadRequestException('수정 가능 시간(진단 완료 후 4시간)이 지났습니다.');
+    }
+
     if (data.carNumber !== undefined) inspection.carNumber = data.carNumber;
     if (data.carModel !== undefined) inspection.carModel = data.carModel;
     if (data.mileage !== undefined) inspection.mileage = data.mileage;
