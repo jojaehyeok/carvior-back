@@ -123,6 +123,7 @@ export class InspectionController {
     return {
       completedAt: inspection.completedAt,
       firstCompletedAt: inspection.firstCompletedAt,
+      dealerName: inspection.dealerName ?? null,
       car_info: {
         number: inspection.carNumber,
         type: inspection.carModel,

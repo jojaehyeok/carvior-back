@@ -461,12 +461,18 @@ export class InspectionService {
   async getInspectionByBookingId(bookingId: number) {
     const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
     if (!inspection) throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
-    return inspection;
+    return this.withDealerName(inspection);
   }
 
   async getInspectionByCarHash(carHash: string) {
     const inspection = await this.inspectionRepository.findOne({ where: { carHash } });
     if (!inspection) throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
-    return inspection;
+    return this.withDealerName(inspection);
+  }
+
+  // 리포트에 딜러(신청자) 이름을 표시하기 위해 Inspection에는 없는 Booking.dealerName을 붙여서 반환
+  private async withDealerName(inspection: Inspection) {
+    const booking = await this.bookingRepository.findOne({ where: { id: inspection.bookingId } });
+    return { ...inspection, dealerName: booking?.dealerName ?? null };
   }
 }
