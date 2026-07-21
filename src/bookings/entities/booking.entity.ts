@@ -60,7 +60,10 @@ export class Booking {
   purchasePrice: number | null; // 매입가 (만원)
 
   @Column({ default: false })
-  isOldDealerPurchase: boolean; // 구전 매입 여부
+  isOldDealerPurchase: boolean; // (구) 구전 매입 여부 — oldDealerFee(금액 입력)로 대체, 컬럼은 하위호환용으로 유지
+
+  @Column({ type: 'int', nullable: true })
+  oldDealerFee: number | null; // 구전 금액 (만원) — 예/아니오 대신 실제 지급액을 기록
 
   // 계약팀이 오더 진행 중 직접 확인·기록하는 고객(차주) 연락처 — 접수 시 받는
   // contact는 신청자(딜러/고객) 번호라 실제 차주 번호와 다를 수 있어 별도 필드로 관리
