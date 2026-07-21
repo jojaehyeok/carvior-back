@@ -61,6 +61,11 @@ export class Booking {
 
   @Column({ default: false })
   isOldDealerPurchase: boolean; // 구전 매입 여부
+
+  // 계약팀이 오더 진행 중 직접 확인·기록하는 고객(차주) 연락처 — 접수 시 받는
+  // contact는 신청자(딜러/고객) 번호라 실제 차주 번호와 다를 수 있어 별도 필드로 관리
+  @Column({ type: 'varchar', nullable: true })
+  customerContact: string | null;
   // ----------------------
 
   @Column({ type: 'text', nullable: true })
