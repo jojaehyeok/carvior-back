@@ -3,6 +3,8 @@ import { createHash } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
+import archiver from 'archiver';
+import type { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Booking } from 'src/bookings/entities/booking.entity';
@@ -474,5 +476,41 @@ export class InspectionService {
   private async withDealerName(inspection: Inspection) {
     const booking = await this.bookingRepository.findOne({ where: { id: inspection.bookingId } });
     return { ...inspection, dealerName: booking?.dealerName ?? null };
+  }
+
+  // 리포트 사진 전체를 1.jpg, 2.jpg ... 순번으로 이름 붙여 zip으로 압축해 스트리밍.
+  // 등록증·차대번호(개인정보 사진)는 리포트 화면에도 안 보여주는 것과 동일하게 제외.
+  async streamPhotosZip(carHash: string, res: Response) {
+    const inspection = await this.inspectionRepository.findOne({ where: { carHash } });
+    if (!inspection) throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
+
+    const categoryOrder = ['exterior', 'wheel', 'undercarriage', 'interior', 'engine', 'damage', 'extra', 'extraMemo'];
+    const urls: string[] = [];
+    for (const cat of categoryOrder) {
+      const arr = (inspection.photos as any)?.[cat];
+      if (Array.isArray(arr)) urls.push(...arr);
+    }
+    if (inspection.dashboardImage) urls.push(inspection.dashboardImage);
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(inspection.carNumber || 'report')}_photos.zip"`);
+
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    archive.pipe(res);
+
+    let seq = 1;
+    for (const url of urls.slice(0, 100)) {
+      try {
+        const r = await fetch(url);
+        if (!r.ok) continue;
+        const buffer = Buffer.from(await r.arrayBuffer());
+        const ext = url.split('.').pop()?.split('?')[0]?.toLowerCase() || 'jpg';
+        archive.append(buffer, { name: `${seq}.${ext}` });
+        seq++;
+      } catch {
+        // 사진 하나가 실패해도 나머지는 계속 담는다
+      }
+    }
+    await archive.finalize();
   }
 }

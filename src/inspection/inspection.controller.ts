@@ -1,5 +1,6 @@
-import { Controller, Post, UseInterceptors, UploadedFile, UploadedFiles, Body, BadRequestException, Delete, Query, Get, Param, Patch, UseGuards } from '@nestjs/common';
+import { Controller, Post, UseInterceptors, UploadedFile, UploadedFiles, Body, BadRequestException, Delete, Query, Get, Param, Patch, UseGuards, Res } from '@nestjs/common';
 import { FileInterceptor, FilesInterceptor } from '@nestjs/platform-express';
+import type { Response } from 'express';
 import { InspectionService } from './inspection.service';
 import { InternalKeyGuard } from '../store-items/internal-key.guard';
 
@@ -72,6 +73,12 @@ export class InspectionController {
   async getReportByHash(@Param('carHash') carHash: string) {
     const inspection = await this.inspectionService.getInspectionByCarHash(carHash);
     return this.formatReport(inspection);
+  }
+
+  // 5-a. 리포트 사진 전체를 1,2,3...번 순서로 이름 붙여 zip 다운로드 (광고팀용 일괄 다운로드)
+  @Get('report/by-hash/:carHash/zip')
+  async downloadPhotosZip(@Param('carHash') carHash: string, @Res() res: Response) {
+    await this.inspectionService.streamPhotosZip(carHash, res);
   }
 
   // 5-b. 레포트 조회 - bookingId 기반 (내부/앱용)
