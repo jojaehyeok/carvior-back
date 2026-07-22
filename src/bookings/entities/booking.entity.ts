@@ -14,6 +14,11 @@ export class Booking {
 
   @Column({ type: 'varchar', nullable: true })
   assignedDriverName: string | null;
+
+  // 자동배정 알고리즘이 어떤 후보들을 비교해서 왜 이 진단사를 골랐는지 기록 —
+  // 수동 배정 건은 null(대시보드 UI에서 "수동 배정"으로 표시), SUPER_ADMIN 전용 확인용
+  @Column({ type: 'simple-json', nullable: true })
+  autoAssignLog: Record<string, unknown> | null;
   // ------------------------------
 
   @Column()

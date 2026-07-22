@@ -75,8 +75,11 @@ export class BookingsService {
     } else {
       // 지역·가용시간 맞는 활성 진단사가 있으면 즉시 자동배정, 없으면 기존처럼 전체 브로드캐스트로 폴백
       let assignedDriver: Driver | null = null;
+      let assignLog: Record<string, unknown> | null = null;
       try {
-        assignedDriver = await this.tryAutoAssign(saved);
+        const result = await this.tryAutoAssign(saved);
+        assignedDriver = result?.driver ?? null;
+        assignLog = result?.log ?? null;
         if (!assignedDriver) {
           console.log(`ℹ️ [자동배정 대상 없음] ${saved.carNumber} (${saved.address}) — 전체 브로드캐스트로 폴백`);
         }
@@ -88,6 +91,10 @@ export class BookingsService {
 
       if (assignedDriver) {
         saved = await this.assign(saved.id, { id: String(assignedDriver.id), name: assignedDriver.name });
+        if (assignLog) {
+          await this.bookingRepository.update(saved.id, { autoAssignLog: assignLog } as any);
+          saved.autoAssignLog = assignLog;
+        }
         console.log(`🤖 [자동배정] ${saved.carNumber} → ${assignedDriver.name}(${assignedDriver.id})`);
       } else {
         // 자동배정 대상이 없으면 승인된 진단사 전원에게 새 접수 푸시 발송(기존 동작) —
@@ -141,7 +148,7 @@ export class BookingsService {
   // 신청 주소·가용시간에 맞는 활성 진단사를 찾아 자동배정 대상을 고른다.
   // 지역이 맞는 진단사가 아무도 없으면 null을 반환해 기존 수동배정(전체 브로드캐스트) 흐름으로 넘긴다 —
   // 엉뚱한 지역 진단사에게 억지로 배정하는 것보다 관리자가 판단하게 두는 게 안전하기 때문.
-  private async tryAutoAssign(booking: Booking): Promise<Driver | null> {
+  private async tryAutoAssign(booking: Booking): Promise<{ driver: Driver; log: Record<string, unknown> } | null> {
     // isActive: false — 진단사 본인이 앱에서 "활동중지"로 꺼둔 경우(원거리 이동 중 등)
     // 근무시간(스케줄)에 걸려도 자동배정 대상에서 아예 제외
     const drivers = await this.driverRepository.find({ where: { status: 'APPROVED', isActive: true } });
@@ -184,10 +191,48 @@ export class BookingsService {
       );
       withCounts.sort((a, b) => a.count - b.count || a.km - b.km);
 
+      const candidateLog = withCounts.map(({ driver, km, count }) => ({
+        driverId: driver.id,
+        driverName: driver.name,
+        km: Math.round(km * 10) / 10,
+        todayCount: count,
+        maxDailyBookings: driver.maxDailyBookings ?? 5,
+        atCap: count >= (driver.maxDailyBookings ?? 5),
+      }));
+
       for (const { driver, count } of withCounts) {
-        if (count < (driver.maxDailyBookings ?? 5)) return driver;
+        if (count < (driver.maxDailyBookings ?? 5)) {
+          return {
+            driver,
+            log: {
+              bookingAddress: booking.address,
+              bookingCoords: coords,
+              nearestKm: Math.round(nearestKm * 10) / 10,
+              radiusKm: NEARBY_RADIUS_KM,
+              candidates: candidateLog,
+              chosenDriverId: driver.id,
+              chosenDriverName: driver.name,
+              reason: '반경 내 후보 중 오늘 배정건수가 가장 적음(동률 시 거리순)',
+              assignedAt: new Date().toISOString(),
+            },
+          };
+        }
       }
-      return ranked[0].driver; // 인근 후보 전원 마감이어도 그중 제일 가까운 사람에게 배정
+      // 인근 후보 전원 마감이어도 그중 제일 가까운 사람에게 배정
+      return {
+        driver: ranked[0].driver,
+        log: {
+          bookingAddress: booking.address,
+          bookingCoords: coords,
+          nearestKm: Math.round(nearestKm * 10) / 10,
+          radiusKm: NEARBY_RADIUS_KM,
+          candidates: candidateLog,
+          chosenDriverId: ranked[0].driver.id,
+          chosenDriverName: ranked[0].driver.name,
+          reason: '반경 내 후보 전원이 하루 최대 배정건수 도달 — 그중 가장 가까운 사람에게 배정',
+          assignedAt: new Date().toISOString(),
+        },
+      };
     }
 
     // 거리 계산이 안 되면(지오코딩 실패·위치정보 없음) 오늘 배정건수가 가장 적은 사람 우선
@@ -195,7 +240,25 @@ export class BookingsService {
       activeMatched.map(async d => ({ driver: d, count: await countFor(d.id) })),
     );
     counts.sort((a, b) => a.count - b.count);
-    return counts[0]?.driver ?? null;
+    const picked = counts[0];
+    if (!picked) return null;
+    return {
+      driver: picked.driver,
+      log: {
+        bookingAddress: booking.address,
+        bookingCoords: null,
+        candidates: counts.map(({ driver, count }) => ({
+          driverId: driver.id,
+          driverName: driver.name,
+          km: null,
+          todayCount: count,
+        })),
+        chosenDriverId: picked.driver.id,
+        chosenDriverName: picked.driver.name,
+        reason: '주소 좌표 변환 실패 또는 위치정보 있는 후보 없음 — 오늘 배정건수만으로 비교',
+        assignedAt: new Date().toISOString(),
+      },
+    };
   }
 
   async findByDriver(driverId: string) {
