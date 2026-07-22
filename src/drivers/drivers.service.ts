@@ -66,7 +66,9 @@ export class DriversService {
   }
 
   async findById(id: number) {
-    return await this.driverRepository.findOne({ where: { id } });
+    const driver = await this.driverRepository.findOne({ where: { id } });
+    if (!driver) throw new NotFoundException('진단사를 찾을 수 없습니다.');
+    return driver;
   }
 
   async updateAvailability(id: number, data: {
