@@ -404,4 +404,19 @@ export class BookingsService {
       recentLogs: logs.slice(0, 10),
     };
   }
+
+  // CS 관리 페이지용 진단사 취소 로그 전체 목록 — COMPANY_ADMIN은 자사 의뢰(source) 건만 봐야 하므로
+  // bookingId로 조인해서 해당 발주사 소속 로그만 필터링
+  async findCancelLogs(source?: string) {
+    if (!source) {
+      return await this.cancelLogRepository.find({ order: { createdAt: 'DESC' } });
+    }
+    const bookings = await this.bookingRepository.find({ where: { source }, select: ['id'] });
+    const bookingIds = bookings.map(b => b.id);
+    if (bookingIds.length === 0) return [];
+    return await this.cancelLogRepository.find({
+      where: { bookingId: In(bookingIds) },
+      order: { createdAt: 'DESC' },
+    });
+  }
 }

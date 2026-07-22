@@ -88,6 +88,12 @@ export class BookingsController {
     return await this.bookingsService.findAll(source);
   }
 
+  // GET: 진단사 취소 로그 목록 (CS 관리용, source 필터 옵션)
+  @Get('cancel-logs')
+  async getCancelLogs(@Query('source') source?: string) {
+    return await this.bookingsService.findCancelLogs(source);
+  }
+
   @Patch(':id/assign')
   async assignDriver(
     @Param('id') id: string,
