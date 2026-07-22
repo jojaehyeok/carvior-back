@@ -9,7 +9,7 @@ import { Driver } from '../drivers/entities/driver.entity';
 import { DriverCancelLog } from '../driver-cancel-logs/driver-cancel-log.entity';
 import { Inspection } from '../inspection/entities/inspection.entity';
 import { User } from '../users/entities/user.entity';
-import { distanceKm, geocodeAddress, isDriverActiveNow } from './auto-assign.util';
+import { distanceKm, geocodeAddress, isDriverActiveNow, isLocationFresh } from './auto-assign.util';
 
 // cavior 내에서 source 값을 고정 문자열로 보내는 B2C 신청 경로들 — 이 값들은
 // 발주사 코드가 아니라서 관리자 등록 여부 체크 대상에서 제외한다.
@@ -96,7 +96,8 @@ export class BookingsService {
           const drivers = await this.driverRepository.find({
             where: { status: 'APPROVED', isActive: true },
           });
-          const pushTargets = drivers.filter(d => d.pushToken);
+          // 위치가 30분 이상 오래된(사실상 이탈한) 진단사에게는 알림도 굳이 안 보냄
+          const pushTargets = drivers.filter(d => d.pushToken && isLocationFresh(d));
           await Promise.all(
             pushTargets.map(d =>
               this.notificationsService.sendPush(
@@ -150,7 +151,9 @@ export class BookingsService {
     const regionMatched = drivers.filter(d => (d.regions ?? []).some(r => r && booking.address?.includes(r)));
     if (regionMatched.length === 0) return null;
 
-    const activeMatched = regionMatched.filter(isDriverActiveNow);
+    // 근무시간·isActive를 통과해도 최근 30분간 위치 갱신이 없으면(앱 강제종료·백그라운드
+    // 스로틀링 등으로 실제로 이탈했을 가능성) 자동배정 후보에서 제외
+    const activeMatched = regionMatched.filter(isDriverActiveNow).filter(isLocationFresh);
     if (activeMatched.length === 0) return null;
 
     // setHours(0,0,0,0)도 서버 로컬 타임존(UTC) 자정 기준이라 한국 자정과 9시간 어긋남 —
