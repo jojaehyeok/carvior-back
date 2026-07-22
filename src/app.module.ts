@@ -24,6 +24,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { BidsModule } from './bids/bids.module';
 import { ComplianceModule } from './compliance/compliance.module';
 import { ScheduledNotificationsModule } from './scheduled-notifications/scheduled-notifications.module';
+import { ClientErrorLogsModule } from './client-error-logs/client-error-logs.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { ScheduledNotificationsModule } from './scheduled-notifications/schedule
     BidsModule,
     ComplianceModule,
     ScheduledNotificationsModule,
+    ClientErrorLogsModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, SolapiService, S3Service],
