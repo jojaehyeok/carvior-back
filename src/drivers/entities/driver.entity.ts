@@ -72,4 +72,10 @@ export class Driver {
 
   @Column({ type: 'timestamp', nullable: true })
   lastSeenAt: Date | null;
+
+  // 진단사 본인이 앱에서 켜고 끄는 "활동중지" 스위치 — 정해진 근무시간(availableDays/
+  // availableStartTime/EndTime) 안이라도 이걸 꺼두면 자동배정·신규접수 브로드캐스트 둘 다
+  // 제외됨(원거리 이동 중 휴대폰을 꺼두는 경우 등, 스케줄만으로는 못 막는 공백 대응)
+  @Column({ default: true })
+  isActive: boolean;
 }

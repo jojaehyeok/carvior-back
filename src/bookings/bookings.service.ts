@@ -90,10 +90,11 @@ export class BookingsService {
         saved = await this.assign(saved.id, { id: String(assignedDriver.id), name: assignedDriver.name });
         console.log(`🤖 [자동배정] ${saved.carNumber} → ${assignedDriver.name}(${assignedDriver.id})`);
       } else {
-        // 자동배정 대상이 없으면 승인된 진단사 전원에게 새 접수 푸시 발송(기존 동작)
+        // 자동배정 대상이 없으면 승인된 진단사 전원에게 새 접수 푸시 발송(기존 동작) —
+        // 활동중지로 꺼둔 진단사는 굳이 알림도 안 감
         try {
           const drivers = await this.driverRepository.find({
-            where: { status: 'APPROVED' },
+            where: { status: 'APPROVED', isActive: true },
           });
           const pushTargets = drivers.filter(d => d.pushToken);
           await Promise.all(
@@ -140,7 +141,9 @@ export class BookingsService {
   // 지역이 맞는 진단사가 아무도 없으면 null을 반환해 기존 수동배정(전체 브로드캐스트) 흐름으로 넘긴다 —
   // 엉뚱한 지역 진단사에게 억지로 배정하는 것보다 관리자가 판단하게 두는 게 안전하기 때문.
   private async tryAutoAssign(booking: Booking): Promise<Driver | null> {
-    const drivers = await this.driverRepository.find({ where: { status: 'APPROVED' } });
+    // isActive: false — 진단사 본인이 앱에서 "활동중지"로 꺼둔 경우(원거리 이동 중 등)
+    // 근무시간(스케줄)에 걸려도 자동배정 대상에서 아예 제외
+    const drivers = await this.driverRepository.find({ where: { status: 'APPROVED', isActive: true } });
     if (drivers.length === 0) return null;
 
     // 진단사가 설정한 지역(구/시 단위) 중 하나라도 신청 주소 문자열에 포함되면 매칭으로 간주

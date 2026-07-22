@@ -88,12 +88,20 @@ export class DriversService {
     return { success: true };
   }
 
+  // 진단사가 앱에서 직접 켜고 끄는 "활동중지" 스위치
+  async setActiveStatus(id: number, isActive: boolean) {
+    const driver = await this.driverRepository.findOne({ where: { id } });
+    if (!driver) throw new NotFoundException('진단사를 찾을 수 없습니다.');
+    driver.isActive = isActive;
+    return await this.driverRepository.save(driver);
+  }
+
   async findLocations() {
     return this.driverRepository.find({
       where: { status: 'APPROVED' },
       select: [
         'id', 'name', 'phone', 'lat', 'lng', 'lastSeenAt', 'regions',
-        'availableDays', 'availableStartTime', 'availableEndTime',
+        'availableDays', 'availableStartTime', 'availableEndTime', 'isActive',
       ],
     });
   }

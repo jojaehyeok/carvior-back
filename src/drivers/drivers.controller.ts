@@ -66,6 +66,12 @@ export class DriversController {
     return this.driversService.updateLocation(Number(id), body.lat, body.lng);
   }
 
+  // 진단사 본인이 앱에서 켜고 끄는 활동중지 스위치
+  @Patch(':id/active-status')
+  async setActiveStatus(@Param('id') id: string, @Body('isActive') isActive: boolean) {
+    return this.driversService.setActiveStatus(Number(id), isActive);
+  }
+
   @Get('locations/all')
   async findLocations() {
     return this.driversService.findLocations();
