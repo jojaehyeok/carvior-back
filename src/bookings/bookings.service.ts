@@ -239,15 +239,27 @@ export class BookingsService {
     const slotFree = conflictChecks.filter(c => !c.conflict).map(c => c.driver);
     if (slotFree.length === 0) return null;
 
-    // setHours(0,0,0,0)도 서버 로컬 타임존(UTC) 자정 기준이라 한국 자정과 9시간 어긋남 —
-    // KST 자정을 UTC 기준 시각으로 환산해서 오늘 배정건수를 정확히 셈
+    // 로드밸런싱 기준 배정건수는 "접수(생성)된 날짜"가 아니라 "방문예정일" 기준으로 셈 —
+    // 접수일 기준이면 오늘 접수됐지만 방문일이 제각각인 예약들이 뒤섞여서, 실제로 그 방문일에
+    // 얼마나 바쁜지가 아니라 "오늘 접수량"으로 분산시키는 꼴이 됨. setHours(0,0,0,0)도 서버
+    // 로컬 타임존(UTC) 자정 기준이라 한국 자정과 9시간 어긋나서, KST 자정을 UTC로 환산해 사용.
+    const visitDatePart = booking.preferredDateTime?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1];
     const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
     const kstMidnight = new Date(Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), kstNow.getUTCDate()));
     const todayStart = new Date(kstMidnight.getTime() - 9 * 60 * 60 * 1000);
     const countFor = async (driverId: number) =>
-      this.bookingRepository.count({
-        where: { assignedDriverId: String(driverId), createdAt: MoreThanOrEqual(todayStart) },
-      });
+      visitDatePart
+        ? this.bookingRepository.count({
+            where: {
+              assignedDriverId: String(driverId),
+              status: In(['ASSIGNED', 'CONFIRMED', 'COMPLETED']),
+              preferredDateTime: Like(`${visitDatePart}%`),
+            },
+          })
+        // 방문예정일 파싱 실패 시(형식 이상·미입력) 접수일 기준으로 폴백
+        : this.bookingRepository.count({
+            where: { assignedDriverId: String(driverId), createdAt: MoreThanOrEqual(todayStart) },
+          });
 
     // 거리 계산 가능하면: 제일 가까운 사람 기준 +15km(왕복 30km, 준오지 기준의 절반) 이내에 있는
     // "가까운 편" 진단사들끼리는 거리보다 오늘 배정건수가 적은 사람을 우선 — 한 명한테 쏠리는 것 방지.
