@@ -302,14 +302,22 @@ export class BookingsService {
     });
   }
 
-  async findAll(source?: string): Promise<(Booking & { carHash?: string | null; firstCompletedAt?: Date | null })[]> {
+  // includeSelf 없이 source 미지정으로 조회하면(ChavatarApp의 전체 목록 조회가 바로 이 경우)
+  // 자체 신청(self-{company}) 건은 기본적으로 제외됨 — 진단사가 방문할 필요 없는 건이
+  // 앱 어느 화면에도 노출되지 않게 하기 위함(구버전 앱도 소급 적용됨). source를 명시하면
+  // 정확히 일치하는 것만 가져오므로 이 필터와 무관 — "자체 진단 목록" 탭은 source에
+  // "self-{company}"를 그대로 넘겨서 조회하니 영향 없음.
+  async findAll(source?: string, includeSelf = false): Promise<(Booking & { carHash?: string | null; firstCompletedAt?: Date | null })[]> {
     const bookings = await this.bookingRepository.find({
       where: source ? { source } : {},
       order: { createdAt: 'DESC' },
     });
+    const visible = (!source && !includeSelf)
+      ? bookings.filter(b => !b.source?.startsWith('self-'))
+      : bookings;
 
-    const completedIds = bookings.filter(b => b.status === 'COMPLETED').map(b => b.id);
-    if (completedIds.length === 0) return bookings;
+    const completedIds = visible.filter(b => b.status === 'COMPLETED').map(b => b.id);
+    if (completedIds.length === 0) return visible;
 
     const inspections = await this.inspectionRepository.find({
       where: { bookingId: In(completedIds) },
@@ -318,7 +326,7 @@ export class BookingsService {
     const hashMap = new Map(inspections.map(i => [i.bookingId, i.carHash]));
     const firstCompletedMap = new Map(inspections.map(i => [i.bookingId, i.firstCompletedAt]));
 
-    return bookings.map(b => ({
+    return visible.map(b => ({
       ...b,
       carHash: hashMap.get(b.id) ?? null,
       firstCompletedAt: firstCompletedMap.get(b.id) ?? null,

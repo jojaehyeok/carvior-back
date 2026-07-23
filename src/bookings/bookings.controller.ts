@@ -83,9 +83,10 @@ export class BookingsController {
 
   // GET: 전체 리스트 확인 (source 필터 옵션)
   // 예: /api/v1/external/request/list?source=anyone-motors
+  // source 없이 조회 시 자체 신청(self-) 건은 기본 제외됨 — includeSelf=true로 명시하면 포함
   @Get('list')
-  async getList(@Query('source') source?: string) {
-    return await this.bookingsService.findAll(source);
+  async getList(@Query('source') source?: string, @Query('includeSelf') includeSelf?: string) {
+    return await this.bookingsService.findAll(source, includeSelf === 'true');
   }
 
   // GET: 진단사 취소 로그 목록 (CS 관리용, source 필터 옵션)
