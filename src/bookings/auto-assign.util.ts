@@ -28,10 +28,11 @@ export function isDriverActiveNow(d: {
   return !!(d.lastSeenAt && Date.now() - new Date(d.lastSeenAt).getTime() < 3 * 60 * 60 * 1000);
 }
 
-// 스케줄상 근무시간이고 isActive라도, 최근 30분간 위치 갱신이 없으면(앱 강제종료·백그라운드
+// 스케줄상 근무시간이고 isActive라도, 위치 갱신이 너무 오래 안 되면(앱 강제종료·백그라운드
 // 스로틀링 등) 실제로 자리를 비웠을 가능성이 높으니 자동배정·신규접수 알림 후보에서 제외.
 // 앱을 다시 켜면 즉시 위치가 갱신되니 다음 예약부터 바로 정상 복귀됨(영구 제외 아님).
-const STALE_LOCATION_MS = 30 * 60 * 1000;
+// (30분은 2분 간격 GPS 핑도 잠깐 밀리면 걸릴 만큼 빡빡해서 3시간으로 완화)
+const STALE_LOCATION_MS = 3 * 60 * 60 * 1000;
 
 export function isLocationFresh(d: { lastSeenAt?: Date | string | null }): boolean {
   return !!(d.lastSeenAt && Date.now() - new Date(d.lastSeenAt).getTime() <= STALE_LOCATION_MS);
