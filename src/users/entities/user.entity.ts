@@ -54,6 +54,10 @@ export class User {
   @Column({ default: 'none' })
   dealerStatus: string; // 'none' | 'pending' | 'approved' | 'rejected'
 
+  // 광고성 정보 수신 동의 — 정보통신망법상 별도 opt-in, 가입 시 기본 미동의
+  @Column({ default: false })
+  marketingConsent: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

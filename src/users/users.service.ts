@@ -31,6 +31,7 @@ export class UsersService {
     businessRegUrl?: string;
     businessNumber?: string;
     companyName?: string;
+    marketingConsent?: boolean;
   }): Promise<User> {
     const existing = await this.findByEmail(data.email);
     if (existing) throw new ConflictException('이미 사용 중인 이메일입니다.');
@@ -38,19 +39,20 @@ export class UsersService {
     const hashed = await bcrypt.hash(data.password, 10);
     const isDealer = data.role === 'dealer';
     const user = this.repo.create({
-      email:            data.email,
-      password:         hashed,
-      name:             data.name,
-      phone:            data.phone,
-      role:             data.role ?? 'user',
-      company:          data.company || null,
-      logoUrl:          data.logoUrl || null,
-      provider:         'local',
-      dealerLicenseUrl: data.dealerLicenseUrl,
-      businessRegUrl:   data.businessRegUrl,
-      businessNumber:   data.businessNumber,
-      companyName:      data.companyName,
-      dealerStatus:     isDealer ? 'pending' : 'none',
+      email:             data.email,
+      password:          hashed,
+      name:              data.name,
+      phone:             data.phone,
+      role:              data.role ?? 'user',
+      company:           data.company || null,
+      logoUrl:           data.logoUrl || null,
+      provider:          'local',
+      dealerLicenseUrl:  data.dealerLicenseUrl,
+      businessRegUrl:    data.businessRegUrl,
+      businessNumber:    data.businessNumber,
+      companyName:       data.companyName,
+      dealerStatus:      isDealer ? 'pending' : 'none',
+      marketingConsent:  data.marketingConsent ?? false,
     });
     return this.repo.save(user);
   }
@@ -127,6 +129,13 @@ export class UsersService {
     if (data.phone !== undefined) user.phone = data.phone;
     if (data.company !== undefined) user.company = data.company || null;
     if (data.logoUrl !== undefined) user.logoUrl = data.logoUrl || null;
+    return this.repo.save(user);
+  }
+
+  async updateMarketingConsent(id: number, consent: boolean): Promise<User> {
+    const user = await this.repo.findOneBy({ id });
+    if (!user) throw new UnauthorizedException('유저를 찾을 수 없습니다.');
+    user.marketingConsent = consent;
     return this.repo.save(user);
   }
 

@@ -34,6 +34,7 @@ export class UsersController {
   register(@Body() body: {
     email: string; password: string; name: string; phone?: string; role?: string; company?: string; logoUrl?: string;
     dealerLicenseUrl?: string; businessRegUrl?: string; businessNumber?: string; companyName?: string;
+    marketingConsent?: boolean;
   }) {
     return this.svc.register(body);
   }
@@ -92,6 +93,11 @@ export class UsersController {
   @Patch(':id/admin-info')
   updateAdminInfo(@Param('id') id: string, @Body() body: { name?: string; phone?: string; company?: string; logoUrl?: string }) {
     return this.svc.updateAdminInfo(Number(id), body);
+  }
+
+  @Patch(':id/marketing-consent')
+  updateMarketingConsent(@Param('id') id: string, @Body() body: { marketingConsent: boolean }) {
+    return this.svc.updateMarketingConsent(Number(id), !!body.marketingConsent);
   }
 
   @Get('admins')
