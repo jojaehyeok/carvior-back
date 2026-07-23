@@ -73,9 +73,15 @@ export class BookingsService {
     let saved = await this.bookingRepository.save(booking);
 
     const restricted = await this.isRestrictedSource(saved.source);
+    // "self-{company}"는 발주사가 자기 소유 차량을 자체적으로 처리하는 건 —
+    // 진단사가 실제로 방문할 필요가 없으니 자동배정도, 전체 브로드캐스트 알림도 하지 않는다.
+    // (미등록 출처라서 막는 "restricted"와는 다른 개념 — 정상 등록된 발주사의 의도적 셀프 처리)
+    const selfSource = !!saved.source?.startsWith('self-');
 
     if (restricted) {
       console.log(`⛔ [배정제한] 등록되지 않은 발주사 코드(source=${saved.source}) — 자동배정·진단사 브로드캐스트 건너뜀 (건: ${saved.carNumber})`);
+    } else if (selfSource) {
+      console.log(`ℹ️ [자체 진단] ${saved.carNumber} — 자체 신청 건이라 진단사 자동배정/알림 없이 접수만 처리`);
     } else {
       // 지역·가용시간 맞는 활성 진단사가 있으면 즉시 자동배정, 없으면 기존처럼 전체 브로드캐스트로 폴백
       let assignedDriver: Driver | null = null;
