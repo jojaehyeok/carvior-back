@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Like, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { Booking } from './entities/booking.entity';
@@ -454,7 +454,7 @@ export class BookingsService {
 
   // source: 'auto'는 create()의 자동배정 성공 시에만 내부적으로 넘김 — 그 외(대시보드/지도에서
   // 관리자가 직접 배정)는 전부 기본값 'manual'로 처리되어 진단사에게 다른 문구로 알림이 감.
-  async assign(id: number, driverInfo: { id: string; name: string }, source: 'auto' | 'manual' = 'manual') {
+  async assign(id: number, driverInfo: { id: string; name: string }, source: 'auto' | 'manual' | 'agent' = 'manual', assignedByAgentId?: string) {
     const booking = await this.bookingRepository.findOne({ where: { id } });
     if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
 
@@ -462,6 +462,7 @@ export class BookingsService {
     booking.assignedDriverName = driverInfo.name;
     booking.status = 'ASSIGNED';
     booking.cancelledByDriverAt = null; // 재배정 시 재대기 플래그 초기화
+    booking.assignedByAgentId = source === 'agent' ? (assignedByAgentId ?? null) : null;
 
     const saved = await this.bookingRepository.save(booking);
 
@@ -470,7 +471,7 @@ export class BookingsService {
       if (driver?.pushToken) {
         await this.notificationsService.sendPush(
           driver.pushToken,
-          source === 'auto' ? '(자동배정) 신규 신청이 접수되었습니다.' : '(수동배정) 진단건이 확정되었습니다.',
+          source === 'auto' ? '(자동배정) 신규 신청이 접수되었습니다.' : source === 'agent' ? '(에이전트 배정) 진단건이 배정되었습니다.' : '(수동배정) 진단건이 확정되었습니다.',
           `${saved.carOwner}님 · ${saved.carNumber} · ${saved.preferredDateTime}`,
           { bookingId: saved.id },
         );
@@ -493,6 +494,15 @@ export class BookingsService {
     }
 
     return saved;
+  }
+
+  // 에이전트 진단평가사가 예약대기 건을 다른 진단사에게 지정 배정
+  async agentAssign(id: number, agentDriverId: string, targetDriverId: string, targetDriverName: string) {
+    const agent = await this.driverRepository.findOne({ where: { id: Number(agentDriverId) } });
+    if (!agent || agent.tier !== 'agent') {
+      throw new BadRequestException('에이전트 진단평가사만 지정 배정할 수 있습니다.');
+    }
+    return this.assign(id, { id: targetDriverId, name: targetDriverName }, 'agent', agentDriverId);
   }
 
   // 진단사 취소 통계

@@ -108,6 +108,15 @@ export class DriversService {
     });
   }
 
+  async updateTier(id: number, tier: 'general' | 'certified' | 'agent') {
+    const ALLOWED = ['general', 'certified', 'agent'];
+    if (!ALLOWED.includes(tier)) throw new NotFoundException('잘못된 등급값입니다.');
+    const driver = await this.driverRepository.findOne({ where: { id } });
+    if (!driver) throw new NotFoundException('진단사를 찾을 수 없습니다.');
+    driver.tier = tier;
+    return await this.driverRepository.save(driver);
+  }
+
   async savePushToken(id: number, pushToken: string) {
     console.log(`[PushToken] 저장 요청 → driverId: ${id}, token: ${pushToken?.slice(0, 30)}...`);
     await this.driverRepository.update(id, { pushToken });

@@ -75,6 +75,18 @@ export class BookingsController {
     };
   }
 
+  // PATCH: 에이전트 진단평가사가 대기 건을 다른 진단사에게 지정 배정
+  @Patch(':id/agent-assign')
+  async agentAssign(
+    @Param('id') id: number,
+    @Body() body: { agentDriverId: string; targetDriverId: string; targetDriverName: string },
+  ) {
+    const updatedBooking = await this.bookingsService.agentAssign(
+      id, body.agentDriverId, body.targetDriverId, body.targetDriverName,
+    );
+    return { success: true, data: updatedBooking };
+  }
+
   // GET: 진단사 취소 통계
   @Get('driver/:driverId/cancel-stats')
   async getDriverCancelStats(@Param('driverId') driverId: string) {

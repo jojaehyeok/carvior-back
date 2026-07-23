@@ -78,4 +78,10 @@ export class Driver {
   // 제외됨(원거리 이동 중 휴대폰을 꺼두는 경우 등, 스케줄만으로는 못 막는 공백 대응)
   @Column({ default: true })
   isActive: boolean;
+
+  // 등급제 — 'general'(일반, ~5만원) | 'certified'(진단평가사, ~6만원, 라운딩 부담) |
+  // 'agent'(에이전트, 6.5~8만원 협의) — agent는 다른 진단사에게 건을 지정 배정하고
+  // 그 건의 리포트를 대신 수정할 수 있음
+  @Column({ default: 'general' })
+  tier: 'general' | 'certified' | 'agent';
 }

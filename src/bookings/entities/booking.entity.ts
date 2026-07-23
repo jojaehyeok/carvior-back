@@ -15,6 +15,12 @@ export class Booking {
   @Column({ type: 'varchar', nullable: true })
   assignedDriverName: string | null;
 
+  // 에이전트 진단평가사가 이 건을 다른 진단사에게 "지정 배정"했을 때 그 에이전트의 driver.id.
+  // null이면 자동배정/일반 수동배정/본인 확정 — 에이전트가 배정한 건만 그 에이전트가
+  // assignedDriverId와 무관하게 리포트를 대신 수정할 수 있게 하는 데 사용
+  @Column({ type: 'varchar', nullable: true })
+  assignedByAgentId: string | null;
+
   // 자동배정 알고리즘이 어떤 후보들을 비교해서 왜 이 진단사를 골랐는지 기록 —
   // 수동 배정 건은 null(대시보드 UI에서 "수동 배정"으로 표시), SUPER_ADMIN 전용 확인용
   @Column({ type: 'simple-json', nullable: true })

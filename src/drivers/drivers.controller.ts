@@ -72,6 +72,12 @@ export class DriversController {
     return this.driversService.setActiveStatus(Number(id), isActive);
   }
 
+  // 등급 변경(일반/진단평가사/에이전트) — 관리자가 부여
+  @Patch(':id/tier')
+  async updateTier(@Param('id') id: string, @Body('tier') tier: 'general' | 'certified' | 'agent') {
+    return this.driversService.updateTier(Number(id), tier);
+  }
+
   @Get('locations/all')
   async findLocations() {
     return this.driversService.findLocations();
