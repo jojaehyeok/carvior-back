@@ -60,7 +60,11 @@ export class BookingsService {
   // 하지 않는다 — 검증 안 된 출처의 건이 실제 진단사에게 바로 배차되는 것을 막기 위함.
   private async isRestrictedSource(source?: string): Promise<boolean> {
     if (!source || KNOWN_B2C_SOURCES.has(source)) return false;
-    const admin = await this.userRepository.findOne({ where: { role: 'admin', company: source } });
+    // "self-{company}"(발주사 자체 보유 차량 접수)는 등록된 발주사 계정이 있으면
+    // 정상 출처로 인정 — 접두사를 떼고 원래 회사코드로 재확인
+    const company = source.startsWith('self-') ? source.slice(5) : source;
+    if (KNOWN_B2C_SOURCES.has(company)) return false;
+    const admin = await this.userRepository.findOne({ where: { role: 'admin', company } });
     return !admin;
   }
 
