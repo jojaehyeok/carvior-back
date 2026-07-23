@@ -1,22 +1,47 @@
 import * as https from 'https';
 
-// 대시보드 지도(diagnosis/map.tsx)의 활성 진단사 판단 로직과 동일 —
-// 가용 요일/시간을 벗어나면 비활성, 스케줄 미설정이면 최근 3시간 GPS로 폴백
-export function isDriverActiveNow(d: {
-  availableDays?: number[] | null;
-  availableStartTime?: string | null;
-  availableEndTime?: string | null;
-  lastSeenAt?: Date | string | null;
-}): boolean {
+// preferredDateTime("YYYY-MM-DD HH:mm", KST 벽시계 문자열)에서 요일·분단위 시각을 뽑아냄.
+// 파싱 실패 시 null — 호출부에서 "지금" 기준으로 폴백.
+function parseKstDayAndMinutes(dateTimeStr?: string | null): { day: number; minutes: number } | null {
+  const match = dateTimeStr?.match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+  if (!match) return null;
+  const [, y, mo, d, h, mi] = match.map(Number);
+  // 순수 달력 요일 계산이라 타임존 영향 없음 — Date.UTC로 계산해도 실제 KST 날짜의 요일과 같음
+  const day = new Date(Date.UTC(y, mo - 1, d)).getUTCDay();
+  return { day, minutes: h * 60 + mi };
+}
+
+// 대시보드 지도(diagnosis/map.tsx)의 "지금 활성" 판단과는 다르게, 자동배정에서는 접수 시점이
+// 아니라 실제 방문예정일시(referenceDateTime) 기준으로 스케줄을 체크한다 — 안 그러면 저녁에
+// 접수된 건이 "지금(접수 시점)은 근무 외 시간"이라는 이유만으로 무조건 자동배정에서 제외돼서,
+// 방문일이 며칠 뒤라 실제로는 그 진단사가 근무 중일 시간이어도 후보에서 부당하게 빠지는 문제가 있었음.
+// referenceDateTime을 안 주면(예: 지도 화면의 실시간 표시) 기존처럼 "지금"을 기준으로 판단.
+export function isDriverActiveNow(
+  d: {
+    availableDays?: number[] | null;
+    availableStartTime?: string | null;
+    availableEndTime?: string | null;
+    lastSeenAt?: Date | string | null;
+  },
+  referenceDateTime?: string | null,
+): boolean {
   // new Date().getDay()/getHours()는 서버 로컬 타임존 기준인데, 배포 서버는 UTC로 돌고 있어서
   // 진단사가 입력한 가용시간(한국시간 기준, 예: 08:00~20:00)과 그대로 비교하면 9시간이 밀려
   // 실제로는 활성 시간대인데도 비활성으로 잘못 판정됨 — 서버 타임존과 무관하게 항상 KST로 계산.
-  const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
-  const day = kst.getUTCDay();
+  const parsed = parseKstDayAndMinutes(referenceDateTime);
+  let day: number;
+  let cur: number;
+  if (parsed) {
+    ({ day, minutes: cur } = parsed);
+  } else {
+    const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    day = kst.getUTCDay();
+    cur = kst.getUTCHours() * 60 + kst.getUTCMinutes();
+  }
+
   if (d.availableDays && d.availableDays.length > 0) {
     if (!d.availableDays.includes(day)) return false;
     if (d.availableStartTime && d.availableEndTime) {
-      const cur = kst.getUTCHours() * 60 + kst.getUTCMinutes();
       const [sh, sm] = d.availableStartTime.split(':').map(Number);
       const [eh, em] = d.availableEndTime.split(':').map(Number);
       const start = sh * 60 + sm;
@@ -25,6 +50,8 @@ export function isDriverActiveNow(d: {
     }
     return true;
   }
+  // 스케줄 미설정 시의 "최근 3시간 GPS 활동" 폴백은 미래 방문일을 알 수 없는 값이라
+  // 방문예정일과 무관하게 항상 "지금" 기준으로 판단
   return !!(d.lastSeenAt && Date.now() - new Date(d.lastSeenAt).getTime() < 3 * 60 * 60 * 1000);
 }
 

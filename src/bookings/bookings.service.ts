@@ -194,7 +194,9 @@ export class BookingsService {
 
     // 근무시간·isActive를 통과해도 최근 30분간 위치 갱신이 없으면(앱 강제종료·백그라운드
     // 스로틀링 등으로 실제로 이탈했을 가능성) 자동배정 후보에서 제외
-    const activeMatched = regionMatched.filter(isDriverActiveNow).filter(isLocationFresh);
+    const activeMatched = regionMatched
+      .filter(d => isDriverActiveNow(d, booking.preferredDateTime))
+      .filter(isLocationFresh);
     if (activeMatched.length === 0) return null;
 
     // setHours(0,0,0,0)도 서버 로컬 타임존(UTC) 자정 기준이라 한국 자정과 9시간 어긋남 —
