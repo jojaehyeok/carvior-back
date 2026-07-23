@@ -23,6 +23,12 @@ const KNOWN_B2C_SOURCES = new Set([
   'PRIVATE_DEAL_FORM',
 ]);
 
+// 자동배정은 "지금 이 순간 활성 상태인 진단사"만 보고 판단하는 즉시배정 로직이라,
+// 방문일이 접수 시점보다 한참 뒤인 예약건에 적용하면 실제 방문일의 스케줄과 무관하게
+// 배정되거나 반대로 충분히 가능한 진단사가 제외될 수 있다 — 이 기간을 넘는 예약은
+// 자동배정·전체 브로드캐스트를 건너뛰고 관리자가 대시보드에서 직접 배정하게 둔다.
+const AUTO_ASSIGN_DAYS_THRESHOLD = 3;
+
 @Injectable()
 export class BookingsService {
   constructor(
@@ -68,6 +74,21 @@ export class BookingsService {
     return !admin;
   }
 
+  // preferredDateTime("YYYY-MM-DD HH:mm")의 날짜가 오늘(KST) 기준 AUTO_ASSIGN_DAYS_THRESHOLD일
+  // 이내인지 확인 — 날짜 파싱이 안 되면(형식이 다르거나 미입력) 기존처럼 즉시배정 대상으로 취급
+  private isWithinAutoAssignWindow(preferredDateTime?: string): boolean {
+    const datePart = preferredDateTime?.split(' ')[0];
+    const match = datePart?.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (!match) return true;
+    const targetMidnight = Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+
+    const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+    const todayKstMidnight = Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), kstNow.getUTCDate());
+
+    const diffDays = Math.round((targetMidnight - todayKstMidnight) / 86400000);
+    return diffDays <= AUTO_ASSIGN_DAYS_THRESHOLD;
+  }
+
   async create(data: Partial<Booking>): Promise<Booking & { restricted?: boolean }> {
     const booking = this.bookingRepository.create(data);
     let saved = await this.bookingRepository.save(booking);
@@ -77,11 +98,14 @@ export class BookingsService {
     // 진단사가 실제로 방문할 필요가 없으니 자동배정도, 전체 브로드캐스트 알림도 하지 않는다.
     // (미등록 출처라서 막는 "restricted"와는 다른 개념 — 정상 등록된 발주사의 의도적 셀프 처리)
     const selfSource = !!saved.source?.startsWith('self-');
+    const withinAssignWindow = this.isWithinAutoAssignWindow(saved.preferredDateTime);
 
     if (restricted) {
       console.log(`⛔ [배정제한] 등록되지 않은 발주사 코드(source=${saved.source}) — 자동배정·진단사 브로드캐스트 건너뜀 (건: ${saved.carNumber})`);
     } else if (selfSource) {
       console.log(`ℹ️ [자체 진단] ${saved.carNumber} — 자체 신청 건이라 진단사 자동배정/알림 없이 접수만 처리`);
+    } else if (!withinAssignWindow) {
+      console.log(`📅 [자동배정 보류] ${saved.carNumber} — 방문일(${saved.preferredDateTime})이 ${AUTO_ASSIGN_DAYS_THRESHOLD}일 이후라 자동배정/브로드캐스트 없이 관리자 수동배정 대기`);
     } else {
       // 지역·가용시간 맞는 활성 진단사가 있으면 즉시 자동배정, 없으면 기존처럼 전체 브로드캐스트로 폴백
       let assignedDriver: Driver | null = null;
