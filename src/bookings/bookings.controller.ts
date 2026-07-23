@@ -87,6 +87,20 @@ export class BookingsController {
     return { success: true, data: updatedBooking };
   }
 
+  // PATCH: 일반 평가사가 담당 건 라운딩 요청
+  @Patch(':id/request-rounding')
+  async requestRounding(@Param('id') id: number, @Body() body: { driverId: string }) {
+    const updatedBooking = await this.bookingsService.requestRounding(id, body.driverId);
+    return { success: true, data: updatedBooking };
+  }
+
+  // PATCH: 진단/에이전트 등급이 라운딩 요청 수락
+  @Patch(':id/accept-rounding')
+  async acceptRounding(@Param('id') id: number, @Body() body: { driverId: string; driverName: string }) {
+    const updatedBooking = await this.bookingsService.acceptRounding(id, { id: body.driverId, name: body.driverName });
+    return { success: true, data: updatedBooking };
+  }
+
   // GET: 진단사 취소 통계
   @Get('driver/:driverId/cancel-stats')
   async getDriverCancelStats(@Param('driverId') driverId: string) {

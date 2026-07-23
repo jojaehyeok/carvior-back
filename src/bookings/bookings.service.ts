@@ -505,6 +505,72 @@ export class BookingsService {
     return this.assign(id, { id: targetDriverId, name: targetDriverName }, 'agent', agentDriverId);
   }
 
+  // 일반 평가사가 담당 건을 진단/에이전트 등급에게 "라운딩" 요청
+  async requestRounding(id: number, driverId: string) {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+    if (String(booking.assignedDriverId) !== String(driverId)) {
+      throw new BadRequestException('본인이 담당한 건만 라운딩 요청할 수 있습니다.');
+    }
+    booking.roundingRequested = true;
+    booking.roundingRequestedAt = new Date();
+    const saved = await this.bookingRepository.save(booking);
+
+    try {
+      const targets = await this.driverRepository.find({
+        where: [
+          { status: 'APPROVED', isActive: true, tier: 'certified' },
+          { status: 'APPROVED', isActive: true, tier: 'agent' },
+        ],
+      });
+      const pushTargets = targets.filter(d => d.pushToken && String(d.id) !== String(driverId));
+      await Promise.all(
+        pushTargets.map(d =>
+          this.notificationsService.sendPush(
+            d.pushToken,
+            '라운딩 요청이 있습니다 🙋',
+            `${saved.address} · ${saved.preferredDateTime}`,
+            { bookingId: saved.id },
+          ),
+        ),
+      );
+    } catch (e) {}
+
+    return saved;
+  }
+
+  // 진단/에이전트 등급 진단사가 라운딩 요청을 수락 — 담당자가 그 사람으로 바뀜
+  async acceptRounding(id: number, driverInfo: { id: string; name: string }) {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+    if (!booking.roundingRequested) {
+      throw new BadRequestException('이미 처리되었거나 요청되지 않은 건입니다.');
+    }
+    const previousDriverId = booking.assignedDriverId;
+
+    booking.assignedDriverId = driverInfo.id;
+    booking.assignedDriverName = driverInfo.name;
+    booking.roundingRequested = false;
+    booking.roundingRequestedAt = null;
+    const saved = await this.bookingRepository.save(booking);
+
+    try {
+      if (previousDriverId) {
+        const prevDriver = await this.driverRepository.findOne({ where: { id: Number(previousDriverId) } });
+        if (prevDriver?.pushToken) {
+          await this.notificationsService.sendPush(
+            prevDriver.pushToken,
+            '라운딩이 수락되었습니다',
+            `${driverInfo.name} 평가사가 ${saved.carNumber} 건을 인계받았습니다.`,
+            { bookingId: saved.id },
+          );
+        }
+      }
+    } catch (e) {}
+
+    return saved;
+  }
+
   // 진단사 취소 통계
   async getDriverCancelStats(driverId: string) {
     const logs = await this.cancelLogRepository.find({

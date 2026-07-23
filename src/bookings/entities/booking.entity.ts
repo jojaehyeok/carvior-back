@@ -21,6 +21,15 @@ export class Booking {
   @Column({ type: 'varchar', nullable: true })
   assignedByAgentId: string | null;
 
+  // 일반 평가사가 담당 건에 대해 "라운딩"(진단/에이전트 등급에게 인계) 요청한 상태.
+  // 요청 중엔 진단/에이전트 등급 진단사들의 예약 요청 탭에도 노출되고, 수락되면
+  // assignedDriverId가 수락한 사람으로 바뀌면서 false로 초기화됨
+  @Column({ default: false })
+  roundingRequested: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  roundingRequestedAt: Date | null;
+
   // 자동배정 알고리즘이 어떤 후보들을 비교해서 왜 이 진단사를 골랐는지 기록 —
   // 수동 배정 건은 null(대시보드 UI에서 "수동 배정"으로 표시), SUPER_ADMIN 전용 확인용
   @Column({ type: 'simple-json', nullable: true })
