@@ -24,6 +24,11 @@ export class Booking {
   @Column()
   carNumber: string;
 
+  // 차량명(모델명) — 접수 시점엔 모르는 경우가 많아, 평가사가 현장에서 진단 시작할 때
+  // 차량번호/차주성함과 같은 자리에서 채워넣을 수 있게 함
+  @Column({ type: 'varchar', nullable: true })
+  carModel: string | null;
+
   @Column({ nullable: true })
   carOwner: string;
 
