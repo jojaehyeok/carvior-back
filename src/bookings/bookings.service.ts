@@ -379,8 +379,8 @@ export class BookingsService {
         if (driver?.pushToken) {
           await this.notificationsService.sendPush(
             driver.pushToken,
-            '✅ 배정이 확정되었습니다',
-            `(수동배정) ${updated.carOwner}님 · ${updated.carNumber} · ${updated.preferredDateTime}`,
+            '(수동배정) 진단건이 확정되었습니다.',
+            `${updated.carOwner}님 · ${updated.carNumber} · ${updated.preferredDateTime}`,
             { bookingId: updated.id },
           );
         }
@@ -408,10 +408,8 @@ export class BookingsService {
       if (driver?.pushToken) {
         await this.notificationsService.sendPush(
           driver.pushToken,
-          source === 'auto' ? '🤖 신규 신청이 접수되었습니다' : '✅ 배정이 확정되었습니다',
-          source === 'auto'
-            ? `(자동배정) ${saved.carOwner}님 · ${saved.carNumber} · ${saved.preferredDateTime}`
-            : `(수동배정) ${saved.carOwner}님 · ${saved.carNumber} · ${saved.preferredDateTime}`,
+          source === 'auto' ? '(자동배정) 신규 신청이 접수되었습니다.' : '(수동배정) 진단건이 확정되었습니다.',
+          `${saved.carOwner}님 · ${saved.carNumber} · ${saved.preferredDateTime}`,
           { bookingId: saved.id },
         );
       }
