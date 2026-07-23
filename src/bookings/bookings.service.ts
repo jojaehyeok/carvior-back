@@ -124,7 +124,7 @@ export class BookingsService {
       }
 
       if (assignedDriver) {
-        saved = await this.assign(saved.id, { id: String(assignedDriver.id), name: assignedDriver.name });
+        saved = await this.assign(saved.id, { id: String(assignedDriver.id), name: assignedDriver.name }, 'auto');
         if (assignLog) {
           await this.bookingRepository.update(saved.id, { autoAssignLog: assignLog } as any);
           saved.autoAssignLog = assignLog;
@@ -366,13 +366,33 @@ export class BookingsService {
       return await this.bookingRepository.save(booking);
     }
 
+    // 진단사가 앱 "예약 요청" 탭에서 "내 담당으로 확정하기"를 눌러 셀프클레임한 경우 —
+    // handleClaim()이 보내는 시그니처(PENDING → status:CONFIRMED + assignedDriverId)만 여기 해당
+    const isSelfClaim = booking.status === 'PENDING' && updateData.status === 'CONFIRMED' && !!updateData.assignedDriverId;
+
     Object.assign(booking, updateData);
     const updated = await this.bookingRepository.save(booking);
+
+    if (isSelfClaim) {
+      try {
+        const driver = await this.driverRepository.findOne({ where: { id: Number(updateData.assignedDriverId) } });
+        if (driver?.pushToken) {
+          await this.notificationsService.sendPush(
+            driver.pushToken,
+            '✅ 배정이 확정되었습니다',
+            `(수동배정) ${updated.carOwner}님 · ${updated.carNumber} · ${updated.preferredDateTime}`,
+            { bookingId: updated.id },
+          );
+        }
+      } catch (e) {}
+    }
 
     return updated;
   }
 
-  async assign(id: number, driverInfo: { id: string; name: string }) {
+  // source: 'auto'는 create()의 자동배정 성공 시에만 내부적으로 넘김 — 그 외(대시보드/지도에서
+  // 관리자가 직접 배정)는 전부 기본값 'manual'로 처리되어 진단사에게 다른 문구로 알림이 감.
+  async assign(id: number, driverInfo: { id: string; name: string }, source: 'auto' | 'manual' = 'manual') {
     const booking = await this.bookingRepository.findOne({ where: { id } });
     if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
 
@@ -388,8 +408,10 @@ export class BookingsService {
       if (driver?.pushToken) {
         await this.notificationsService.sendPush(
           driver.pushToken,
-          '새 예약이 배정되었습니다 🚗',
-          `${saved.carOwner}님 · ${saved.carNumber} · ${saved.preferredDateTime}`,
+          source === 'auto' ? '🤖 신규 신청이 접수되었습니다' : '✅ 배정이 확정되었습니다',
+          source === 'auto'
+            ? `(자동배정) ${saved.carOwner}님 · ${saved.carNumber} · ${saved.preferredDateTime}`
+            : `(수동배정) ${saved.carOwner}님 · ${saved.carNumber} · ${saved.preferredDateTime}`,
           { bookingId: saved.id },
         );
       }
