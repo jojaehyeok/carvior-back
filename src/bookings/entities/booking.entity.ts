@@ -61,6 +61,9 @@ export class Booking {
   @Column({ default: false })
   vehicleTransferred: boolean; // 차량 이전 여부
 
+  @Column({ default: false })
+  contractConfirmed: boolean; // 계약 상태 확인 여부(계약완료 확인/미확인)
+
   @Column({ type: 'int', nullable: true })
   purchasePrice: number | null; // 매입가 (만원)
 
