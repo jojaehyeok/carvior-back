@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, MoreThanOrEqual, Not, Repository } from 'typeorm';
+import { In, Like, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { Booking } from './entities/booking.entity';
 import { SolapiService } from '../solapi/solapi.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -179,6 +179,35 @@ export class BookingsService {
     return { ...saved, restricted: false };
   }
 
+  // 특히 당일 접수(긴급) 건들이 30분 간격으로 다닥다닥 들어올 때, 같은 진단사가 물리적으로
+  // 이동·진단을 마칠 시간도 없이 겹쳐서 자동배정되는 걸 막기 위한 최소 간격
+  private readonly MIN_SLOT_GAP_MINUTES = 60;
+
+  // driverId가 이미 배정/확정/완료된 건 중 같은 날짜(preferredDateTime 기준)에 이 방문시각과
+  // MIN_SLOT_GAP_MINUTES보다 가까운 게 있으면 true — 물리적으로 겹치는 시간대라 후보에서 제외해야 함
+  private async hasScheduleConflict(driverId: number, preferredDateTime?: string | null): Promise<boolean> {
+    const match = preferredDateTime?.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2})/);
+    if (!match) return false; // 시간 형식 파싱 안 되면(미입력 등) 충돌 체크 없이 기존처럼 진행
+    const [, datePart, hh, mm] = match;
+    const targetMinutes = Number(hh) * 60 + Number(mm);
+
+    const sameDayBookings = await this.bookingRepository.find({
+      where: {
+        assignedDriverId: String(driverId),
+        status: In(['ASSIGNED', 'CONFIRMED', 'COMPLETED']),
+        preferredDateTime: Like(`${datePart}%`),
+      },
+      select: ['preferredDateTime'],
+    });
+
+    return sameDayBookings.some(b => {
+      const m = b.preferredDateTime?.match(/(\d{2}):(\d{2})/);
+      if (!m) return false;
+      const otherMinutes = Number(m[1]) * 60 + Number(m[2]);
+      return Math.abs(otherMinutes - targetMinutes) < this.MIN_SLOT_GAP_MINUTES;
+    });
+  }
+
   // 신청 주소·가용시간에 맞는 활성 진단사를 찾아 자동배정 대상을 고른다.
   // 지역이 맞는 진단사가 아무도 없으면 null을 반환해 기존 수동배정(전체 브로드캐스트) 흐름으로 넘긴다 —
   // 엉뚱한 지역 진단사에게 억지로 배정하는 것보다 관리자가 판단하게 두는 게 안전하기 때문.
@@ -199,6 +228,17 @@ export class BookingsService {
       .filter(isLocationFresh);
     if (activeMatched.length === 0) return null;
 
+    // 같은 진단사가 같은 날 방문예정시각이 너무 가까운(MIN_SLOT_GAP_MINUTES 이내) 건을 동시에
+    // 뛸 수 없으므로, 이미 그 시간대 근처에 배정된 건이 있는 진단사는 이 슬롯 후보에서 제외
+    const conflictChecks = await Promise.all(
+      activeMatched.map(async d => ({
+        driver: d,
+        conflict: await this.hasScheduleConflict(d.id, booking.preferredDateTime),
+      })),
+    );
+    const slotFree = conflictChecks.filter(c => !c.conflict).map(c => c.driver);
+    if (slotFree.length === 0) return null;
+
     // setHours(0,0,0,0)도 서버 로컬 타임존(UTC) 자정 기준이라 한국 자정과 9시간 어긋남 —
     // KST 자정을 UTC 기준 시각으로 환산해서 오늘 배정건수를 정확히 셈
     const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
@@ -214,7 +254,7 @@ export class BookingsService {
     // 그 반경 밖은 굳이 균등 배정 명목으로 멀리 보낼 이유가 없으니 그냥 거리순.
     const NEARBY_RADIUS_KM = 15;
     const coords = await geocodeAddress(booking.address);
-    const withLocation = activeMatched.filter(d => d.lat != null && d.lng != null);
+    const withLocation = slotFree.filter(d => d.lat != null && d.lng != null);
     if (coords && withLocation.length > 0) {
       const ranked = withLocation
         .map(d => ({ driver: d, km: distanceKm(coords.lat, coords.lng, d.lat!, d.lng!) }))
@@ -273,7 +313,7 @@ export class BookingsService {
 
     // 거리 계산이 안 되면(지오코딩 실패·위치정보 없음) 오늘 배정건수가 가장 적은 사람 우선
     const counts = await Promise.all(
-      activeMatched.map(async d => ({ driver: d, count: await countFor(d.id) })),
+      slotFree.map(async d => ({ driver: d, count: await countFor(d.id) })),
     );
     counts.sort((a, b) => a.count - b.count);
     const picked = counts[0];
