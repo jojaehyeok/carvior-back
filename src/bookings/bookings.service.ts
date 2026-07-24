@@ -503,6 +503,38 @@ export class BookingsService {
     return saved;
   }
 
+  // 관리자가 "긴급·당일배정"으로 수동 브로드캐스트 — 자동배정/평소 브로드캐스트는 스케줄(가용시간)과
+  // 활동중 여부를 보고 대상을 거르는데, 이 경로는 그걸 전부 무시하고 승인된 진단사 전원에게 발송한다.
+  // (예: 오늘 방문 건인데 등록된 스케줄상 아무도 안 맞거나 전원 활동중지 상태라 자동배정이 실패한 경우 —
+  // 실제로는 그 시간에 여유 있는 진단사가 있을 수 있으니 최후 수단으로 강제 브로드캐스트)
+  async broadcastUrgent(id: number) {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+
+    booking.isUrgent = true;
+    const saved = await this.bookingRepository.save(booking);
+
+    try {
+      const drivers = await this.driverRepository.find({ where: { status: 'APPROVED' } });
+      const pushTargets = drivers.filter(d => d.pushToken);
+      await Promise.all(
+        pushTargets.map(d =>
+          this.notificationsService.sendPush(
+            d.pushToken,
+            '🚨 긴급·당일배정 요청',
+            `${saved.address} · ${saved.preferredDateTime} — 지금 가능하시면 예약 요청 탭에서 확인해주세요.`,
+            { bookingId: saved.id },
+          ),
+        ),
+      );
+      console.log(`🚨 [긴급브로드캐스트] ${saved.carNumber} → 진단사 ${pushTargets.length}명에게 발송`);
+    } catch (e) {
+      console.error('❌ [긴급브로드캐스트 발송 실패]', (e as Error).message);
+    }
+
+    return saved;
+  }
+
   // 에이전트 진단평가사가 예약대기 건을 다른 진단사에게 지정 배정
   async agentAssign(id: number, agentDriverId: string, targetDriverId: string, targetDriverName: string) {
     const agent = await this.driverRepository.findOne({ where: { id: Number(agentDriverId) } });

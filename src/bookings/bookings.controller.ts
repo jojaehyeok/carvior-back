@@ -75,6 +75,13 @@ export class BookingsController {
     };
   }
 
+  // PATCH: 관리자가 대기 건을 "긴급·당일배정"으로 전체 진단사에게 강제 브로드캐스트
+  @Patch(':id/urgent-broadcast')
+  async broadcastUrgent(@Param('id') id: number) {
+    const updatedBooking = await this.bookingsService.broadcastUrgent(id);
+    return { success: true, data: updatedBooking };
+  }
+
   // PATCH: 에이전트 진단평가사가 대기 건을 다른 진단사에게 지정 배정
   @Patch(':id/agent-assign')
   async agentAssign(

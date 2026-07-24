@@ -34,6 +34,11 @@ export class Booking {
   @Column({ type: 'text', nullable: true })
   driverMemo: string | null;
 
+  // 관리자가 "긴급·당일배정"으로 수동 브로드캐스트한 건 — 스케줄/활동중 여부와 무관하게
+  // 전체 진단사에게 알림이 가고, 앱 예약 요청 탭에 강조 표시됨
+  @Column({ default: false })
+  isUrgent: boolean;
+
   // 자동배정 알고리즘이 어떤 후보들을 비교해서 왜 이 진단사를 골랐는지 기록 —
   // 수동 배정 건은 null(대시보드 UI에서 "수동 배정"으로 표시), SUPER_ADMIN 전용 확인용
   @Column({ type: 'simple-json', nullable: true })
