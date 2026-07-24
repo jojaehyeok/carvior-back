@@ -481,16 +481,23 @@ export class BookingsService {
 
     // 대시보드에서 배정할 때 실제로 타는 경로는 이 assign()이다 — 고객에게 배정완료
     // 알림톡이 안 갔던 원인은 이 메서드에 발송 로직 자체가 없었기 때문(진단사 앱 푸시만 있었음).
-    try {
-      const kakaoVariables = {
-        '#{진단사명}': driverInfo.name,
-        '#{진단사연락처}': '070-4138-2017',
-        '#{차량번호}': saved.carNumber,
-      };
-      await this.solapiService.sendAlimTalk(saved.contact, kakaoVariables);
-      console.log(`✅ [알림톡 발송] 고객(${saved.contact})께 배정 완료 알림 전송 (담당: ${driverInfo.name})`);
-    } catch (error: unknown) {
-      console.error('❌ [배정완료 알림톡 발송 실패]', (error as Error).message);
+    // 딜러번호(contact)/고객번호(customerContact) 둘 다 선택사항이라, 있는 쪽을 우선 사용(고객번호 우선)하고
+    // 둘 다 없으면 알림톡 자체를 건너뜀(빈 번호로 SOLAPI 호출하면 에러만 남고 의미 없음).
+    const notifyTarget = saved.customerContact || saved.contact;
+    if (notifyTarget) {
+      try {
+        const kakaoVariables = {
+          '#{진단사명}': driverInfo.name,
+          '#{진단사연락처}': '070-4138-2017',
+          '#{차량번호}': saved.carNumber,
+        };
+        await this.solapiService.sendAlimTalk(notifyTarget, kakaoVariables);
+        console.log(`✅ [알림톡 발송] 고객(${notifyTarget})께 배정 완료 알림 전송 (담당: ${driverInfo.name})`);
+      } catch (error: unknown) {
+        console.error('❌ [배정완료 알림톡 발송 실패]', (error as Error).message);
+      }
+    } else {
+      console.log(`🔕 [배정완료 알림톡 생략] ${saved.carNumber} — 딜러/고객 연락처 둘 다 없음`);
     }
 
     return saved;
