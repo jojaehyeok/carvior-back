@@ -43,6 +43,21 @@ export class Booking {
   // 수동 배정 건은 null(대시보드 UI에서 "수동 배정"으로 표시), SUPER_ADMIN 전용 확인용
   @Column({ type: 'simple-json', nullable: true })
   autoAssignLog: Record<string, unknown> | null;
+
+  // 접수 시점에 1회 계산해서 저장하는 거리 진단 정보(대시보드 표시 전용, 배정 로직에는 영향 없음).
+  // nearestDriverKm: 승인된 진단사 중 좌표가 있는 가장 가까운 사람까지의 편도 거리(km).
+  // remoteTier: 'semi_remote'(편도 30km↑)/'remote'(편도 70km↑) — 관리자가 발주사와 가격협상할지 판단하는 용도.
+  // urgentCandidate: 방문예정일이 접수 당일이고, 지역 맞는 진단사는 있는데 그중 활동중인 사람이 없어
+  //   자동배정도 일반 브로드캐스트(활동중 대상)도 사실상 아무에게도 안 갔을 가능성이 있는 건 — 관리자가
+  //   수동으로 "긴급·당일배정" 브로드캐스트를 눌러야 할 후보임을 알려주는 표시일 뿐, 자동 발송은 하지 않음.
+  @Column({ type: 'float', nullable: true })
+  nearestDriverKm: number | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  remoteTier: 'semi_remote' | 'remote' | null;
+
+  @Column({ default: false })
+  urgentCandidate: boolean;
   // ------------------------------
 
   @Column()

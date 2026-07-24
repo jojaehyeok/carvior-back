@@ -155,6 +155,20 @@ export class BookingsService {
       }
     }
 
+    // 오지/준오지·긴급후보 뱃지용 거리 진단 — 미등록 발주사 건은 어차피 관리자가 별도로
+    // 확인해야 하니 제외, 그 외엔 자동배정 성공 여부와 무관하게 항상 계산해둔다.
+    if (!restricted) {
+      try {
+        const flags = await this.computeDistanceFlags(saved);
+        if (flags.nearestDriverKm != null || flags.urgentCandidate) {
+          await this.bookingRepository.update(saved.id, flags);
+          Object.assign(saved, flags);
+        }
+      } catch (e) {
+        console.error('❌ [거리진단 계산 실패]', (e as Error).message);
+      }
+    }
+
     // 관리자(01022856017)에게 새 예약 접수 알림톡 발송 — 건당 비용이 드는 유료 채널이라
     // 미등록 발주사(스팸/테스트 가능성 있는 건)는 여기서 제외하고 무료 로그로만 남긴다.
     // 실제 문의가 오면 대시보드 전체 목록에서 source 값으로 확인 가능(레코드는 정상 저장됨).
@@ -206,6 +220,61 @@ export class BookingsService {
       const otherMinutes = Number(m[1]) * 60 + Number(m[2]);
       return Math.abs(otherMinutes - targetMinutes) < this.MIN_SLOT_GAP_MINUTES;
     });
+  }
+
+  // 편도 거리 기준 [준오지/오지] 분류 임계값 — 준오지는 발주사 가격협상 검토 대상,
+  // 오지는 왕복 거리가 커서 사실상 항상 가격협상이 필요한 수준
+  private readonly SEMI_REMOTE_KM = 30;
+  private readonly REMOTE_KM = 70;
+
+  // 접수 시점에 1회 계산해서 저장하는 거리 진단 — 배정 로직에는 전혀 관여하지 않고,
+  // 대시보드에 "오지/준오지"·"긴급후보" 뱃지를 표시해 관리자가 수동으로 판단(가격협상, 긴급브로드캐스트)하도록
+  // 돕는 참고 정보일 뿐이다. 자동으로 관리자메모를 쓰거나 브로드캐스트를 트리거하지 않는다.
+  private async computeDistanceFlags(booking: Booking): Promise<{
+    nearestDriverKm: number | null;
+    remoteTier: 'semi_remote' | 'remote' | null;
+    urgentCandidate: boolean;
+  }> {
+    const drivers = await this.driverRepository.find({ where: { status: 'APPROVED' } });
+    if (drivers.length === 0) {
+      return { nearestDriverKm: null, remoteTier: null, urgentCandidate: false };
+    }
+
+    let nearestDriverKm: number | null = null;
+    const coords = await geocodeAddress(booking.address);
+    if (coords) {
+      const withLocation = drivers.filter(d => d.lat != null && d.lng != null);
+      if (withLocation.length > 0) {
+        const nearest = Math.min(
+          ...withLocation.map(d => distanceKm(coords.lat, coords.lng, d.lat!, d.lng!)),
+        );
+        nearestDriverKm = Math.round(nearest * 10) / 10;
+      }
+    }
+
+    const remoteTier: 'semi_remote' | 'remote' | null =
+      nearestDriverKm == null
+        ? null
+        : nearestDriverKm >= this.REMOTE_KM
+          ? 'remote'
+          : nearestDriverKm >= this.SEMI_REMOTE_KM
+            ? 'semi_remote'
+            : null;
+
+    // 긴급후보: 방문예정일이 접수 당일(KST 기준)인데, 지역이 맞는 진단사는 있지만
+    // 그중 지금 활동중(스케줄+isActive+위치신선도)인 사람이 아무도 없는 경우 —
+    // 자동배정도 실패하고 일반 브로드캐스트(활동중 대상만)도 아무에게도 안 갈 수 있는 상황
+    const kstToday = new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const visitYmd = booking.preferredDateTime?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1];
+    const isToday = !!visitYmd && visitYmd === kstToday;
+
+    const regionMatched = drivers.filter(d => (d.regions ?? []).some(r => r && booking.address?.includes(r)));
+    const activeMatched = regionMatched
+      .filter(d => isDriverActiveNow(d, booking.preferredDateTime))
+      .filter(isLocationFresh);
+    const urgentCandidate = isToday && regionMatched.length > 0 && activeMatched.length === 0;
+
+    return { nearestDriverKm, remoteTier, urgentCandidate };
   }
 
   // 신청 주소·가용시간에 맞는 활성 진단사를 찾아 자동배정 대상을 고른다.
