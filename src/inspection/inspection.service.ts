@@ -294,6 +294,20 @@ export class InspectionService {
         };
         await this.solapiService.sendCompletionAlimTalk(completionVariables, booking?.source);
 
+        // 구매동행(카비어 검차 서비스, /inspection에서 결제한 건)은 중간에 발주사/딜러가
+        // 없이 소비자 본인이 직접 신청한 거라, 완료되면 신청자 본인에게도 곧바로 리포트
+        // 완료 알림톡을 보낸다(기존 완료 템플릿 재사용 — 문구가 중립적이라 그대로 사용 가능).
+        if (booking?.source === 'CARVIOR_INSPECTION') {
+          const customerPhone = booking.customerContact || booking.contact;
+          if (customerPhone) {
+            this.solapiService
+              .sendCompletionAlimTalkTo(customerPhone, completionVariables)
+              .catch((e) => console.error('[알림톡] 구매동행 고객 발송 실패', e));
+          } else {
+            console.log(`🔕 [구매동행 고객 알림톡 생략] ${inspection.carNumber} — 연락처 없음`);
+          }
+        }
+
         // 협업 파트너사 대표님은 1시간 뒤 발송 — 매니저/평가사 검토 시간 확보 목적.
         // setTimeout이 아니라 DB 예약이라 그 사이 서버가 재배포돼도 유실되지 않는다.
         // 수신번호는 "관리자 계정 관리"에 등록된 그 발주사 관리자 계정의 연락처를 그대로 씀 —
@@ -505,6 +519,11 @@ export class InspectionService {
       ...inspection,
       dealerName: booking?.dealerName ?? null,
       driverName: booking?.assignedDriverName ?? null,
+      assignedDriverId: booking?.assignedDriverId ?? null,
+      carOwner: booking?.carOwner ?? null,
+      // 구매동행(카비어 검차 서비스, /inspection에서 결제한 건) 리포트에만 리뷰 작성
+      // 섹션을 노출한다 — 딜러가 의뢰한 B2B 리포트는 리뷰 대상이 아니라서 구분해서 내려줌.
+      isConsumerBooking: booking?.source === 'CARVIOR_INSPECTION',
     };
   }
 

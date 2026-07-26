@@ -132,11 +132,15 @@ export class InspectionController {
     return {
       completedAt: inspection.completedAt,
       firstCompletedAt: inspection.firstCompletedAt,
+      bookingId: inspection.bookingId,
       dealerName: inspection.dealerName ?? null,
       driverName: inspection.driverName ?? null,
+      assignedDriverId: inspection.assignedDriverId ?? null,
+      isConsumerBooking: !!inspection.isConsumerBooking,
       car_info: {
         number: inspection.carNumber,
         type: inspection.carModel,
+        owner: inspection.carOwner ?? null,
         mileage: inspection.mileage,
         color: inspection.color,
         repairCost: inspection.repairCost,
