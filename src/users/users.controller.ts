@@ -33,6 +33,7 @@ export class UsersController {
   @Post('register')
   register(@Body() body: {
     email: string; password: string; name: string; phone?: string; role?: string; company?: string; logoUrl?: string;
+    isExportOnly?: boolean;
     dealerLicenseUrl?: string; businessRegUrl?: string; businessNumber?: string; companyName?: string;
     marketingConsent?: boolean;
   }) {
@@ -91,7 +92,7 @@ export class UsersController {
   }
 
   @Patch(':id/admin-info')
-  updateAdminInfo(@Param('id') id: string, @Body() body: { name?: string; phone?: string; company?: string; logoUrl?: string }) {
+  updateAdminInfo(@Param('id') id: string, @Body() body: { name?: string; phone?: string; company?: string; logoUrl?: string; isExportOnly?: boolean }) {
     return this.svc.updateAdminInfo(Number(id), body);
   }
 

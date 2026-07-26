@@ -27,6 +27,7 @@ export class UsersService {
     role?: string;
     company?: string | null;
     logoUrl?: string | null;
+    isExportOnly?: boolean;
     dealerLicenseUrl?: string;
     businessRegUrl?: string;
     businessNumber?: string;
@@ -46,6 +47,7 @@ export class UsersService {
       role:              data.role ?? 'user',
       company:           data.company || null,
       logoUrl:           data.logoUrl || null,
+      isExportOnly:      data.isExportOnly ?? false,
       provider:          'local',
       dealerLicenseUrl:  data.dealerLicenseUrl,
       businessRegUrl:    data.businessRegUrl,
@@ -122,13 +124,14 @@ export class UsersService {
 
   // 관리자 계정의 이름/연락처/발주사 코드 수정 — 만들고 나서 코드를 잘못 넣었을 때
   // 계정을 지우고 다시 만들 필요 없이 바로 고칠 수 있게 함
-  async updateAdminInfo(id: number, data: { name?: string; phone?: string; company?: string | null; logoUrl?: string | null }): Promise<User> {
+  async updateAdminInfo(id: number, data: { name?: string; phone?: string; company?: string | null; logoUrl?: string | null; isExportOnly?: boolean }): Promise<User> {
     const user = await this.repo.findOneBy({ id });
     if (!user) throw new UnauthorizedException('유저를 찾을 수 없습니다.');
     if (data.name !== undefined) user.name = data.name;
     if (data.phone !== undefined) user.phone = data.phone;
     if (data.company !== undefined) user.company = data.company || null;
     if (data.logoUrl !== undefined) user.logoUrl = data.logoUrl || null;
+    if (data.isExportOnly !== undefined) user.isExportOnly = data.isExportOnly;
     return this.repo.save(user);
   }
 

@@ -419,9 +419,20 @@ export class BookingsService {
   }
 
   async findByDriver(driverId: string) {
-    return await this.bookingRepository.find({
+    const bookings = await this.bookingRepository.find({
       where: { assignedDriverId: driverId },
       order: { createdAt: 'DESC' },
+    });
+
+    // datrade처럼 "수출전용"으로 표시해둔 발주사(source) 건은 진단사 앱에 "수출건" 뱃지를
+    // 붙이고 진단 화면에 수출용 영상 촬영 슬롯을 노출한다 — source의 company를 뽑아서
+    // 수출전용 관리자 계정 목록과 대조.
+    const exportAdmins = await this.userRepository.find({ where: { role: 'admin', isExportOnly: true } });
+    const exportCompanies = new Set(exportAdmins.map((a) => a.company).filter(Boolean));
+
+    return bookings.map((b) => {
+      const company = b.source?.startsWith('self-') ? b.source.slice(5) : b.source;
+      return { ...b, isExportBooking: !!company && exportCompanies.has(company) };
     });
   }
 

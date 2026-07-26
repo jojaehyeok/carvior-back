@@ -121,6 +121,8 @@ export class InspectionController {
       carNumber?: string; carModel?: string; mileage?: number; color?: string; repairCost?: number;
       memo?: string; inspectionDetails?: { warningDesc?: string; leakDesc?: string; optionsDesc?: string; driveDesc?: string };
       photos?: Record<string, string[]>; dashboardImage?: string; regImage?: string; vinImage?: string;
+      exportVideoUrls?: string[]; engineNoiseVideoUrl?: string;
+      checklistPhotos?: { warning?: string[]; options?: string[]; leak?: string[]; drive?: string[] };
     },
   ) {
     return this.inspectionService.updateReportFields(parseInt(bookingId), data);
@@ -131,6 +133,7 @@ export class InspectionController {
       completedAt: inspection.completedAt,
       firstCompletedAt: inspection.firstCompletedAt,
       dealerName: inspection.dealerName ?? null,
+      driverName: inspection.driverName ?? null,
       car_info: {
         number: inspection.carNumber,
         type: inspection.carModel,
@@ -142,6 +145,7 @@ export class InspectionController {
         ...inspection.inspectionDetails,
         memo: inspection.memo,
       },
+      checklistPhotos: inspection.checklistPhotos ?? { warning: [], options: [], leak: [], drive: [] },
       car_status: {
         keys: inspection.carStatus?.keys,
         paintNeeded: inspection.carStatus?.paintNeeded,
@@ -156,6 +160,8 @@ export class InspectionController {
         registration: inspection.regImage ? [inspection.regImage] : [],
         vin: inspection.vinImage ? [inspection.vinImage] : [],
       },
+      exportVideoUrls: inspection.exportVideoUrls ?? [],
+      engineNoiseVideoUrl: inspection.engineNoiseVideoUrl ?? null,
     };
   }
 }

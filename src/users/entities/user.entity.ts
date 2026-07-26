@@ -38,6 +38,12 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   logoUrl: string | null;
 
+  // 발주사 관리자 계정 전용 — datrade처럼 수출용 차량만 다루는 발주사인지 표시.
+  // true면 그 발주사(company) source로 들어오는 예약은 진단사 앱에 "수출건"으로 표시되고,
+  // 진단 화면에 수출용 영상 촬영 슬롯이 노출된다.
+  @Column({ default: false })
+  isExportOnly: boolean;
+
   // 딜러 전용 서류
   @Column({ nullable: true })
   dealerLicenseUrl: string; // 자동차 매매종사원증

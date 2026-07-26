@@ -44,6 +44,16 @@ export class Inspection {
     @Column({ type: 'text', nullable: true })
     vinImage: string;
 
+    // 수출용 차량 영상(각 최대 15초, 최대 5개) — datrade처럼 "수출전용"으로 표시된
+    // 발주사 건에서만 노출/요구되며, 엔진 시동음 등 수출 심사에 필요한 영상들
+    @Column({ type: 'json', nullable: true })
+    exportVideoUrls: string[] | null;
+
+    // 일반 진단에서도 "주행중 이상 증상"을 체크했을 때만 노출되는 엔진 소음 확인용 영상(최대 15초).
+    // 수출건 전용인 exportVideoUrls와 달리 모든 진단 유형에서 쓸 수 있는 단일 슬롯.
+    @Column({ type: 'text', nullable: true })
+    engineNoiseVideoUrl: string | null;
+
     // 프런트엔드 payload 구조에 맞춘 상세 정보
     @Column({ type: 'json', nullable: true })
     inspectionDetails: {
@@ -52,6 +62,16 @@ export class Inspection {
         optionsDesc: string; // 필드명 매칭
         driveDesc: string;   // 필드명 매칭
     };
+
+    // 확인사항(경고등/옵션/누유/주행중 이상) 각 항목별 첨부사진 — "기타의견" 공용 사진첩과
+    // 섞이지 않도록 항목별로 분리 보관. 리포트에서도 해당 항목 바로 아래에 노출된다.
+    @Column({ type: 'json', nullable: true })
+    checklistPhotos: {
+        warning: string[];
+        options: string[];
+        leak: string[];
+        drive: string[];
+    } | null;
 
     // 추가: 차키 정보, 타이어 잔존량, 도색/휠 상태 등
     @Column({ type: 'json', nullable: true })

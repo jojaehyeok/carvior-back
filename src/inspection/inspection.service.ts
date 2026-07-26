@@ -85,7 +85,11 @@ export class InspectionService {
     console.log(`[S3 Upload] 시작 | key=${key} | size=${file.size}bytes | mime=${file.mimetype}`);
 
     try {
-      const { buffer, contentType } = await this.compressImage(file.buffer, file.mimetype);
+      // 보험이력(vin)은 보험개발원 사이트 등에서 캡처한 텍스트 위주 이미지라, 리사이즈·재압축을
+      // 거치면 글자가 뭉개져 못 읽는 문제가 있었다 — 이 카테고리만 압축 없이 원본 그대로 올린다.
+      const { buffer, contentType } = category === 'vin'
+        ? { buffer: file.buffer, contentType: file.mimetype || 'image/jpeg' }
+        : await this.compressImage(file.buffer, file.mimetype);
       await this.s3Client.send(
         new PutObjectCommand({
           Bucket: bucket,
@@ -216,6 +220,8 @@ export class InspectionService {
     inspection.dashboardImage = data.dashboardImage;
     inspection.regImage = data.regImage;
     inspection.vinImage = data.vinImage;
+    inspection.exportVideoUrls = Array.isArray(data.exportVideoUrls) ? data.exportVideoUrls : null;
+    inspection.engineNoiseVideoUrl = data.engineNoiseVideoUrl || null;
     inspection.photos = {
       exterior: data.photos?.exterior || [],
       wheel: data.photos?.wheel || [],
@@ -233,6 +239,12 @@ export class InspectionService {
       leakDesc: data.inspectionDetails?.leakDesc || '',
       optionsDesc: data.inspectionDetails?.optionsDesc || '',
       driveDesc: data.inspectionDetails?.driveDesc || '',
+    };
+    inspection.checklistPhotos = {
+      warning: data.checklistPhotos?.warning || [],
+      options: data.checklistPhotos?.options || [],
+      leak: data.checklistPhotos?.leak || [],
+      drive: data.checklistPhotos?.drive || [],
     };
 
     // [🌟 carStatus: 차키, 타이어, 도색 상태 매핑]
@@ -415,6 +427,9 @@ export class InspectionService {
     dashboardImage?: string;
     regImage?: string;
     vinImage?: string;
+    exportVideoUrls?: string[];
+    engineNoiseVideoUrl?: string;
+    checklistPhotos?: { warning?: string[]; options?: string[]; leak?: string[]; drive?: string[] };
   }) {
     const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
     if (!inspection) throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
@@ -449,6 +464,16 @@ export class InspectionService {
     if (data.dashboardImage !== undefined) inspection.dashboardImage = data.dashboardImage;
     if (data.regImage !== undefined) inspection.regImage = data.regImage;
     if (data.vinImage !== undefined) inspection.vinImage = data.vinImage;
+    if (data.exportVideoUrls !== undefined) inspection.exportVideoUrls = data.exportVideoUrls;
+    if (data.engineNoiseVideoUrl !== undefined) inspection.engineNoiseVideoUrl = data.engineNoiseVideoUrl;
+    if (data.checklistPhotos) {
+      inspection.checklistPhotos = {
+        warning: data.checklistPhotos.warning || [],
+        options: data.checklistPhotos.options || [],
+        leak: data.checklistPhotos.leak || [],
+        drive: data.checklistPhotos.drive || [],
+      };
+    }
 
     const saved = await this.inspectionRepository.save(inspection);
 
@@ -472,10 +497,15 @@ export class InspectionService {
     return this.withDealerName(inspection);
   }
 
-  // 리포트에 딜러(신청자) 이름을 표시하기 위해 Inspection에는 없는 Booking.dealerName을 붙여서 반환
+  // 리포트에 딜러(신청자)/평가한 진단사 이름을 표시하기 위해 Inspection에는 없는
+  // Booking.dealerName·assignedDriverName을 붙여서 반환
   private async withDealerName(inspection: Inspection) {
     const booking = await this.bookingRepository.findOne({ where: { id: inspection.bookingId } });
-    return { ...inspection, dealerName: booking?.dealerName ?? null };
+    return {
+      ...inspection,
+      dealerName: booking?.dealerName ?? null,
+      driverName: booking?.assignedDriverName ?? null,
+    };
   }
 
   // 리포트 사진 전체를 1.jpg, 2.jpg ... 순번으로 이름 붙여 zip으로 압축해 스트리밍.
