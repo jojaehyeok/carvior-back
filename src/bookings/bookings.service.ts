@@ -90,7 +90,11 @@ export class BookingsService {
   }
 
   async create(data: Partial<Booking>): Promise<Booking & { restricted?: boolean }> {
-    const booking = this.bookingRepository.create(data);
+    // 계좌이체 신청은 버튼만 누르면 여기로 들어와서 실제 입금 여부를 알 수 없다 —
+    // depositConfirmed를 false로 강제해두고, 관리자가 confirmDeposit()을 호출하기 전까지
+    // 자동배정/브로드캐스트를 보류한다. 그 외(카드 결제 성공 콜백, 일반 접수 등)는 그대로 true.
+    const pendingDeposit = data.paymentMethod === 'BANK_TRANSFER';
+    const booking = this.bookingRepository.create({ ...data, depositConfirmed: !pendingDeposit });
     let saved = await this.bookingRepository.save(booking);
 
     const restricted = await this.isRestrictedSource(saved.source);
@@ -98,61 +102,15 @@ export class BookingsService {
     // 진단사가 실제로 방문할 필요가 없으니 자동배정도, 전체 브로드캐스트 알림도 하지 않는다.
     // (미등록 출처라서 막는 "restricted"와는 다른 개념 — 정상 등록된 발주사의 의도적 셀프 처리)
     const selfSource = !!saved.source?.startsWith('self-');
-    const withinAssignWindow = this.isWithinAutoAssignWindow(saved.preferredDateTime);
 
     if (restricted) {
       console.log(`⛔ [배정제한] 등록되지 않은 발주사 코드(source=${saved.source}) — 자동배정·진단사 브로드캐스트 건너뜀 (건: ${saved.carNumber})`);
     } else if (selfSource) {
       console.log(`ℹ️ [자체 진단] ${saved.carNumber} — 자체 신청 건이라 진단사 자동배정/알림 없이 접수만 처리`);
-    } else if (!withinAssignWindow) {
-      console.log(`📅 [자동배정 보류] ${saved.carNumber} — 방문일(${saved.preferredDateTime})이 ${AUTO_ASSIGN_DAYS_THRESHOLD}일 이후라 자동배정/브로드캐스트 없이 관리자 수동배정 대기`);
+    } else if (pendingDeposit) {
+      console.log(`💰 [입금 확인 대기] ${saved.carNumber} — 계좌이체 신청, 관리자 입금 확인 전까지 배정 보류`);
     } else {
-      // 지역·가용시간 맞는 활성 진단사가 있으면 즉시 자동배정, 없으면 기존처럼 전체 브로드캐스트로 폴백
-      let assignedDriver: Driver | null = null;
-      let assignLog: Record<string, unknown> | null = null;
-      try {
-        const result = await this.tryAutoAssign(saved);
-        assignedDriver = result?.driver ?? null;
-        assignLog = result?.log ?? null;
-        if (!assignedDriver) {
-          console.log(`ℹ️ [자동배정 대상 없음] ${saved.carNumber} (${saved.address}) — 전체 브로드캐스트로 폴백`);
-        }
-      } catch (e) {
-        // 자동배정 실패는 접수 자체를 막으면 안 됨 — 아래 폴백(전체 브로드캐스트)으로 처리하되,
-        // 원인 파악 가능하도록 에러는 반드시 로그로 남긴다(예전엔 조용히 삼켜서 디버깅이 불가능했음)
-        console.error(`❌ [자동배정 실패] ${saved.carNumber}`, (e as Error).message);
-      }
-
-      if (assignedDriver) {
-        saved = await this.assign(saved.id, { id: String(assignedDriver.id), name: assignedDriver.name }, 'auto');
-        if (assignLog) {
-          await this.bookingRepository.update(saved.id, { autoAssignLog: assignLog } as any);
-          saved.autoAssignLog = assignLog;
-        }
-        console.log(`🤖 [자동배정] ${saved.carNumber} → ${assignedDriver.name}(${assignedDriver.id})`);
-      } else {
-        // 자동배정 대상이 없으면 승인된 진단사 전원에게 새 접수 푸시 발송(기존 동작) —
-        // 활동중지로 꺼둔 진단사는 굳이 알림도 안 감
-        try {
-          const drivers = await this.driverRepository.find({
-            where: { status: 'APPROVED', isActive: true },
-          });
-          // 위치가 30분 이상 오래된(사실상 이탈한) 진단사에게는 알림도 굳이 안 보냄
-          const pushTargets = drivers.filter(d => d.pushToken && isLocationFresh(d));
-          await Promise.all(
-            pushTargets.map(d =>
-              this.notificationsService.sendPush(
-                d.pushToken,
-                '새로운 진단 요청이 있습니다 📋',
-                `접수 장소: ${saved.address}`,
-                { bookingId: saved.id },
-              ),
-            ),
-          );
-        } catch (e) {
-          // 푸시 실패해도 예약 저장은 정상 처리
-        }
-      }
+      saved = await this.runAssignmentFlow(saved);
     }
 
     // 오지/준오지·긴급후보 뱃지용 거리 진단 — 미등록 발주사 건은 어차피 관리자가 별도로
@@ -191,6 +149,81 @@ export class BookingsService {
     }
 
     return { ...saved, restricted: false };
+  }
+
+  // create()와 confirmDeposit() 양쪽에서 쓰는 공용 배정 로직 — 방문일이 너무 먼 건 관리자
+  // 수동배정 대기로 넘기고, 아니면 지역·가용시간 맞는 진단사에게 즉시 자동배정, 없으면 전체
+  // 진단사 브로드캐스트로 폴백한다. saved(최신 상태 반영된 booking)를 반환한다.
+  private async runAssignmentFlow(saved: Booking): Promise<Booking> {
+    if (!this.isWithinAutoAssignWindow(saved.preferredDateTime)) {
+      console.log(`📅 [자동배정 보류] ${saved.carNumber} — 방문일(${saved.preferredDateTime})이 ${AUTO_ASSIGN_DAYS_THRESHOLD}일 이후라 자동배정/브로드캐스트 없이 관리자 수동배정 대기`);
+      return saved;
+    }
+
+    // 지역·가용시간 맞는 활성 진단사가 있으면 즉시 자동배정, 없으면 기존처럼 전체 브로드캐스트로 폴백
+    let assignedDriver: Driver | null = null;
+    let assignLog: Record<string, unknown> | null = null;
+    try {
+      const result = await this.tryAutoAssign(saved);
+      assignedDriver = result?.driver ?? null;
+      assignLog = result?.log ?? null;
+      if (!assignedDriver) {
+        console.log(`ℹ️ [자동배정 대상 없음] ${saved.carNumber} (${saved.address}) — 전체 브로드캐스트로 폴백`);
+      }
+    } catch (e) {
+      // 자동배정 실패는 접수 자체를 막으면 안 됨 — 아래 폴백(전체 브로드캐스트)으로 처리하되,
+      // 원인 파악 가능하도록 에러는 반드시 로그로 남긴다(예전엔 조용히 삼켜서 디버깅이 불가능했음)
+      console.error(`❌ [자동배정 실패] ${saved.carNumber}`, (e as Error).message);
+    }
+
+    if (assignedDriver) {
+      saved = await this.assign(saved.id, { id: String(assignedDriver.id), name: assignedDriver.name }, 'auto');
+      if (assignLog) {
+        await this.bookingRepository.update(saved.id, { autoAssignLog: assignLog } as any);
+        saved.autoAssignLog = assignLog;
+      }
+      console.log(`🤖 [자동배정] ${saved.carNumber} → ${assignedDriver.name}(${assignedDriver.id})`);
+    } else {
+      // 자동배정 대상이 없으면 승인된 진단사 전원에게 새 접수 푸시 발송(기존 동작) —
+      // 활동중지로 꺼둔 진단사는 굳이 알림도 안 감
+      try {
+        const drivers = await this.driverRepository.find({
+          where: { status: 'APPROVED', isActive: true },
+        });
+        // 위치가 30분 이상 오래된(사실상 이탈한) 진단사에게는 알림도 굳이 안 보냄
+        const pushTargets = drivers.filter(d => d.pushToken && isLocationFresh(d));
+        await Promise.all(
+          pushTargets.map(d =>
+            this.notificationsService.sendPush(
+              d.pushToken,
+              '새로운 진단 요청이 있습니다 📋',
+              `접수 장소: ${saved.address}`,
+              { bookingId: saved.id },
+            ),
+          ),
+        );
+      } catch (e) {
+        // 푸시 실패해도 예약 저장은 정상 처리
+      }
+    }
+
+    return saved;
+  }
+
+  // 관리자가 대시보드에서 "입금 확인" 버튼을 눌렀을 때 호출 — 계좌이체 신청 건(depositConfirmed=false)만
+  // 대상이며, 확인 처리 후 그제서야 자동배정/브로드캐스트를 진행한다.
+  async confirmDeposit(id: number): Promise<Booking> {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+    if (booking.paymentMethod !== 'BANK_TRANSFER') {
+      throw new BadRequestException('계좌이체 신청 건이 아닙니다.');
+    }
+    if (booking.depositConfirmed) return booking; // 이미 확인 처리된 건 — 중복 클릭 방지
+
+    booking.depositConfirmed = true;
+    let saved = await this.bookingRepository.save(booking);
+    saved = await this.runAssignmentFlow(saved);
+    return saved;
   }
 
   // 특히 당일 접수(긴급) 건들이 30분 간격으로 다닥다닥 들어올 때, 같은 진단사가 물리적으로

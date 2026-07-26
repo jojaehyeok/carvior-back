@@ -60,6 +60,16 @@ export class Booking {
   urgentCandidate: boolean;
   // ------------------------------
 
+  // /inspection(검차 신청 결제) 계좌이체 건 전용 — 카드/간편결제는 토스 결제 성공 콜백 이후에만
+  // 예약이 생성되니 입금이 이미 확인된 것이지만, 계좌이체는 버튼만 누르면 예약이 생성돼서
+  // 실제 입금 여부를 알 수 없다. paymentMethod가 'BANK_TRANSFER'인 건은 depositConfirmed가
+  // true가 되기 전까지 자동배정/브로드캐스트를 보류한다(관리자가 입금 확인 후 수동으로 트리거).
+  @Column({ type: 'varchar', nullable: true })
+  paymentMethod: string | null;
+
+  @Column({ default: true })
+  depositConfirmed: boolean;
+
   @Column()
   carNumber: string;
 
