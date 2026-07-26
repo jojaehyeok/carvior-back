@@ -128,6 +128,12 @@ export class BookingsController {
     return await this.bookingsService.findCancelLogs(source);
   }
 
+  // GET: 대시보드 "발주사 관리" 탭 — 접수는 들어오는데 아직 관리자 계정이 없는 발주사 코드 목록
+  @Get('unregistered-sources')
+  async getUnregisteredSources() {
+    return await this.bookingsService.findUnregisteredSources();
+  }
+
   @Patch(':id/assign')
   async assignDriver(
     @Param('id') id: string,

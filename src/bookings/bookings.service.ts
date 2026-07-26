@@ -425,6 +425,36 @@ export class BookingsService {
     });
   }
 
+  // 발주사 관리 탭에서 씀 — 실제로 접수가 들어오고 있는 source(발주사 코드) 중에
+  // 아직 관리자 계정(User role='admin', company=X)이 없어서 그 발주사가 대시보드에
+  // 로그인해도 볼 수 없는 상태인 것들만 골라서 보여준다. KNOWN_B2C_SOURCES(SNS 등
+  // 발주사 코드가 아닌 값)는 애초에 대상이 아니라 제외하고, self-{company} 접두사는
+  // 원래 회사코드로 합쳐서 집계한다.
+  async findUnregisteredSources(): Promise<{ source: string; count: number }[]> {
+    const rows = await this.bookingRepository
+      .createQueryBuilder('b')
+      .select('b.source', 'source')
+      .addSelect('COUNT(*)', 'count')
+      .groupBy('b.source')
+      .getRawMany<{ source: string | null; count: string }>();
+
+    const counted = new Map<string, number>();
+    for (const row of rows) {
+      if (!row.source || KNOWN_B2C_SOURCES.has(row.source)) continue;
+      const company = row.source.startsWith('self-') ? row.source.slice(5) : row.source;
+      if (KNOWN_B2C_SOURCES.has(company)) continue;
+      counted.set(company, (counted.get(company) ?? 0) + Number(row.count));
+    }
+
+    const admins = await this.userRepository.find({ where: { role: 'admin' } });
+    const registered = new Set(admins.map((a) => a.company).filter(Boolean));
+
+    return [...counted.entries()]
+      .filter(([company]) => !registered.has(company))
+      .map(([source, count]) => ({ source, count }))
+      .sort((a, b) => b.count - a.count);
+  }
+
   // includeSelf 없이 source 미지정으로 조회하면(ChavatarApp의 전체 목록 조회가 바로 이 경우)
   // 자체 신청(self-{company}) 건은 기본적으로 제외됨 — 진단사가 방문할 필요 없는 건이
   // 앱 어느 화면에도 노출되지 않게 하기 위함(구버전 앱도 소급 적용됨). source를 명시하면
