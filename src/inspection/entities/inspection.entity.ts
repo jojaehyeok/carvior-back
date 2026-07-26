@@ -112,4 +112,10 @@ export class Inspection {
     // 진단사 수정마감(2h)/매니저 검토(2h~4h)/자동게시(4h) 타임라인의 앵커로 사용.
     @Column({ type: 'timestamp', nullable: true })
     firstCompletedAt: Date;
+
+    // 딜러 의뢰 리포트(수출용 차량 등) 다국어 지원용 — 평가사가 입력한 자유 텍스트(메모류)만
+    // Azure Translator로 최초 1회 번역해서 캐싱해둔다. { en: {memo, warningDesc, ...}, ru: {...}, ar: {...} }
+    // null이면 아직 한 번도 번역 요청이 없었다는 뜻(무료 API 호출량 절약을 위해 지연 계산).
+    @Column({ type: 'json', nullable: true })
+    translations: Record<string, Record<string, string>> | null;
 }

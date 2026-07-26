@@ -14,6 +14,7 @@ import { SolapiService } from 'src/solapi/solapi.service';
 import { DriversService } from 'src/drivers/drivers.service';
 import { ComplianceService } from 'src/compliance/compliance.service';
 import { ScheduledNotificationsService } from 'src/scheduled-notifications/scheduled-notifications.service';
+import { TranslateService } from 'src/translate/translate.service';
 
 const PARTNER_COMPLETION_DELAY_MS = 60 * 60 * 1000; // 1시간
 
@@ -27,6 +28,7 @@ export class InspectionService {
     private readonly driversService: DriversService,
     private readonly complianceService: ComplianceService,
     private readonly scheduledNotificationsService: ScheduledNotificationsService,
+    private readonly translateService: TranslateService,
     @InjectRepository(Inspection)
     private readonly inspectionRepository: Repository<Inspection>,
     @InjectRepository(Booking)
@@ -515,6 +517,7 @@ export class InspectionService {
   // Booking.dealerName·assignedDriverName을 붙여서 반환
   private async withDealerName(inspection: Inspection) {
     const booking = await this.bookingRepository.findOne({ where: { id: inspection.bookingId } });
+    const isOk = (v?: string | null) => !v || v === '이상 없음';
     return {
       ...inspection,
       dealerName: booking?.dealerName ?? null,
@@ -524,6 +527,69 @@ export class InspectionService {
       // 구매동행(카비어 검차 서비스, /inspection에서 결제한 건) 리포트에만 리뷰 작성
       // 섹션을 노출한다 — 딜러가 의뢰한 B2B 리포트는 리뷰 대상이 아니라서 구분해서 내려줌.
       isConsumerBooking: booking?.source === 'CARVIOR_INSPECTION',
+      // 번역 전 원문(한국어) 기준 이상유무 — applyLanguage()가 텍스트를 번역해도
+      // 프런트에서 "이상 없음" 문자열 비교로 정상/이상 배지를 판단하다 깨지는 일이 없게 함
+      evaluationOk: {
+        leak: isOk(inspection.inspectionDetails?.leakDesc),
+        drive: isOk(inspection.inspectionDetails?.driveDesc),
+        options: isOk(inspection.inspectionDetails?.optionsDesc),
+        warning: isOk(inspection.inspectionDetails?.warningDesc),
+      },
+    };
+  }
+
+  // 딜러 의뢰 리포트(수출용 차량 등)에서만 다국어 지원 — 번역 대상은 평가사가 직접
+  // 입력하는 자유 텍스트뿐(부위명/라벨 등 고정 텍스트는 프런트에서 자체 번역해서 표시).
+  private readonly TRANSLATABLE_FIELDS = ['memo', 'warningDesc', 'leakDesc', 'optionsDesc', 'driveDesc'] as const;
+  private readonly SUPPORTED_LANGS = ['en', 'ru', 'ar'];
+
+  // Azure Translator는 유료 전환 걱정 없는 무료 F0 티어(월 200만자, 기간 제한 없음)라도
+  // 아낄수록 좋으니, 이미 번역해둔 리포트는 재호출 없이 캐시(translations 컬럼)를 그대로 쓴다.
+  private async ensureTranslations(inspection: Inspection): Promise<Record<string, Record<string, string>> | null> {
+    if (inspection.translations) return inspection.translations;
+
+    const details = inspection.inspectionDetails ?? ({} as Record<string, string>);
+    const texts = this.TRANSLATABLE_FIELDS.map((f) => (f === 'memo' ? inspection.memo : (details as any)[f]) || '');
+    if (texts.every((t) => !t)) return null; // 번역할 내용 자체가 없으면 API 호출을 아예 생략
+
+    try {
+      const byLang = await this.translateService.translateBatch(texts, this.SUPPORTED_LANGS);
+      const translations: Record<string, Record<string, string>> = {};
+      for (const lang of this.SUPPORTED_LANGS) {
+        translations[lang] = {};
+        this.TRANSLATABLE_FIELDS.forEach((f, i) => { translations[lang][f] = byLang[lang][i]; });
+      }
+      await this.inspectionRepository.update(inspection.id, { translations });
+      return translations;
+    } catch (e) {
+      console.error('❌ [리포트 번역 실패]', (e as Error).message);
+      return null; // 번역 실패해도 리포트 자체는 한국어로 정상 노출(블로킹하지 않음)
+    }
+  }
+
+  // 리포트 조회 시 ?lang= 쿼리로 넘어온 언어를 적용 — 구매동행(소비자) 리포트는 항상
+  // 한국어만 노출(백엔드에서도 한 번 더 방어), 지원하지 않는 언어 코드는 무시하고 원문 반환.
+  async applyLanguage<T extends Inspection & { isConsumerBooking?: boolean; inspectionDetails?: any }>(
+    inspection: T, lang?: string,
+  ): Promise<T> {
+    if (!lang || lang === 'ko' || inspection.isConsumerBooking || !this.SUPPORTED_LANGS.includes(lang)) {
+      return inspection;
+    }
+
+    const translations = await this.ensureTranslations(inspection);
+    const t = translations?.[lang];
+    if (!t) return inspection;
+
+    return {
+      ...inspection,
+      memo: t.memo || inspection.memo,
+      inspectionDetails: {
+        ...inspection.inspectionDetails,
+        warningDesc: t.warningDesc || inspection.inspectionDetails?.warningDesc,
+        leakDesc: t.leakDesc || inspection.inspectionDetails?.leakDesc,
+        optionsDesc: t.optionsDesc || inspection.inspectionDetails?.optionsDesc,
+        driveDesc: t.driveDesc || inspection.inspectionDetails?.driveDesc,
+      },
     };
   }
 

@@ -69,10 +69,12 @@ export class InspectionController {
   }
 
   // 5. 레포트 조회 - 차량번호 해시 기반 (공개 URL용)
+  // lang: 딜러 의뢰 리포트(수출용 차량 등)에서만 en/ru/ar 지원 — 구매동행 리포트는 무시됨
   @Get('report/by-hash/:carHash')
-  async getReportByHash(@Param('carHash') carHash: string) {
+  async getReportByHash(@Param('carHash') carHash: string, @Query('lang') lang?: string) {
     const inspection = await this.inspectionService.getInspectionByCarHash(carHash);
-    return this.formatReport(inspection);
+    const localized = await this.inspectionService.applyLanguage(inspection, lang);
+    return this.formatReport(localized);
   }
 
   // 5-a. 리포트 사진 전체를 1,2,3...번 순서로 이름 붙여 zip 다운로드 (광고팀용 일괄 다운로드)
@@ -83,9 +85,10 @@ export class InspectionController {
 
   // 5-b. 레포트 조회 - bookingId 기반 (내부/앱용)
   @Get('report/:bookingId')
-  async getReportData(@Param('bookingId') bookingId: string) {
+  async getReportData(@Param('bookingId') bookingId: string, @Query('lang') lang?: string) {
     const inspection = await this.inspectionService.getInspectionByBookingId(parseInt(bookingId));
-    return this.formatReport(inspection);
+    const localized = await this.inspectionService.applyLanguage(inspection, lang);
+    return this.formatReport(localized);
   }
 
   // 5-c. 관리자 → 진단사 재촬영/수정 요청 (SMS)
@@ -149,6 +152,7 @@ export class InspectionController {
         ...inspection.inspectionDetails,
         memo: inspection.memo,
       },
+      evaluationOk: inspection.evaluationOk ?? null,
       checklistPhotos: inspection.checklistPhotos ?? { warning: [], options: [], leak: [], drive: [] },
       car_status: {
         keys: inspection.carStatus?.keys,
