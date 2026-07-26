@@ -423,10 +423,13 @@ export class BookingsService {
       where: { assignedDriverId: driverId },
       order: { createdAt: 'DESC' },
     });
+    return this.attachExportBadge(bookings);
+  }
 
-    // datrade처럼 "수출전용"으로 표시해둔 발주사(source) 건은 진단사 앱에 "수출건" 뱃지를
-    // 붙이고 진단 화면에 수출용 영상 촬영 슬롯을 노출한다 — source의 company를 뽑아서
-    // 수출전용 관리자 계정 목록과 대조.
+  // datrade처럼 "수출전용"으로 표시해둔 발주사(source) 건은 진단사 앱에 "수출건" 뱃지를
+  // 붙이고 진단 화면에 수출용 영상 촬영 슬롯을 노출한다 — source의 company를 뽑아서
+  // 수출전용 관리자 계정 목록과 대조. findAll()/findByDriver() 양쪽에서 공용으로 씀.
+  private async attachExportBadge<T extends { source?: string | null }>(bookings: T[]): Promise<(T & { isExportBooking: boolean })[]> {
     const exportAdmins = await this.userRepository.find({ where: { role: 'admin', isExportOnly: true } });
     const exportCompanies = new Set(exportAdmins.map((a) => a.company).filter(Boolean));
 
@@ -481,7 +484,7 @@ export class BookingsService {
       : bookings;
 
     const completedIds = visible.filter(b => b.status === 'COMPLETED').map(b => b.id);
-    if (completedIds.length === 0) return visible;
+    if (completedIds.length === 0) return this.attachExportBadge(visible);
 
     const inspections = await this.inspectionRepository.find({
       where: { bookingId: In(completedIds) },
@@ -490,11 +493,11 @@ export class BookingsService {
     const hashMap = new Map(inspections.map(i => [i.bookingId, i.carHash]));
     const firstCompletedMap = new Map(inspections.map(i => [i.bookingId, i.firstCompletedAt]));
 
-    return visible.map(b => ({
+    return this.attachExportBadge(visible.map(b => ({
       ...b,
       carHash: hashMap.get(b.id) ?? null,
       firstCompletedAt: firstCompletedMap.get(b.id) ?? null,
-    }));
+    })));
   }
 
   async update(id: number, updateData: Partial<Booking> & { cancelReason?: string; cancelledByDriver?: boolean }): Promise<Booking> {
