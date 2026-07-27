@@ -84,6 +84,16 @@ export class Booking {
   @Column({ nullable: true })
   dealerName: string;
 
+  // 구매동행(/inspection) 신청 시 딜러를 통해 거래 중인 매물이면 딜러 연락처만 알고
+  // 차량번호/소유주는 모르는 경우가 많아서 별도로 받는다
+  @Column({ nullable: true })
+  dealerContact: string;
+
+  // 구매동행 신청 시 당근마켓 등 중고거래 매물 링크 — 차량번호를 몰라도 이 링크로
+  // 어떤 차량인지 담당 평가사가 확인할 수 있게 한다
+  @Column({ type: 'text', nullable: true })
+  listingUrl: string;
+
   @Column()
   contact: string;
 
