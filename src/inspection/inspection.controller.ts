@@ -122,10 +122,10 @@ export class InspectionController {
     @Param('bookingId') bookingId: string,
     @Body() data: {
       carNumber?: string; carModel?: string; mileage?: number; color?: string; repairCost?: number;
-      memo?: string; inspectionDetails?: { warningDesc?: string; leakDesc?: string; optionsDesc?: string; driveDesc?: string };
+      memo?: string; inspectionDetails?: { warningDesc?: string; leakDesc?: string; optionsDesc?: string; driveDesc?: string; engineDesc?: string };
       photos?: Record<string, string[]>; dashboardImage?: string; regImage?: string; vinImage?: string;
       exportVideoUrls?: string[]; engineNoiseVideoUrl?: string;
-      checklistPhotos?: { warning?: string[]; options?: string[]; leak?: string[]; drive?: string[] };
+      checklistPhotos?: { warning?: string[]; options?: string[]; leak?: string[]; drive?: string[]; engine?: string[] };
     },
   ) {
     return this.inspectionService.updateReportFields(parseInt(bookingId), data);

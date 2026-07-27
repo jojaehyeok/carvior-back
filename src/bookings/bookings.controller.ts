@@ -34,6 +34,16 @@ export class BookingsController {
     };
   }
 
+  // ✅ GET: 방문 주소·날짜 기준 예약 가능 시간대 조회 (헤이딜러처럼 실제 활동중인 평가사가
+  // 있는 시간대만 고객에게 노출) — /inspection 결제 폼에서: /check-duplicate와 동일하게 공개 GET
+  @Get('available-slots')
+  async getAvailableSlots(@Query('address') address: string, @Query('date') date: string) {
+    if (!address || !date) {
+      throw new BadRequestException('주소와 날짜를 모두 입력해주세요.');
+    }
+    return this.bookingsService.getAvailableSlots(address, date);
+  }
+
   // POST: 간편 신청 저장
   @Post()
   async handleRequest(@Body() createBookingDto: CreateBookingDto) {

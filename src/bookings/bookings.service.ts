@@ -233,7 +233,9 @@ export class BookingsService {
   // driverId가 이미 배정/확정/완료된 건 중 같은 날짜(preferredDateTime 기준)에 이 방문시각과
   // MIN_SLOT_GAP_MINUTES보다 가까운 게 있으면 true — 물리적으로 겹치는 시간대라 후보에서 제외해야 함
   private async hasScheduleConflict(driverId: number, preferredDateTime?: string | null): Promise<boolean> {
-    const match = preferredDateTime?.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}):(\d{2})/);
+    // 소스마다 구분자가 달라("YYYY-MM-DD HH:mm" vs "YYYY-MM-DDTHH:mm:ss") 공백만 받으면
+    // T구분자 건(예: /inspection 직접신청)의 충돌 체크가 항상 조용히 스킵되던 버그 — [ T] 둘 다 허용
+    const match = preferredDateTime?.match(/^(\d{4}-\d{2}-\d{2})[ T](\d{2}):(\d{2})/);
     if (!match) return false; // 시간 형식 파싱 안 되면(미입력 등) 충돌 체크 없이 기존처럼 진행
     const [, datePart, hh, mm] = match;
     const targetMinutes = Number(hh) * 60 + Number(mm);
@@ -253,6 +255,51 @@ export class BookingsService {
       const otherMinutes = Number(m[1]) * 60 + Number(m[2]);
       return Math.abs(otherMinutes - targetMinutes) < this.MIN_SLOT_GAP_MINUTES;
     });
+  }
+
+  // /inspection 결제 폼의 방문시간 슬롯과 동일한 목록(30분 단위, 09:00~17:00)
+  private readonly PUBLIC_BOOKING_TIME_SLOTS = [
+    '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
+    '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00',
+  ];
+
+  // 고객용 방문시간 미리보기(헤이딜러 스타일) — /inspection 폼에서 방문 주소+날짜를 고르면
+  // 그 지역을 커버하는 활성 평가사가 실제로 그 시간대에 뛸 수 있는지(지역매칭+스케줄+같은
+  // 60분 충돌버퍼) 확인해서 "예약 가능한 시간대"만 노출한다. tryAutoAssign()과 동일한 기준을
+  // 그대로 재사용해 "미리보기엔 가능했는데 실제 접수 후 자동배정은 실패"하는 불일치를 막는다.
+  // (isLocationFresh는 "지금 이 순간" GPS 활동 여부라 며칠 뒤 방문예정 슬롯엔 의미가 없어 제외)
+  async getAvailableSlots(
+    address: string,
+    date: string,
+  ): Promise<{ regionCovered: boolean; slots: { time: string; available: boolean }[] }> {
+    const drivers = await this.driverRepository.find({ where: { status: 'APPROVED', isActive: true } });
+    // isActive(활동중지) 여부와 무관하게 "이 지역을 담당하는 평가사가 존재하는가"만 먼저 판단 —
+    // 전부 활동중지 상태여도 (2)는 true로 남겨서 "서비스 미제공 지역"과 "오늘은 다 쉬는 중"을 구분한다
+    const anyDriverCoversRegion = drivers
+      .concat(await this.driverRepository.find({ where: { status: 'APPROVED', isActive: false } }))
+      .some(d => (d.regions ?? []).some(r => r && address.includes(r)));
+
+    const regionMatched = drivers.filter(d => (d.regions ?? []).some(r => r && address.includes(r)));
+    if (regionMatched.length === 0) {
+      return {
+        regionCovered: anyDriverCoversRegion,
+        slots: this.PUBLIC_BOOKING_TIME_SLOTS.map(time => ({ time, available: false })),
+      };
+    }
+
+    const slots = await Promise.all(
+      this.PUBLIC_BOOKING_TIME_SLOTS.map(async time => {
+        const preferredDateTime = `${date} ${time}`;
+        const scheduleOk = regionMatched.filter(d => isDriverActiveNow(d, preferredDateTime));
+        if (scheduleOk.length === 0) return { time, available: false };
+
+        const conflictChecks = await Promise.all(
+          scheduleOk.map(d => this.hasScheduleConflict(d.id, preferredDateTime)),
+        );
+        return { time, available: conflictChecks.some(conflict => !conflict) };
+      }),
+    );
+    return { regionCovered: true, slots };
   }
 
   // 편도 거리 기준 [준오지/오지] 분류 임계값 — 준오지는 발주사 가격협상 검토 대상,

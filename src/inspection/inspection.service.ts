@@ -241,12 +241,14 @@ export class InspectionService {
       leakDesc: data.inspectionDetails?.leakDesc || '',
       optionsDesc: data.inspectionDetails?.optionsDesc || '',
       driveDesc: data.inspectionDetails?.driveDesc || '',
+      engineDesc: data.inspectionDetails?.engineDesc || '',
     };
     inspection.checklistPhotos = {
       warning: data.checklistPhotos?.warning || [],
       options: data.checklistPhotos?.options || [],
       leak: data.checklistPhotos?.leak || [],
       drive: data.checklistPhotos?.drive || [],
+      engine: data.checklistPhotos?.engine || [],
     };
 
     // [🌟 carStatus: 차키, 타이어, 도색 상태 매핑]
@@ -438,14 +440,14 @@ export class InspectionService {
     color?: string;
     repairCost?: number;
     memo?: string;
-    inspectionDetails?: { warningDesc?: string; leakDesc?: string; optionsDesc?: string; driveDesc?: string };
+    inspectionDetails?: { warningDesc?: string; leakDesc?: string; optionsDesc?: string; driveDesc?: string; engineDesc?: string };
     photos?: Record<string, string[]>;
     dashboardImage?: string;
     regImage?: string;
     vinImage?: string;
     exportVideoUrls?: string[];
     engineNoiseVideoUrl?: string;
-    checklistPhotos?: { warning?: string[]; options?: string[]; leak?: string[]; drive?: string[] };
+    checklistPhotos?: { warning?: string[]; options?: string[]; leak?: string[]; drive?: string[]; engine?: string[] };
   }) {
     const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
     if (!inspection) throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
@@ -488,6 +490,7 @@ export class InspectionService {
         options: data.checklistPhotos.options || [],
         leak: data.checklistPhotos.leak || [],
         drive: data.checklistPhotos.drive || [],
+        engine: data.checklistPhotos.engine || [],
       };
     }
 
@@ -534,13 +537,14 @@ export class InspectionService {
         drive: isOk(inspection.inspectionDetails?.driveDesc),
         options: isOk(inspection.inspectionDetails?.optionsDesc),
         warning: isOk(inspection.inspectionDetails?.warningDesc),
+        engine: isOk(inspection.inspectionDetails?.engineDesc),
       },
     };
   }
 
   // 딜러 의뢰 리포트(수출용 차량 등)에서만 다국어 지원 — 번역 대상은 평가사가 직접
   // 입력하는 자유 텍스트뿐(부위명/라벨 등 고정 텍스트는 프런트에서 자체 번역해서 표시).
-  private readonly TRANSLATABLE_FIELDS = ['memo', 'warningDesc', 'leakDesc', 'optionsDesc', 'driveDesc'] as const;
+  private readonly TRANSLATABLE_FIELDS = ['memo', 'warningDesc', 'leakDesc', 'optionsDesc', 'driveDesc', 'engineDesc'] as const;
   private readonly SUPPORTED_LANGS = ['en', 'ru', 'ar'];
 
   // Azure Translator는 유료 전환 걱정 없는 무료 F0 티어(월 200만자, 기간 제한 없음)라도
@@ -589,6 +593,7 @@ export class InspectionService {
         leakDesc: t.leakDesc || inspection.inspectionDetails?.leakDesc,
         optionsDesc: t.optionsDesc || inspection.inspectionDetails?.optionsDesc,
         driveDesc: t.driveDesc || inspection.inspectionDetails?.driveDesc,
+        engineDesc: t.engineDesc || inspection.inspectionDetails?.engineDesc,
       },
     };
   }

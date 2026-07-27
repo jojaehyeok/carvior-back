@@ -61,16 +61,18 @@ export class Inspection {
         leakDesc: string;
         optionsDesc: string; // 필드명 매칭
         driveDesc: string;   // 필드명 매칭
+        engineDesc: string;
     };
 
-    // 확인사항(경고등/옵션/누유/주행중 이상) 각 항목별 첨부사진 — "기타의견" 공용 사진첩과
-    // 섞이지 않도록 항목별로 분리 보관. 리포트에서도 해당 항목 바로 아래에 노출된다.
+    // 확인사항(경고등/옵션/누유/주행중 이상/엔진룸 이상) 각 항목별 첨부사진 — "기타의견" 공용
+    // 사진첩과 섞이지 않도록 항목별로 분리 보관. 리포트에서도 해당 항목 바로 아래에 노출된다.
     @Column({ type: 'json', nullable: true })
     checklistPhotos: {
         warning: string[];
         options: string[];
         leak: string[];
         drive: string[];
+        engine: string[];
     } | null;
 
     // 추가: 차키 정보, 타이어 잔존량, 도색/휠 상태 등
