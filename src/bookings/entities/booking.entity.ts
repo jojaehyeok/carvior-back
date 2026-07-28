@@ -131,8 +131,8 @@ export class Booking {
   @Column({ type: 'int', nullable: true })
   purchasePrice: number | null; // 매입가 (만원)
 
-  // 매입가가 새로 적히면(값이 바뀌면) false로 초기화 — 목록에서 빨간색으로 강조되다가,
-  // 관리자가 목록에서 숫자를 클릭해서 확인하면 true로 바뀌며 파란색으로 전환
+  // 매입가 처리 완료 여부 — 값이 새로 적히면(바뀌면) false(미완료)로 초기화되고,
+  // 관리자가 목록에서 "미완료" 태그를 클릭하면 true(완료)로 토글됨
   @Column({ default: true })
   purchasePriceSeen: boolean;
 
