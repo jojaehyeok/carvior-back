@@ -45,7 +45,7 @@ export class ScheduledNotificationsService {
       try {
         await this.solapiService.sendCompletionAlimTalkTo(
           row.recipientPhone,
-          row.variables as { '#{차량번호}': string; '#{완료시간}': string; '#{예약번호}': string },
+          row.variables as { '#{차량번호}': string; '#{완료시간}': string; '#{예약번호}': string; '#{딜러명}'?: string },
         );
         row.sent = true;
         row.sentAt = new Date();

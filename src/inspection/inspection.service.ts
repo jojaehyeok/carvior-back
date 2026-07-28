@@ -295,6 +295,7 @@ export class InspectionService {
           '#{차량번호}': inspection.carNumber,
           '#{완료시간}': completedAt,
           '#{예약번호}': savedResult.carHash,
+          '#{딜러명}': booking?.dealerName || '-',
         };
         await this.solapiService.sendCompletionAlimTalk(completionVariables, booking?.source);
 
