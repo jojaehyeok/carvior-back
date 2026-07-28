@@ -291,11 +291,14 @@ export class InspectionService {
         const pad = (n: number) => String(n).padStart(2, '0');
         const completedAt = `${now.getUTCFullYear()}.${pad(now.getUTCMonth() + 1)}.${pad(now.getUTCDate())} ${pad(now.getUTCHours())}:${pad(now.getUTCMinutes())}`;
         console.log(`[알림톡] 발송 시작 - 차량: ${inspection.carNumber}, 완료시간: ${completedAt}`);
+        // ⚠️ 카카오 알림톡은 승인된 템플릿에 정의 안 된 변수를 같이 보내면 발송 자체가
+        // 실패할 수 있어서, #{딜러명}/#{진단사명}이 포함된 새 템플릿이 검수 통과되기 전까진
+        // 기존 승인 템플릿과 그대로 맞는 3개 변수만 보낸다. 검수 통과 후 templateId 받으면
+        // 아래 completionVariables에 두 필드 추가하고 새 templateId로 교체할 것.
         const completionVariables = {
           '#{차량번호}': inspection.carNumber,
           '#{완료시간}': completedAt,
           '#{예약번호}': savedResult.carHash,
-          '#{딜러명}': booking?.dealerName || '-',
         };
         await this.solapiService.sendCompletionAlimTalk(completionVariables, booking?.source);
 
