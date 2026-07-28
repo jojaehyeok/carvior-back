@@ -625,6 +625,16 @@ export class BookingsService {
     // handleClaim()이 보내는 시그니처(PENDING → status:CONFIRMED + assignedDriverId)만 여기 해당
     const isSelfClaim = booking.status === 'PENDING' && updateData.status === 'CONFIRMED' && !!updateData.assignedDriverId;
 
+    // 매입가/구전은 값이 바뀌어 새로 적힌 건 목록에서 빨간색(안 봄)으로 강조했다가, 관리자가
+    // 목록에서 숫자를 한 번 클릭하면(별도 PATCH로 xxxSeen만 true) 파란색(확인함)으로 바뀐다 —
+    // 여기서는 값이 실제로 달라질 때만 "새로 적힘" 상태로 되돌린다(같은 값 재저장은 무시).
+    if ('purchasePrice' in updateData && updateData.purchasePrice !== booking.purchasePrice) {
+      booking.purchasePriceSeen = false;
+    }
+    if ('oldDealerFee' in updateData && updateData.oldDealerFee !== booking.oldDealerFee) {
+      booking.oldDealerFeeSeen = false;
+    }
+
     Object.assign(booking, updateData);
     const updated = await this.bookingRepository.save(booking);
 

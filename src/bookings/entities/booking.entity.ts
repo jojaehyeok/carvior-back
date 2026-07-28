@@ -131,11 +131,20 @@ export class Booking {
   @Column({ type: 'int', nullable: true })
   purchasePrice: number | null; // 매입가 (만원)
 
+  // 매입가가 새로 적히면(값이 바뀌면) false로 초기화 — 목록에서 빨간색으로 강조되다가,
+  // 관리자가 목록에서 숫자를 클릭해서 확인하면 true로 바뀌며 파란색으로 전환
+  @Column({ default: true })
+  purchasePriceSeen: boolean;
+
   @Column({ default: false })
   isOldDealerPurchase: boolean; // (구) 구전 매입 여부 — oldDealerFee(금액 입력)로 대체, 컬럼은 하위호환용으로 유지
 
   @Column({ type: 'int', nullable: true })
   oldDealerFee: number | null; // 구전 금액 (만원) — 예/아니오 대신 실제 지급액을 기록
+
+  // purchasePriceSeen과 동일한 용도, 구전 금액용
+  @Column({ default: true })
+  oldDealerFeeSeen: boolean;
 
   // 계약팀이 오더 진행 중 직접 확인·기록하는 고객(차주) 연락처 — 접수 시 받는
   // contact는 신청자(딜러/고객) 번호라 실제 차주 번호와 다를 수 있어 별도 필드로 관리
