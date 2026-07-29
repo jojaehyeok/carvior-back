@@ -134,7 +134,7 @@ export class SolapiService {
     }
 
     // 완료 알림톡을 임의의 한 번호로 보낸다 — 즉시 발송/예약 발송(크론) 둘 다 이걸 재사용
-    async sendCompletionAlimTalkTo(to: string, variables: { '#{차량번호}': string; '#{완료시간}': string; '#{예약번호}': string; '#{딜러명}'?: string }) {
+    async sendCompletionAlimTalkTo(to: string, variables: { '#{차량번호}': string; '#{완료시간}': string; '#{예약번호}': string; '#{딜러명}'?: string; '#{진단사명}'?: string }) {
         const templateId = this.configService.get<string>('SOLAPI_TEMPLATE_ID_COMPLETED');
         const senderNumber = this.configService.get<string>('SOLAPI_SENDER_NUMBER');
         const pfId = this.configService.get<string>('SOLAPI_PF_ID');
@@ -149,7 +149,7 @@ export class SolapiService {
 
     // 대표님께는 즉시 발송. 협업 파트너사(Anyone모터스 등)는 1시간 지연 발송이 필요해서
     // ScheduledNotificationsService가 별도로 예약 처리한다(inspection.service.ts 참고).
-    async sendCompletionAlimTalk(variables: { '#{차량번호}': string; '#{완료시간}': string; '#{예약번호}': string; '#{딜러명}'?: string }, source?: string) {
+    async sendCompletionAlimTalk(variables: { '#{차량번호}': string; '#{완료시간}': string; '#{예약번호}': string; '#{딜러명}'?: string; '#{진단사명}'?: string }, source?: string) {
         try {
             console.log('--- 진단완료 알림톡 발송(즉시) ---');
             const response = await this.sendCompletionAlimTalkTo('01022856017', variables);
