@@ -330,8 +330,8 @@ export class BookingsService {
 
   // 편도 거리 기준 [준오지/오지] 분류 임계값 — 준오지는 발주사 가격협상 검토 대상,
   // 오지는 왕복 거리가 커서 사실상 항상 가격협상이 필요한 수준
-  private readonly SEMI_REMOTE_KM = 30;
-  private readonly REMOTE_KM = 70;
+  private readonly SEMI_REMOTE_KM = 25;
+  private readonly REMOTE_KM = 50;
 
   // 접수 시점에 1회 계산해서 저장하는 거리 진단 — 배정 로직에는 전혀 관여하지 않고,
   // 대시보드에 "오지/준오지"·"긴급후보" 뱃지를 표시해 관리자가 수동으로 판단(가격협상, 긴급브로드캐스트)하도록
