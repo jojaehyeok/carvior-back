@@ -401,6 +401,8 @@ export class InspectionService {
         source: booking.source,
         bookingId: booking.id,
         carNumber: booking.carNumber,
+        recipientContact: driver.phone,
+        recipient: 'driver',
         purpose: 'request-update',
       });
     } catch (e) {}

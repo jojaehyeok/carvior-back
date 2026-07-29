@@ -9,6 +9,7 @@ import { Driver } from '../drivers/entities/driver.entity';
 import { DriverCancelLog } from '../driver-cancel-logs/driver-cancel-log.entity';
 import { Inspection } from '../inspection/entities/inspection.entity';
 import { User } from '../users/entities/user.entity';
+import { SmsBillingLog } from '../sms-billing-logs/sms-billing-log.entity';
 import { distanceKm, geocodeAddress, isDriverActiveNow, isLocationFresh } from './auto-assign.util';
 
 // cavior 내에서 source 값을 고정 문자열로 보내는 B2C 신청 경로들 — 이 값들은
@@ -42,6 +43,8 @@ export class BookingsService {
     private readonly inspectionRepository: Repository<Inspection>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(SmsBillingLog)
+    private readonly smsBillingLogRepository: Repository<SmsBillingLog>,
     private readonly solapiService: SolapiService,
     private readonly notificationsService: NotificationsService,
   ) {}
@@ -887,11 +890,53 @@ export class BookingsService {
   }
 
   // 발주사(대시보드)가 명의이전 완료 후 등록증 사진을 직접 업로드
-  async saveTransferredRegistration(id: number, url: string) {
+  // 이전된 등록증 사진을 업로드하고, 딜러/고객 번호로 각각 확인 링크 SMS를 보낸다(건당 1회 제한,
+  // 각 발송 50원씩 회사별 과금 장부에 기록 — 실제 결제/차감은 아니고 수동 청구 참고용).
+  async saveTransferredRegistration(id: number, url: string, message?: string) {
     const booking = await this.bookingRepository.findOne({ where: { id } });
     if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+    if (booking.transferredRegistrationUrl) {
+      throw new BadRequestException('이미 등록증을 전송한 건입니다.');
+    }
     booking.transferredRegistrationUrl = url;
-    return await this.bookingRepository.save(booking);
+    const saved = await this.bookingRepository.save(booking);
+
+    // S3 원본 URL은 90byte 제한을 훌쩍 넘겨서 SMS 접수 자체가 거부됨 — 짧은 리다이렉트 링크로 대체
+    const shortLink = `https://carvior.store/api/v1/r/${booking.id}`;
+    let detail = message?.trim() || '이전된 차량등록증을 보내드립니다.';
+    let text = `[카비어] ${detail}\n${shortLink}`;
+    while (Buffer.byteLength(text, 'utf-8') > 88 && detail.length > 1) {
+      detail = detail.slice(0, -1);
+      text = `[카비어] ${detail}…\n${shortLink}`;
+    }
+    const recipients: { target: 'dealer' | 'customer'; phone?: string | null }[] = [
+      { target: 'dealer', phone: booking.contact },
+      { target: 'customer', phone: booking.customerContact },
+    ];
+
+    for (const { target, phone } of recipients) {
+      if (!phone) continue;
+      try {
+        await this.solapiService.sendSms(phone, text);
+        await this.smsBillingLogRepository.save({
+          source: booking.source,
+          bookingId: booking.id,
+          carNumber: booking.carNumber,
+          recipientContact: phone,
+          recipient: target,
+          purpose: 'registration-send',
+        });
+      } catch (e) {}
+    }
+
+    return saved;
+  }
+
+  // SMS 90byte 제한 안에 넣으려고 S3 원본 URL 대신 이 짧은 리다이렉트 링크(/v1/r/:id)를 보낸다
+  async getTransferredRegistrationUrl(id: number): Promise<string> {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking?.transferredRegistrationUrl) throw new NotFoundException('등록증을 찾을 수 없습니다.');
+    return booking.transferredRegistrationUrl;
   }
 
   // 관리자가 "긴급·당일배정"으로 수동 브로드캐스트 — 자동배정/평소 브로드캐스트는 스케줄(가용시간)과

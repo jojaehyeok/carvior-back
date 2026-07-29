@@ -79,12 +79,13 @@ export class BookingsController {
   @UseInterceptors(FileInterceptor('photo', { storage: memoryStorage() }))
   async uploadTransferredRegistration(
     @Param('id') id: string,
+    @Body('message') message?: string,
     @UploadedFile() file?: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('사진을 첨부해주세요.');
     const key = `transferred-registrations/${id}/${Date.now()}${extname(file.originalname)}`;
     const url = await this.s3Service.uploadFile(file, key);
-    return this.bookingsService.saveTransferredRegistration(Number(id), url);
+    return this.bookingsService.saveTransferredRegistration(Number(id), url, message);
   }
 
   // POST: 간편 신청 저장

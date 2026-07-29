@@ -18,7 +18,15 @@ export class SmsBillingLog {
   @Column({ nullable: true })
   carNumber: string;
 
-  // 과금 사유 — 지금은 'request-update'(진단사/매니저 수정 요청) 하나만 있음
+  // 이 SMS를 받은 사람의 연락처 — 어느 건/누구에게 나간 과금인지 장부에서 바로 식별하기 위함
+  @Column({ nullable: true })
+  recipientContact: string;
+
+  // 받는 사람 구분 — 'dealer'(수정요청은 진단사/매니저지만 편의상 여기 기록) / 'customer'
+  @Column({ nullable: true })
+  recipient: string;
+
+  // 과금 사유 — 'request-update'(진단사/매니저 수정 요청) / 'registration-send'(이전 등록증 전송)
   @Column()
   purpose: string;
 
