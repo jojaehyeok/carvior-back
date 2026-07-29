@@ -74,20 +74,7 @@ export class BookingsController {
     return this.bookingsService.selfCancel(Number(id), contact);
   }
 
-  // POST: 딜러/고객에게 명의이전 등록증 업로드 요청 SMS 발송(대상별 1회 제한) — 애니원모터스 등 발주사 대시보드 전용
-  @Post(':id/request-registration-upload')
-  async requestRegistrationUpload(
-    @Param('id') id: string,
-    @Body('target') target: 'dealer' | 'customer',
-    @Body('message') message?: string,
-  ) {
-    if (target !== 'dealer' && target !== 'customer') {
-      throw new BadRequestException('받는 사람(딜러/고객)을 선택해주세요.');
-    }
-    return this.bookingsService.requestRegistrationUpload(Number(id), target, message);
-  }
-
-  // POST: 딜러/고객이 SMS 링크로 들어와 이전된 등록증 사진 업로드(공개 API)
+  // POST: 발주사(대시보드)가 명의이전 완료된 등록증 사진을 직접 업로드 — 애니원모터스 등 전용
   @Post(':id/transferred-registration')
   @UseInterceptors(FileInterceptor('photo', { storage: memoryStorage() }))
   async uploadTransferredRegistration(

@@ -192,18 +192,10 @@ export class Booking {
   customerContact: string | null;
   // ----------------------
 
-  // 명의이전 완료 후 딜러/고객이 직접 업로드하는 "이전된 자동차등록증" 사진 —
+  // 명의이전 완료 후 발주사(대시보드)가 직접 업로드하는 "이전된 자동차등록증" 사진 —
   // 진단사가 방문 당시 찍는 등록증 사진(기존 리포트 사진)과는 별개로 보관한다.
   @Column({ type: 'varchar', nullable: true })
   transferredRegistrationUrl: string | null;
-
-  // 딜러/고객에게 등록증 업로드 요청 SMS를 보낸 시각 — 발주사 계정이 반복 클릭해도
-  // SMS 비용이 중복으로 나가지 않도록 대상별 최초 1회만 발송 허용
-  @Column({ type: 'timestamp', nullable: true })
-  dealerRegistrationRequestedAt: Date | null;
-
-  @Column({ type: 'timestamp', nullable: true })
-  customerRegistrationRequestedAt: Date | null;
 
   @Column({ type: 'text', nullable: true })
   adminMemo: string;
