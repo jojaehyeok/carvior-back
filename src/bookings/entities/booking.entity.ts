@@ -155,6 +155,25 @@ export class Booking {
   @Column({ default: true })
   oldDealerFeeSeen: boolean;
 
+  // 진단사 정산 관련 — 슈퍼관리자만 입력(대시보드 booking-list.tsx). 앱 정산내역(settlement-history)에서
+  // 기본 진단비(등급별)에 더하거나 뺄 때 사용한다.
+  // 오지/준오지/긴급건 등에 대한 추가 수당(원) — 준오지 +1만원/오지 +2만원/긴급 +1만원을
+  // 대시보드에서 기본값으로 제안하되, 최종 금액은 관리자가 직접 입력해 저장한다.
+  @Column({ type: 'int', nullable: true })
+  remoteBonus: number | null;
+
+  // 기타 비용/인센티브(원) — 유류비, 톨비, 고생한 건에 대한 성과급 등 케이스별로
+  // 관리자가 자유롭게 지급하는 금액. 무엇에 대한 금액인지 알 수 있게 메모를 같이 남긴다.
+  @Column({ type: 'int', nullable: true })
+  extraFee: number | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  extraFeeMemo: string | null;
+
+  // 안심케어 클레임이 확정되어 해당 건 정산에서 차감할 금액(원)
+  @Column({ type: 'int', nullable: true })
+  claimDeduction: number | null;
+
   // 계약팀이 오더 진행 중 직접 확인·기록하는 고객(차주) 연락처 — 접수 시 받는
   // contact는 신청자(딜러/고객) 번호라 실제 차주 번호와 다를 수 있어 별도 필드로 관리
   @Column({ type: 'varchar', nullable: true })
