@@ -168,6 +168,12 @@ export class Booking {
   @Column({ type: 'timestamp', nullable: true })
   cancelledByDriverAt: Date | null;
 
+  // 배정된 진단사가 앱에서 이 건의 상세화면을 처음 연 시각 — 자동배정은 앱 푸시를
+  // 놓칠 수 있어서, 관리자가 대시보드에서 "평가사가 실제로 확인했는지"를 볼 수 있게
+  // 최초 1회만 기록한다(재조회해도 갱신 안 함, 재배정되면 markSeen()에서 null로 초기화).
+  @Column({ type: 'timestamp', nullable: true })
+  driverSeenAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

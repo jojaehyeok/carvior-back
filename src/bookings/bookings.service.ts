@@ -226,6 +226,18 @@ export class BookingsService {
     return saved;
   }
 
+  // 평가사 앱이 배정된 건의 상세화면을 열 때 호출 — 최초 1회만 기록(이미 확인한 건 재호출돼도
+  // 시각을 덮어쓰지 않음). driverId를 함께 받아 실제 배정된 담당자가 맞는지 확인하고,
+  // 배정 해제·재배정 등으로 이미 다른 사람 건이 됐으면 조용히 무시한다.
+  async markSeen(id: number, driverId?: string): Promise<Booking> {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+    if (driverId && String(booking.assignedDriverId) !== String(driverId)) return booking;
+    if (booking.driverSeenAt) return booking; // 이미 확인 기록됨
+    booking.driverSeenAt = new Date();
+    return this.bookingRepository.save(booking);
+  }
+
   // 특히 당일 접수(긴급) 건들이 30분 간격으로 다닥다닥 들어올 때, 같은 진단사가 물리적으로
   // 이동·진단을 마칠 시간도 없이 겹쳐서 자동배정되는 걸 막기 위한 최소 간격
   private readonly MIN_SLOT_GAP_MINUTES = 60;
@@ -679,6 +691,7 @@ export class BookingsService {
     booking.assignedDriverName = driverInfo.name;
     booking.status = 'ASSIGNED';
     booking.cancelledByDriverAt = null; // 재배정 시 재대기 플래그 초기화
+    booking.driverSeenAt = null; // 재배정되면 새 담당자 기준으로 "확인 여부"를 다시 센다
     booking.assignedByAgentId = source === 'agent' ? (assignedByAgentId ?? null) : null;
 
     const saved = await this.bookingRepository.save(booking);

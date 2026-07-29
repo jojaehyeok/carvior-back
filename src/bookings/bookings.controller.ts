@@ -92,6 +92,13 @@ export class BookingsController {
     return { success: true, data: updatedBooking };
   }
 
+  // PATCH: 평가사 앱이 배정 건 상세화면을 열 때 호출 — 대시보드에서 "확인함/미확인" 표시용
+  @Patch(':id/mark-seen')
+  async markSeen(@Param('id') id: number, @Body() body: { driverId?: string }) {
+    const updatedBooking = await this.bookingsService.markSeen(Number(id), body?.driverId);
+    return { success: true, data: updatedBooking };
+  }
+
   // PATCH: 관리자가 대기 건을 "긴급·당일배정"으로 전체 진단사에게 강제 브로드캐스트
   @Patch(':id/urgent-broadcast')
   async broadcastUrgent(@Param('id') id: number) {
