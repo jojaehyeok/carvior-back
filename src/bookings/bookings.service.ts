@@ -886,6 +886,40 @@ export class BookingsService {
     return { success: true, data: saved, refund };
   }
 
+  // 딜러/고객에게 명의이전된 자동차등록증 업로드를 요청하는 SMS — 발주사 계정이 반복 클릭해도
+  // SMS 비용이 계속 나가지 않도록 대상(딜러/고객)별로 최초 1회만 발송 허용한다.
+  async requestRegistrationUpload(id: number, target: 'dealer' | 'customer', message?: string) {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+
+    const alreadyRequested = target === 'dealer' ? booking.dealerRegistrationRequestedAt : booking.customerRegistrationRequestedAt;
+    if (alreadyRequested) {
+      throw new BadRequestException('이미 요청을 보냈습니다.');
+    }
+
+    const phone = target === 'dealer' ? booking.contact : booking.customerContact;
+    if (!phone) throw new BadRequestException('연락처가 없습니다.');
+
+    const link = `https://carvior.store/booking/${booking.id}/registration-upload`;
+    const text = `[카비어] ${message?.trim() || '명의이전된 자동차등록증 사진을 올려주세요'}\n${link}`;
+    await this.solapiService.sendSms(phone, text);
+
+    if (target === 'dealer') booking.dealerRegistrationRequestedAt = new Date();
+    else booking.customerRegistrationRequestedAt = new Date();
+    const saved = await this.bookingRepository.save(booking);
+
+    return { success: true, data: saved };
+  }
+
+  // 딜러/고객이 위 SMS 링크로 들어와 이전된 등록증 사진을 업로드 — 인증 없이 접근하는
+  // 공개 API라 예약 id만으로 식별(링크 자체가 SMS로 개별 발송되어 유출 위험이 낮음).
+  async saveTransferredRegistration(id: number, url: string) {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+    booking.transferredRegistrationUrl = url;
+    return await this.bookingRepository.save(booking);
+  }
+
   // 관리자가 "긴급·당일배정"으로 수동 브로드캐스트 — 자동배정/평소 브로드캐스트는 스케줄(가용시간)과
   // 활동중 여부를 보고 대상을 거르는데, 이 경로는 그걸 전부 무시하고 승인된 진단사 전원에게 발송한다.
   // (예: 오늘 방문 건인데 등록된 스케줄상 아무도 안 맞거나 전원 활동중지 상태라 자동배정이 실패한 경우 —

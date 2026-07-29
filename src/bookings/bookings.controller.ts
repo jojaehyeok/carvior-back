@@ -7,9 +7,15 @@ import {
   Param,
   BadRequestException,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { extname } from 'path';
 import { BookingsService } from './bookings.service';
 import { Booking } from './entities/booking.entity';
+import { S3Service } from '../s3/s3.service';
 
 class CreateBookingDto {
   carNumber!: string;
@@ -17,7 +23,10 @@ class CreateBookingDto {
 
 @Controller('v1/external/request')
 export class BookingsController {
-  constructor(private readonly bookingsService: BookingsService) {}
+  constructor(
+    private readonly bookingsService: BookingsService,
+    private readonly s3Service: S3Service,
+  ) {}
 
   // ✅ GET: 차량 번호 중복 체크 (신청 가능 여부 확인)
   // 프론트엔드에서: https://carvior.store/api/v1/external/request/check-duplicate?carNumber=123가4567
@@ -63,6 +72,32 @@ export class BookingsController {
   async selfCancel(@Param('id') id: string, @Body('contact') contact: string) {
     if (!contact) throw new BadRequestException('연락처를 입력해주세요.');
     return this.bookingsService.selfCancel(Number(id), contact);
+  }
+
+  // POST: 딜러/고객에게 명의이전 등록증 업로드 요청 SMS 발송(대상별 1회 제한) — 애니원모터스 등 발주사 대시보드 전용
+  @Post(':id/request-registration-upload')
+  async requestRegistrationUpload(
+    @Param('id') id: string,
+    @Body('target') target: 'dealer' | 'customer',
+    @Body('message') message?: string,
+  ) {
+    if (target !== 'dealer' && target !== 'customer') {
+      throw new BadRequestException('받는 사람(딜러/고객)을 선택해주세요.');
+    }
+    return this.bookingsService.requestRegistrationUpload(Number(id), target, message);
+  }
+
+  // POST: 딜러/고객이 SMS 링크로 들어와 이전된 등록증 사진 업로드(공개 API)
+  @Post(':id/transferred-registration')
+  @UseInterceptors(FileInterceptor('photo', { storage: memoryStorage() }))
+  async uploadTransferredRegistration(
+    @Param('id') id: string,
+    @UploadedFile() file?: Express.Multer.File,
+  ) {
+    if (!file) throw new BadRequestException('사진을 첨부해주세요.');
+    const key = `transferred-registrations/${id}/${Date.now()}${extname(file.originalname)}`;
+    const url = await this.s3Service.uploadFile(file, key);
+    return this.bookingsService.saveTransferredRegistration(Number(id), url);
   }
 
   // POST: 간편 신청 저장

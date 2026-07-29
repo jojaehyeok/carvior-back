@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ConfigModule } from '@nestjs/config';
 import { BookingsService } from './bookings.service';
 import { BookingsController } from './bookings.controller';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -9,12 +10,14 @@ import { Driver } from 'src/drivers/entities/driver.entity';
 import { DriverCancelLog } from 'src/driver-cancel-logs/driver-cancel-log.entity';
 import { Inspection } from 'src/inspection/entities/inspection.entity';
 import { User } from 'src/users/entities/user.entity';
+import { S3Service } from 'src/s3/s3.service';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Booking, Driver, DriverCancelLog, Inspection, User]),
+    ConfigModule,
   ],
   controllers: [BookingsController],
-  providers: [BookingsService, SolapiService, NotificationsService],
+  providers: [BookingsService, SolapiService, NotificationsService, S3Service],
 })
 export class BookingsModule { }
