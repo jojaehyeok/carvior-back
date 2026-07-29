@@ -70,6 +70,15 @@ export class Booking {
   @Column({ default: true })
   depositConfirmed: boolean;
 
+  // 구매동행(/inspection) 신청 시 선택한 차량 구분 — 국산차/수입차에 따라 프로모션 결제
+  // 금액이 다르다(app/inspection/page.tsx의 CAR_TYPE_PRICING과 짝을 이룸).
+  @Column({ type: 'varchar', nullable: true })
+  carOrigin: 'DOMESTIC' | 'IMPORTED' | null;
+
+  // 실제 결제(또는 계좌이체 신청) 금액 — VAT 포함, 프로모션 할인 적용된 최종 금액(원)
+  @Column({ type: 'int', nullable: true })
+  amount: number | null;
+
   @Column()
   carNumber: string;
 
