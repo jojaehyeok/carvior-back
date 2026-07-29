@@ -612,7 +612,8 @@ export class InspectionService {
     if (!phone) throw new BadRequestException('연락처가 없습니다.');
 
     // SMS는 90byte(EUC-KR 기준) 제한 — 넘으면 접수 자체가 거부되므로 최대한 짧게
-    const link = `https://carvior.store/report/${inspection.carHash}`;
+    // 후기 작성 폼은 리포트 본문이 아니라 전용 페이지(/review)로 분리돼 있음
+    const link = `https://carvior.store/report/${inspection.carHash}/review`;
     const text = `[카비어] 리포트 후기 부탁드려요\n${link}`;
     await this.solapiService.sendSms(phone, text);
     return { success: true };
