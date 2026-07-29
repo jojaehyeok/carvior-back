@@ -408,9 +408,13 @@ export class InspectionService {
     return { ok: true, sentTo: driver.phone, driverName: driver.name };
   }
 
-  // 회사(발주사)별 SMS 과금 누적 내역 — 대시보드에서 청구 참고용으로 확인
-  async getSmsBillingSummary() {
-    const logs = await this.smsBillingLogRepository.find({ order: { createdAt: 'DESC' } });
+  // 회사(발주사)별 SMS 과금 누적 내역 — 대시보드에서 청구 참고용으로 확인.
+  // source를 주면(발주사 계정) 자사 것만, 안 주면(슈퍼관리자) 전체 회사 내역을 반환.
+  async getSmsBillingSummary(source?: string) {
+    const logs = await this.smsBillingLogRepository.find({
+      where: source ? { source } : {},
+      order: { createdAt: 'DESC' },
+    });
     const bySource = new Map<string, { source: string; count: number; totalAmount: number }>();
     for (const log of logs) {
       const key = log.source || '(미상)';

@@ -105,11 +105,11 @@ export class InspectionController {
     );
   }
 
-  // 수정 요청 SMS 과금(회사별 누적) 내역 — 슈퍼관리자 대시보드에서 청구 참고용으로 조회
+  // 수정 요청 SMS 과금(회사별 누적) 내역 — source 주면 자사분만, 안 주면(슈퍼관리자) 전체
   @Get('sms-billing-summary')
   @UseGuards(InternalKeyGuard)
-  getSmsBillingSummary() {
-    return this.inspectionService.getSmsBillingSummary();
+  getSmsBillingSummary(@Query('source') source?: string) {
+    return this.inspectionService.getSmsBillingSummary(source);
   }
 
   // 구매동행(카비어 검차) 완료 고객에게 리뷰 요청 SMS 재발송 — 관리자가 대시보드에서 수동 트리거
