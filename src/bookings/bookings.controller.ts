@@ -44,6 +44,20 @@ export class BookingsController {
     return this.bookingsService.getAvailableSlots(address, date);
   }
 
+  // GET: 고객 셀프서비스 — 예약번호 + 연락처로 본인 예약 조회(취소 전 확인 화면용, 공개 API)
+  @Get(':id/lookup')
+  async lookupForCustomer(@Param('id') id: string, @Query('contact') contact: string) {
+    if (!contact) throw new BadRequestException('연락처를 입력해주세요.');
+    return this.bookingsService.lookupForCustomer(Number(id), contact);
+  }
+
+  // PATCH: 고객 셀프서비스 취소 — 연락처로 본인 확인 후 상태만 CANCELLED로 변경(환불은 관리자 수동 처리)
+  @Patch(':id/self-cancel')
+  async selfCancel(@Param('id') id: string, @Body('contact') contact: string) {
+    if (!contact) throw new BadRequestException('연락처를 입력해주세요.');
+    return this.bookingsService.selfCancel(Number(id), contact);
+  }
+
   // POST: 간편 신청 저장
   @Post()
   async handleRequest(@Body() createBookingDto: CreateBookingDto) {

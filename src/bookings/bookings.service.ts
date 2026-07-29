@@ -756,6 +756,109 @@ export class BookingsService {
     return saved;
   }
 
+  // 고객 셀프서비스 취소 — 전화번호로 본인 확인만 하고, 결제 취소 자체는 자동화하지 않는다
+  // (토스 paymentKey를 저장하지 않아 API로 즉시 환불 불가 + 계좌이체는 어차피 수동 처리라
+  // 상태만 CANCELLED로 바꾸고 환불 예정 금액을 계산해서 관리자에게 SMS로 알린다).
+  private readonly SELF_CANCEL_FEE = 30_000;
+
+  private normalizePhone(v?: string | null): string {
+    return (v || '').replace(/[^0-9]/g, '');
+  }
+
+  // preferredDateTime은 소스마다 "YYYY-MM-DD HH:mm" 또는 "YYYY-MM-DDTHH:mm" 형태라 통일
+  private parsePreferredDateTime(raw?: string | null): Date | null {
+    if (!raw) return null;
+    const d = new Date(raw.replace(' ', 'T'));
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+
+  // 환불 규정(app/policy/refund) 그대로: 결제 후 1시간 이내는 무조건 전액,
+  // 그 외엔 방문일 전날 18시 이전=전액 / 방문 시간 전=수수료 3만원 차감 / 방문 시간 이후=환불 없음
+  private computeRefund(booking: Booking): { tier: 'FULL' | 'FEE' | 'NONE'; refundAmount: number; cancelFee: number } {
+    const amount = booking.amount ?? 0;
+    const now = new Date();
+
+    if (now.getTime() - booking.createdAt.getTime() < 60 * 60 * 1000) {
+      return { tier: 'FULL', refundAmount: amount, cancelFee: 0 };
+    }
+
+    const visitTime = this.parsePreferredDateTime(booking.preferredDateTime);
+    if (!visitTime) {
+      return { tier: 'FEE', refundAmount: Math.max(amount - this.SELF_CANCEL_FEE, 0), cancelFee: this.SELF_CANCEL_FEE };
+    }
+
+    const dayBefore18 = new Date(visitTime);
+    dayBefore18.setDate(dayBefore18.getDate() - 1);
+    dayBefore18.setHours(18, 0, 0, 0);
+
+    if (now <= dayBefore18) {
+      return { tier: 'FULL', refundAmount: amount, cancelFee: 0 };
+    }
+    if (now < visitTime) {
+      return { tier: 'FEE', refundAmount: Math.max(amount - this.SELF_CANCEL_FEE, 0), cancelFee: this.SELF_CANCEL_FEE };
+    }
+    return { tier: 'NONE', refundAmount: 0, cancelFee: amount };
+  }
+
+  private async findBookingForCustomer(id: number, contact: string): Promise<Booking> {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    const inputDigits = this.normalizePhone(contact);
+    const matches =
+      !!booking &&
+      inputDigits.length > 0 &&
+      (this.normalizePhone(booking.contact) === inputDigits || this.normalizePhone(booking.customerContact) === inputDigits);
+    if (!matches) {
+      throw new NotFoundException('예약 정보를 찾을 수 없습니다. 예약번호와 연락처를 다시 확인해주세요.');
+    }
+    return booking!;
+  }
+
+  // GET: 예약번호 + 연락처로 본인 예약 조회 (셀프 취소 전 확인 화면용, 인증 없이 공개된 조회 API)
+  async lookupForCustomer(id: number, contact: string) {
+    const booking = await this.findBookingForCustomer(id, contact);
+    return {
+      id: booking.id,
+      carNumber: booking.carNumber,
+      carModel: booking.carModel,
+      address: booking.address,
+      preferredDateTime: booking.preferredDateTime,
+      status: booking.status,
+      amount: booking.amount,
+      paymentMethod: booking.paymentMethod,
+      depositConfirmed: booking.depositConfirmed,
+      createdAt: booking.createdAt,
+      refundPreview: this.computeRefund(booking),
+    };
+  }
+
+  // PATCH: 고객 셀프 취소 — 상태만 CANCELLED로 바꾸고 실제 환불은 관리자가 수동 처리
+  async selfCancel(id: number, contact: string) {
+    const booking = await this.findBookingForCustomer(id, contact);
+
+    if (booking.status === 'COMPLETED') {
+      throw new BadRequestException('이미 진단이 완료된 건은 취소할 수 없습니다.');
+    }
+    if (booking.status === 'CANCELLED') {
+      throw new BadRequestException('이미 취소된 예약입니다.');
+    }
+
+    const refund = this.computeRefund(booking);
+    booking.status = 'CANCELLED';
+    booking.cancelledBySelf = true;
+    booking.refundAmount = refund.refundAmount;
+    const saved = await this.bookingRepository.save(booking);
+
+    try {
+      const tierLabel = refund.tier === 'FULL' ? '전액환불' : refund.tier === 'FEE' ? `수수료${refund.cancelFee.toLocaleString()}원차감` : '환불없음';
+      await this.solapiService.sendSms(
+        '01022856017',
+        `[카비어] 고객셀프취소 ${booking.carNumber} ${booking.preferredDateTime} ${tierLabel} 환불${refund.refundAmount.toLocaleString()}원 결제:${booking.paymentMethod || '-'}`,
+      );
+    } catch {}
+
+    return { success: true, data: saved, refund };
+  }
+
   // 관리자가 "긴급·당일배정"으로 수동 브로드캐스트 — 자동배정/평소 브로드캐스트는 스케줄(가용시간)과
   // 활동중 여부를 보고 대상을 거르는데, 이 경로는 그걸 전부 무시하고 승인된 진단사 전원에게 발송한다.
   // (예: 오늘 방문 건인데 등록된 스케줄상 아무도 안 맞거나 전원 활동중지 상태라 자동배정이 실패한 경우 —

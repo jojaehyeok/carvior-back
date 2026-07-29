@@ -187,6 +187,15 @@ export class Booking {
   @Column({ type: 'timestamp', nullable: true })
   reviewRequestedAt: Date | null;
 
+  // 고객이 예약번호+연락처로 직접 취소한 건인지 여부(관리자 취소와 구분용)
+  @Column({ default: false })
+  cancelledBySelf: boolean;
+
+  // 셀프취소 시점에 환불 규정에 따라 계산된 환불 예정 금액(원) — 실제 환불은 관리자가
+  // 토스/계좌이체로 수동 처리하며, 이 값은 그 처리를 위한 참고값일 뿐 자동 환불은 하지 않음.
+  @Column({ type: 'int', nullable: true })
+  refundAmount: number | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
