@@ -174,6 +174,18 @@ export class Booking {
   @Column({ type: 'int', nullable: true })
   claimDeduction: number | null;
 
+  // 에이전트 관리수당(원) — 에이전트가 다른 평가사에게 지정 배정(assignedByAgentId)한 건에
+  // 배정/관리 책임에 대한 대가로 붙는 금액. 실제 진단비(baseFee)와 달리 이 값은 배정한
+  // 에이전트 본인의 정산에 "관리수당" 항목으로 잡히고, 실제 진단한 평가사 정산과는 무관하다.
+  // 대시보드에서 배정 대상 평가사 등급 기준 기본값(일반 +1만원/진단평가사 +5천원)을 제안하되
+  // 최종 금액은 관리자가 직접 입력한다. 라운딩 이관 등 등급으로 자동 판단이 안 되는 경우는
+  // 관리자가 직접 금액(예: 6천원)과 메모를 입력.
+  @Column({ type: 'int', nullable: true })
+  agentBonus: number | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  agentBonusMemo: string | null;
+
   // 계약팀이 오더 진행 중 직접 확인·기록하는 고객(차주) 연락처 — 접수 시 받는
   // contact는 신청자(딜러/고객) 번호라 실제 차주 번호와 다를 수 있어 별도 필드로 관리
   @Column({ type: 'varchar', nullable: true })
