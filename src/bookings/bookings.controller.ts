@@ -44,6 +44,13 @@ export class BookingsController {
     return this.bookingsService.getAvailableSlots(address, date);
   }
 
+  // GET: 고객 셀프서비스 — 예약번호를 몰라도 신청자 이름 + 연락처로 본인 예약 조회(공개 API)
+  @Get('lookup-by-name')
+  async lookupByName(@Query('name') name: string, @Query('contact') contact: string) {
+    if (!name || !contact) throw new BadRequestException('이름과 연락처를 모두 입력해주세요.');
+    return this.bookingsService.lookupByNameAndContact(name, contact);
+  }
+
   // GET: 고객 셀프서비스 — 예약번호 + 연락처로 본인 예약 조회(취소 전 확인 화면용, 공개 API)
   @Get(':id/lookup')
   async lookupForCustomer(@Param('id') id: string, @Query('contact') contact: string) {

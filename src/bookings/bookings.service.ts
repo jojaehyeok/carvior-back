@@ -813,9 +813,7 @@ export class BookingsService {
     return booking!;
   }
 
-  // GET: 예약번호 + 연락처로 본인 예약 조회 (셀프 취소 전 확인 화면용, 인증 없이 공개된 조회 API)
-  async lookupForCustomer(id: number, contact: string) {
-    const booking = await this.findBookingForCustomer(id, contact);
+  private toCustomerView(booking: Booking) {
     return {
       id: booking.id,
       carNumber: booking.carNumber,
@@ -829,6 +827,35 @@ export class BookingsService {
       createdAt: booking.createdAt,
       refundPreview: this.computeRefund(booking),
     };
+  }
+
+  // GET: 예약번호 + 연락처로 본인 예약 조회 (셀프 취소 전 확인 화면용, 인증 없이 공개된 조회 API)
+  async lookupForCustomer(id: number, contact: string) {
+    const booking = await this.findBookingForCustomer(id, contact);
+    return this.toCustomerView(booking);
+  }
+
+  // GET: 예약번호를 몰라도 신청자 이름 + 연락처로 본인 예약을 찾을 수 있게 하는 조회 API —
+  // 같은 이름+번호로 여러 건을 신청했을 수 있어 배열로 반환한다.
+  async lookupByNameAndContact(name: string, contact: string) {
+    const nameTrimmed = (name || '').trim();
+    const inputDigits = this.normalizePhone(contact);
+    if (!nameTrimmed || inputDigits.length === 0) {
+      throw new BadRequestException('이름과 연락처를 모두 입력해주세요.');
+    }
+
+    const candidates = await this.bookingRepository.find({
+      where: { carOwner: nameTrimmed },
+      order: { createdAt: 'DESC' },
+      take: 20,
+    });
+    const matched = candidates.filter(
+      (b) => this.normalizePhone(b.contact) === inputDigits || this.normalizePhone(b.customerContact) === inputDigits,
+    );
+    if (matched.length === 0) {
+      throw new NotFoundException('일치하는 예약을 찾을 수 없습니다. 이름과 연락처를 다시 확인해주세요.');
+    }
+    return matched.map((b) => this.toCustomerView(b));
   }
 
   // PATCH: 고객 셀프 취소 — 상태만 CANCELLED로 바꾸고 실제 환불은 관리자가 수동 처리
