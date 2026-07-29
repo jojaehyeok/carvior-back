@@ -936,8 +936,16 @@ export class BookingsService {
       text = `[카비어] ${detail}…\n${shortLink}`;
     }
 
+    // 실패를 조용히 삼키면 실제로는 문자가 안 갔는데도 "보냈습니다"로 표시되고, 체크박스도
+    // 다시 열어보면 계속 살아있게 됨(전송 성공 여부로 잠그기 때문) — 그래서 대상별 실패를
+    // 모아서 응답에 담아 관리자가 무엇이 실패했는지 알 수 있게 한다.
+    const failures: string[] = [];
     for (const { target, phone } of targets) {
-      if (!phone) continue;
+      const label = target === 'dealer' ? '딜러' : '고객';
+      if (!phone) {
+        failures.push(`${label}: 연락처가 없습니다.`);
+        continue;
+      }
       try {
         await this.solapiService.sendSms(phone, text);
         await this.smsBillingLogRepository.save({
@@ -950,10 +958,14 @@ export class BookingsService {
         });
         if (target === 'dealer') booking.registrationSentToDealerAt = new Date();
         if (target === 'customer') booking.registrationSentToCustomerAt = new Date();
-      } catch (e) {}
+      } catch (e) {
+        console.error(`[등록증 전송 실패] booking ${booking.id} → ${target}`, e);
+        failures.push(`${label}: 문자 발송에 실패했습니다.`);
+      }
     }
 
-    return this.bookingRepository.save(booking);
+    const saved = await this.bookingRepository.save(booking);
+    return { ...saved, sendFailures: failures };
   }
 
   // SMS 90byte 제한 안에 넣으려고 S3 원본 URL 대신 이 짧은 리다이렉트 링크(/v1/r/:id)를 보낸다
