@@ -10,6 +10,7 @@ import { Repository } from 'typeorm';
 import { Booking } from 'src/bookings/entities/booking.entity';
 import { Inspection } from './entities/inspection.entity';
 import { User } from 'src/users/entities/user.entity';
+import { SmsBillingLog } from 'src/sms-billing-logs/sms-billing-log.entity';
 import { SolapiService } from 'src/solapi/solapi.service';
 import { DriversService } from 'src/drivers/drivers.service';
 import { ComplianceService } from 'src/compliance/compliance.service';
@@ -35,6 +36,8 @@ export class InspectionService {
     private readonly bookingRepository: Repository<Booking>,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
+    @InjectRepository(SmsBillingLog)
+    private readonly smsBillingLogRepository: Repository<SmsBillingLog>,
   ) {
     this.s3Client = new S3Client({
       region: this.configService.get('AWS_S3_REGION') || 'ap-northeast-2',
@@ -390,7 +393,33 @@ export class InspectionService {
     }
 
     await this.solapiService.sendSms(driver.phone, text);
+
+    // 발주사 계정이 직접 트리거하는 유일한 SMS 발송 — 실제 결제/차감은 안 하고
+    // 회사별 누적 과금액만 장부에 기록(원가 13원 대비 마진 붙여 50원 청구, 수동 청구용 참고자료)
+    try {
+      await this.smsBillingLogRepository.save({
+        source: booking.source,
+        bookingId: booking.id,
+        carNumber: booking.carNumber,
+        purpose: 'request-update',
+      });
+    } catch (e) {}
+
     return { ok: true, sentTo: driver.phone, driverName: driver.name };
+  }
+
+  // 회사(발주사)별 SMS 과금 누적 내역 — 대시보드에서 청구 참고용으로 확인
+  async getSmsBillingSummary() {
+    const logs = await this.smsBillingLogRepository.find({ order: { createdAt: 'DESC' } });
+    const bySource = new Map<string, { source: string; count: number; totalAmount: number }>();
+    for (const log of logs) {
+      const key = log.source || '(미상)';
+      if (!bySource.has(key)) bySource.set(key, { source: key, count: 0, totalAmount: 0 });
+      const entry = bySource.get(key)!;
+      entry.count += 1;
+      entry.totalAmount += log.amount;
+    }
+    return { logs, summary: Array.from(bySource.values()) };
   }
 
   /**

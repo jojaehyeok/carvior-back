@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { Inspection } from './entities/inspection.entity';
 import { Booking } from 'src/bookings/entities/booking.entity';
 import { User } from 'src/users/entities/user.entity';
+import { SmsBillingLog } from 'src/sms-billing-logs/sms-billing-log.entity';
 import { SolapiService } from 'src/solapi/solapi.service';
 import { DriversModule } from 'src/drivers/drivers.module';
 import { ComplianceModule } from 'src/compliance/compliance.module';
@@ -13,7 +14,7 @@ import { TranslateModule } from 'src/translate/translate.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Inspection, Booking, User]),
+    TypeOrmModule.forFeature([Inspection, Booking, User, SmsBillingLog]),
     DriversModule,
     ComplianceModule,
     ScheduledNotificationsModule,
