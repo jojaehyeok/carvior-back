@@ -608,7 +608,12 @@ export class InspectionService {
       throw new BadRequestException('완료된 리포트를 찾을 수 없습니다.');
     }
     const booking = await this.bookingRepository.findOne({ where: { id: bookingId } });
-    const phone = booking?.customerContact || booking?.contact;
+    if (!booking) throw new BadRequestException('해당 신청 내역을 찾을 수 없습니다.');
+    // 고객이 중복으로 리뷰 요청 문자를 받지 않도록 건당 1회만 발송 허용
+    if (booking.reviewRequestedAt) {
+      throw new BadRequestException('이미 리뷰 요청을 보냈습니다.');
+    }
+    const phone = booking.customerContact || booking.contact;
     if (!phone) throw new BadRequestException('연락처가 없습니다.');
 
     // SMS는 90byte(EUC-KR 기준) 제한 — 넘으면 접수 자체가 거부되므로 최대한 짧게
@@ -616,6 +621,8 @@ export class InspectionService {
     const link = `https://carvior.store/report/${inspection.carHash}/review`;
     const text = `[카비어] 리포트 후기 부탁드려요\n${link}`;
     await this.solapiService.sendSms(phone, text);
+    booking.reviewRequestedAt = new Date();
+    await this.bookingRepository.save(booking);
     return { success: true };
   }
 

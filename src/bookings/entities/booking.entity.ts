@@ -174,6 +174,10 @@ export class Booking {
   @Column({ type: 'timestamp', nullable: true })
   driverSeenAt: Date | null;
 
+  // 리뷰 요청 SMS 중복 발송 방지용 — 한 건당 1회만 보낼 수 있게 최초 발송 시각을 기록
+  @Column({ type: 'timestamp', nullable: true })
+  reviewRequestedAt: Date | null;
+
   @CreateDateColumn()
   createdAt: Date;
 
