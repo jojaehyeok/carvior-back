@@ -602,6 +602,24 @@ export class InspectionService {
     };
   }
 
+  // 구매동행(카비어 검차) 완료 고객에게 리뷰 요청 SMS를 재발송 — 관리자가 대시보드에서
+  // 수동으로 트리거. 완료+리포트(carHash) 있는 건만 대상, 연락처 없으면 에러.
+  async requestReview(bookingId: number) {
+    const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
+    if (!inspection || !inspection.carHash) {
+      throw new BadRequestException('완료된 리포트를 찾을 수 없습니다.');
+    }
+    const booking = await this.bookingRepository.findOne({ where: { id: bookingId } });
+    const phone = booking?.customerContact || booking?.contact;
+    if (!phone) throw new BadRequestException('연락처가 없습니다.');
+
+    // SMS는 90byte(EUC-KR 기준) 제한 — 넘으면 접수 자체가 거부되므로 최대한 짧게
+    const link = `https://carvior.store/report/${inspection.carHash}`;
+    const text = `[카비어] 리포트 후기 부탁드려요\n${link}`;
+    await this.solapiService.sendSms(phone, text);
+    return { success: true };
+  }
+
   // 리포트 사진 전체를 1.jpg, 2.jpg ... 순번으로 이름 붙여 zip으로 압축해 스트리밍.
   // 등록증·차대번호(개인정보 사진)는 리포트 화면에도 안 보여주는 것과 동일하게 제외.
   async streamPhotosZip(carHash: string, res: Response) {

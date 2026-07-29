@@ -105,6 +105,13 @@ export class InspectionController {
     );
   }
 
+  // 구매동행(카비어 검차) 완료 고객에게 리뷰 요청 SMS 재발송 — 관리자가 대시보드에서 수동 트리거
+  @Post(':bookingId/request-review')
+  @UseGuards(InternalKeyGuard)
+  requestReview(@Param('bookingId') bookingId: string) {
+    return this.inspectionService.requestReview(parseInt(bookingId));
+  }
+
   // 6. 관리자(진단매니저) → 손상부위 웹 수정
   @Patch(':bookingId/damages')
   @UseGuards(InternalKeyGuard)
