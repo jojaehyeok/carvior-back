@@ -88,9 +88,13 @@ export class BookingsController {
     @Body('customerPhone') customerPhone?: string,
     @UploadedFile() file?: Express.Multer.File,
   ) {
-    if (!file) throw new BadRequestException('사진을 첨부해주세요.');
-    const key = `transferred-registrations/${id}/${Date.now()}${extname(file.originalname)}`;
-    const url = await this.s3Service.uploadFile(file, key);
+    // 이미 올려둔 사진이 있으면 새로 첨부하지 않고도 나머지 대상에게 보낼 수 있어야 하므로
+    // photo는 선택사항 — 사진이 아예 없는 최초 전송인지는 서비스단에서 booking 상태로 판단
+    let url: string | undefined;
+    if (file) {
+      const key = `transferred-registrations/${id}/${Date.now()}${extname(file.originalname)}`;
+      url = await this.s3Service.uploadFile(file, key);
+    }
     return this.bookingsService.saveTransferredRegistration(Number(id), url, message, {
       sendToDealer: sendToDealer === 'true',
       sendToCustomer: sendToCustomer === 'true',

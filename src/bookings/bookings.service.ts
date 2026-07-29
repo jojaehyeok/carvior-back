@@ -894,12 +894,15 @@ export class BookingsService {
   // (대상별 건당 1회 제한, 각 발송 50원씩 회사별 과금 장부에 기록 — 실제 결제/차감은 아니고 수동 청구 참고용).
   async saveTransferredRegistration(
     id: number,
-    url: string,
+    url: string | undefined,
     message: string | undefined,
     options: { sendToDealer: boolean; sendToCustomer: boolean; dealerPhone?: string; customerPhone?: string },
   ) {
     const booking = await this.bookingRepository.findOne({ where: { id } });
     if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+    if (!url && !booking.transferredRegistrationUrl) {
+      throw new BadRequestException('사진을 첨부해주세요.');
+    }
 
     const targets: { target: 'dealer' | 'customer'; phone?: string | null }[] = [];
     if (options.sendToDealer) {
@@ -914,9 +917,10 @@ export class BookingsService {
       }
       targets.push({ target: 'customer', phone: options.customerPhone?.trim() || booking.customerContact });
     }
-    // 사진은 항상 최신 파일로 교체 — 잘못된 등록증을 올린 경우 여기서 다시 올리면 이미 보낸
-    // 단축링크(/v1/r/:id)가 그대로 새 사진으로 리다이렉트되어 재전송 없이 바로잡힌다.
-    booking.transferredRegistrationUrl = url;
+    // 사진을 새로 첨부한 경우에만 교체 — 잘못된 등록증을 올린 경우 여기서 다시 올리면 이미 보낸
+    // 단축링크(/v1/r/:id)가 그대로 새 사진으로 리다이렉트되어 재전송 없이 바로잡힌다. 첨부가
+    // 없으면(예: 딜러만 보내고 나중에 고객만 추가로 보내는 경우) 기존 사진 그대로 사용한다.
+    if (url) booking.transferredRegistrationUrl = url;
 
     if (targets.length === 0) {
       // 딜러/고객 둘 다 선택하지 않은 경우 = SMS 없이 사진만 교체
