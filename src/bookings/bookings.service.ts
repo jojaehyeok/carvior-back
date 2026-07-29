@@ -890,16 +890,38 @@ export class BookingsService {
   }
 
   // 발주사(대시보드)가 명의이전 완료 후 등록증 사진을 직접 업로드
-  // 이전된 등록증 사진을 업로드하고, 딜러/고객 번호로 각각 확인 링크 SMS를 보낸다(건당 1회 제한,
-  // 각 발송 50원씩 회사별 과금 장부에 기록 — 실제 결제/차감은 아니고 수동 청구 참고용).
-  async saveTransferredRegistration(id: number, url: string, message?: string) {
+  // 이전된 등록증 사진을 업로드하고, 선택한 대상(딜러/고객)에게 각각 확인 링크 SMS를 보낸다
+  // (대상별 건당 1회 제한, 각 발송 50원씩 회사별 과금 장부에 기록 — 실제 결제/차감은 아니고 수동 청구 참고용).
+  async saveTransferredRegistration(
+    id: number,
+    url: string,
+    message: string | undefined,
+    options: { sendToDealer: boolean; sendToCustomer: boolean; dealerPhone?: string; customerPhone?: string },
+  ) {
     const booking = await this.bookingRepository.findOne({ where: { id } });
     if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
-    if (booking.transferredRegistrationUrl) {
-      throw new BadRequestException('이미 등록증을 전송한 건입니다.');
+
+    const targets: { target: 'dealer' | 'customer'; phone?: string | null }[] = [];
+    if (options.sendToDealer) {
+      if (booking.registrationSentToDealerAt) {
+        throw new BadRequestException('이미 딜러에게 등록증을 전송했습니다.');
+      }
+      targets.push({ target: 'dealer', phone: options.dealerPhone?.trim() || booking.contact });
     }
+    if (options.sendToCustomer) {
+      if (booking.registrationSentToCustomerAt) {
+        throw new BadRequestException('이미 고객에게 등록증을 전송했습니다.');
+      }
+      targets.push({ target: 'customer', phone: options.customerPhone?.trim() || booking.customerContact });
+    }
+    // 사진은 항상 최신 파일로 교체 — 잘못된 등록증을 올린 경우 여기서 다시 올리면 이미 보낸
+    // 단축링크(/v1/r/:id)가 그대로 새 사진으로 리다이렉트되어 재전송 없이 바로잡힌다.
     booking.transferredRegistrationUrl = url;
-    const saved = await this.bookingRepository.save(booking);
+
+    if (targets.length === 0) {
+      // 딜러/고객 둘 다 선택하지 않은 경우 = SMS 없이 사진만 교체
+      return this.bookingRepository.save(booking);
+    }
 
     // S3 원본 URL은 90byte 제한을 훌쩍 넘겨서 SMS 접수 자체가 거부됨 — 짧은 리다이렉트 링크로 대체
     const shortLink = `https://carvior.store/api/v1/r/${booking.id}`;
@@ -909,12 +931,8 @@ export class BookingsService {
       detail = detail.slice(0, -1);
       text = `[카비어] ${detail}…\n${shortLink}`;
     }
-    const recipients: { target: 'dealer' | 'customer'; phone?: string | null }[] = [
-      { target: 'dealer', phone: booking.contact },
-      { target: 'customer', phone: booking.customerContact },
-    ];
 
-    for (const { target, phone } of recipients) {
+    for (const { target, phone } of targets) {
       if (!phone) continue;
       try {
         await this.solapiService.sendSms(phone, text);
@@ -926,10 +944,12 @@ export class BookingsService {
           recipient: target,
           purpose: 'registration-send',
         });
+        if (target === 'dealer') booking.registrationSentToDealerAt = new Date();
+        if (target === 'customer') booking.registrationSentToCustomerAt = new Date();
       } catch (e) {}
     }
 
-    return saved;
+    return this.bookingRepository.save(booking);
   }
 
   // SMS 90byte 제한 안에 넣으려고 S3 원본 URL 대신 이 짧은 리다이렉트 링크(/v1/r/:id)를 보낸다

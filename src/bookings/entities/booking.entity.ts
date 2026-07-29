@@ -197,6 +197,13 @@ export class Booking {
   @Column({ type: 'varchar', nullable: true })
   transferredRegistrationUrl: string | null;
 
+  // 딜러/고객 각각 등록증 SMS를 보냈는지 — 대상별로 건당 1회만 전송 가능하도록 개별 추적
+  @Column({ type: 'timestamp', nullable: true })
+  registrationSentToDealerAt: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  registrationSentToCustomerAt: Date | null;
+
   @Column({ type: 'text', nullable: true })
   adminMemo: string;
 

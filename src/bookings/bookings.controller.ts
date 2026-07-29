@@ -75,17 +75,28 @@ export class BookingsController {
   }
 
   // POST: 발주사(대시보드)가 명의이전 완료된 등록증 사진을 직접 업로드 — 애니원모터스 등 전용
+  // 딜러/고객 전송 여부는 각각 체크박스로 선택하며, 둘 다 선택하지 않으면 SMS 없이 사진만
+  // 교체된다(등록증을 잘못 올린 경우 재업로드 — 이미 보낸 단축링크가 새 사진으로 그대로 반영됨)
   @Post(':id/transferred-registration')
   @UseInterceptors(FileInterceptor('photo', { storage: memoryStorage() }))
   async uploadTransferredRegistration(
     @Param('id') id: string,
     @Body('message') message?: string,
+    @Body('sendToDealer') sendToDealer?: string,
+    @Body('sendToCustomer') sendToCustomer?: string,
+    @Body('dealerPhone') dealerPhone?: string,
+    @Body('customerPhone') customerPhone?: string,
     @UploadedFile() file?: Express.Multer.File,
   ) {
     if (!file) throw new BadRequestException('사진을 첨부해주세요.');
     const key = `transferred-registrations/${id}/${Date.now()}${extname(file.originalname)}`;
     const url = await this.s3Service.uploadFile(file, key);
-    return this.bookingsService.saveTransferredRegistration(Number(id), url, message);
+    return this.bookingsService.saveTransferredRegistration(Number(id), url, message, {
+      sendToDealer: sendToDealer === 'true',
+      sendToCustomer: sendToCustomer === 'true',
+      dealerPhone,
+      customerPhone,
+    });
   }
 
   // POST: 간편 신청 저장
