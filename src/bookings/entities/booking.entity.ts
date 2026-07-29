@@ -174,6 +174,15 @@ export class Booking {
   @Column({ type: 'timestamp', nullable: true })
   driverSeenAt: Date | null;
 
+  // 현재 배정 건이 언제/어떤 경로로 배정됐는지 — assign() 호출 시마다 갱신됨.
+  // 수동배정(manual)은 관리자가 진단사에게 이미 직접 안내했다고 보고, driverSeenAt과
+  // 무관하게 assignedAt을 "확인" 시각으로 대시보드에 표시한다(대시보드 booking-list.tsx 참고).
+  @Column({ type: 'timestamp', nullable: true })
+  assignedAt: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  assignSource: 'auto' | 'manual' | 'agent' | null;
+
   // 리뷰 요청 SMS 중복 발송 방지용 — 한 건당 1회만 보낼 수 있게 최초 발송 시각을 기록
   @Column({ type: 'timestamp', nullable: true })
   reviewRequestedAt: Date | null;

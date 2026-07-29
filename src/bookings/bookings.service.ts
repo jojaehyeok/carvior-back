@@ -693,6 +693,8 @@ export class BookingsService {
     booking.cancelledByDriverAt = null; // 재배정 시 재대기 플래그 초기화
     booking.driverSeenAt = null; // 재배정되면 새 담당자 기준으로 "확인 여부"를 다시 센다
     booking.assignedByAgentId = source === 'agent' ? (assignedByAgentId ?? null) : null;
+    booking.assignedAt = new Date();
+    booking.assignSource = source;
 
     const saved = await this.bookingRepository.save(booking);
 
