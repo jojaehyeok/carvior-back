@@ -257,6 +257,20 @@ export class BookingsService {
     });
   }
 
+  // 진단 배정 알림톡의 "오늘 총 진단건수" — 이 건의 방문일(preferredDateTime 날짜) 기준으로
+  // 해당 진단사에게 배정/확정/완료된 건수를 센다(취소된 건 제외, 이 건 본인도 포함해서 카운트).
+  private async countBookingsOnSameDay(driverId: string, preferredDateTime?: string | null): Promise<number> {
+    const datePart = preferredDateTime?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1];
+    if (!datePart) return 1; // 날짜 파싱 안 되면 이 건 하나만 있는 것으로 표시
+    return this.bookingRepository.count({
+      where: {
+        assignedDriverId: driverId,
+        status: In(['ASSIGNED', 'CONFIRMED', 'COMPLETED']),
+        preferredDateTime: Like(`${datePart}%`),
+      },
+    });
+  }
+
   // /inspection 결제 폼의 방문시간 슬롯과 동일한 목록(30분 단위, 09:00~17:00)
   private readonly PUBLIC_BOOKING_TIME_SLOTS = [
     '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
@@ -681,6 +695,27 @@ export class BookingsService {
       }
 
     } catch (e) {}
+
+    // 자동배정 건만 평가사 본인에게 카카오톡으로 한 번 더 알림 — 앱 푸시는 평가사가
+    // 못 볼 수 있어서, 사람이 직접 배정한 건(manual/agent)은 이미 배정 사실을 알고 있으니 제외.
+    if (source === 'auto') {
+      try {
+        const driver = await this.driverRepository.findOne({ where: { id: Number(driverInfo.id) } });
+        if (driver?.phone) {
+          const todayCount = await this.countBookingsOnSameDay(driverInfo.id, saved.preferredDateTime);
+          await this.solapiService.sendDriverAssignmentAlimTalk(driver.phone, {
+            '#{평가사명}': driverInfo.name,
+            '#{상대명}': saved.dealerName || saved.carOwner || '고객',
+            '#{연락처}': saved.dealerContact || saved.customerContact || saved.contact || '-',
+            '#{진단일시}': saved.preferredDateTime || '미입력',
+            '#{총진단건수}': String(todayCount),
+          });
+          console.log(`✅ [배정알림톡] 평가사(${driver.phone})에게 자동배정 안내 전송 (${saved.carNumber})`);
+        }
+      } catch (error: unknown) {
+        console.error('❌ [배정알림톡(평가사) 발송 실패]', (error as Error).message);
+      }
+    }
 
     // 대시보드에서 배정할 때 실제로 타는 경로는 이 assign()이다 — 고객에게 배정완료
     // 알림톡이 안 갔던 원인은 이 메서드에 발송 로직 자체가 없었기 때문(진단사 앱 푸시만 있었음).

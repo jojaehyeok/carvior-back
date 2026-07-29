@@ -119,6 +119,31 @@ export class SolapiService {
         }
     }
 
+    // 진단 배정 알림 (평가사 본인에게 발송) — 자동배정 건에만 사용. 앱 푸시는 평가사가 안 볼 수도
+    // 있어서, 놓치기 쉬운 자동배정 건만 카카오톡으로 한 번 더 알려준다(수동/에이전트 배정은 대상 아님).
+    async sendDriverAssignmentAlimTalk(to: string, variables: { '#{평가사명}': string; '#{상대명}': string; '#{연락처}': string; '#{진단일시}': string; '#{총진단건수}': string }) {
+        try {
+            const templateId = this.configService.get<string>('SOLAPI_TEMPLATE_ID_DRIVER_ASSIGNMENT');
+            const senderNumber = this.configService.get<string>('SOLAPI_SENDER_NUMBER');
+            const pfId = this.configService.get<string>('SOLAPI_PF_ID');
+
+            console.log('--- 진단 배정 알림톡(평가사) 발송 ---');
+            console.log('to:', to);
+            console.log('templateId:', templateId);
+
+            const response = await this.messageService.sendOne({
+                to,
+                from: senderNumber,
+                type: 'ATA',
+                kakaoOptions: { pfId, templateId, variables },
+            });
+            return response;
+        } catch (error) {
+            console.error('진단 배정 알림톡(평가사) 발송 에러:', JSON.stringify(error, null, 2));
+            throw error;
+        }
+    }
+
     async sendSms(to: string, text: string) {
         try {
             const senderNumber = this.configService.get<string>('SOLAPI_SENDER_NUMBER');
