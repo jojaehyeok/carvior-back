@@ -180,6 +180,13 @@ export class Booking {
   @Column({ type: 'int', nullable: true })
   claimDeduction: number | null;
 
+  // 발주사 청구액(원, VAT포함) — 기본/준오지/긴급은 고정 단가(77,000/97,000)로 자동
+  // 계산되지만, 오지(117,000~127,000원 협의) · 수입차/특수차(별도 협의) 등 단가표에
+  // 고정값이 없는 예외 건은 관리자가 여기에 직접 입력한 값이 자동계산 대신 사용된다
+  // (대시보드 발주사 정산서 엑셀 다운로드 — settlement.tsx 참고).
+  @Column({ type: 'int', nullable: true })
+  companyBillingAmount: number | null;
+
   // 에이전트 관리수당(원) — 에이전트가 다른 평가사에게 지정 배정(assignedByAgentId)한 건에
   // 배정/관리 책임에 대한 대가로 붙는 금액. 실제 진단비(baseFee)와 달리 이 값은 배정한
   // 에이전트 본인의 정산에 "관리수당" 항목으로 잡히고, 실제 진단한 평가사 정산과는 무관하다.
