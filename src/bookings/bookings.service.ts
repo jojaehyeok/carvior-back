@@ -303,7 +303,7 @@ export class BookingsService {
   async getAvailableSlots(
     address: string,
     date: string,
-  ): Promise<{ regionCovered: boolean; slots: { time: string; available: boolean }[] }> {
+  ): Promise<{ regionCovered: boolean; slots: { time: string; available: boolean }[]; activeDriverNames: string[] }> {
     const drivers = await this.driverRepository.find({ where: { status: 'APPROVED', isActive: true } });
     // isActive(활동중지) 여부와 무관하게 "이 지역을 담당하는 평가사가 존재하는가"만 먼저 판단 —
     // 전부 활동중지 상태여도 (2)는 true로 남겨서 "서비스 미제공 지역"과 "오늘은 다 쉬는 중"을 구분한다
@@ -316,6 +316,7 @@ export class BookingsService {
       return {
         regionCovered: anyDriverCoversRegion,
         slots: this.PUBLIC_BOOKING_TIME_SLOTS.map(time => ({ time, available: false })),
+        activeDriverNames: [],
       };
     }
 
@@ -331,7 +332,9 @@ export class BookingsService {
         return { time, available: conflictChecks.some(conflict => !conflict) };
       }),
     );
-    return { regionCovered: true, slots };
+    // 신청 페이지에 "이 지역에 활동 중인 평가사님이 있어요" 후킹 카드용 — 이름만 노출
+    const activeDriverNames = regionMatched.map(d => d.name);
+    return { regionCovered: true, slots, activeDriverNames };
   }
 
   // 편도 거리 기준 [준오지/오지] 분류 임계값 — 준오지는 발주사 가격협상 검토 대상,
