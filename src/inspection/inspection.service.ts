@@ -558,8 +558,12 @@ export class InspectionService {
   private async withDealerName(inspection: Inspection) {
     const booking = await this.bookingRepository.findOne({ where: { id: inspection.bookingId } });
     const isOk = (v?: string | null) => !v || v === '이상 없음';
+    // 진단 당시엔 차종이 미입력이라 "알수없음"으로 스냅샷됐어도, 이후 관리자가 대시보드에서
+    // Booking.carModel을 채워 넣었을 수 있으므로 그 값으로 대체해서 리포트에 보여준다.
+    const hasRealCarModel = (v?: string | null) => !!v && v !== '알수없음' && v !== '미정';
     return {
       ...inspection,
+      carModel: hasRealCarModel(inspection.carModel) ? inspection.carModel : (booking?.carModel ?? inspection.carModel),
       dealerName: booking?.dealerName ?? null,
       driverName: booking?.assignedDriverName ?? null,
       assignedDriverId: booking?.assignedDriverId ?? null,
