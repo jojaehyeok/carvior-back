@@ -11,6 +11,7 @@ import { Inspection } from '../inspection/entities/inspection.entity';
 import { User } from '../users/entities/user.entity';
 import { SmsBillingLog } from '../sms-billing-logs/sms-billing-log.entity';
 import { DriverAssignmentPenalty } from '../driver-assignment-penalties/driver-assignment-penalty.entity';
+import { ReviewsService } from '../reviews/reviews.service';
 import { distanceKm, geocodeAddress, isDriverActiveNow, isLocationFresh } from './auto-assign.util';
 
 // cavior 내에서 source 값을 고정 문자열로 보내는 B2C 신청 경로들 — 이 값들은
@@ -50,6 +51,7 @@ export class BookingsService {
     private readonly assignmentPenaltyRepository: Repository<DriverAssignmentPenalty>,
     private readonly solapiService: SolapiService,
     private readonly notificationsService: NotificationsService,
+    private readonly reviewsService: ReviewsService,
   ) {}
 
   async checkOngoingBooking(carNumber: string): Promise<boolean> {
@@ -303,7 +305,11 @@ export class BookingsService {
   async getAvailableSlots(
     address: string,
     date: string,
-  ): Promise<{ regionCovered: boolean; slots: { time: string; available: boolean }[]; activeDriverNames: string[] }> {
+  ): Promise<{
+    regionCovered: boolean;
+    slots: { time: string; available: boolean }[];
+    activeDrivers: { name: string; rating: number; reviewCount: number; highlight: string | null }[];
+  }> {
     const drivers = await this.driverRepository.find({ where: { status: 'APPROVED', isActive: true } });
     // isActive(활동중지) 여부와 무관하게 "이 지역을 담당하는 평가사가 존재하는가"만 먼저 판단 —
     // 전부 활동중지 상태여도 (2)는 true로 남겨서 "서비스 미제공 지역"과 "오늘은 다 쉬는 중"을 구분한다
@@ -316,7 +322,7 @@ export class BookingsService {
       return {
         regionCovered: anyDriverCoversRegion,
         slots: this.PUBLIC_BOOKING_TIME_SLOTS.map(time => ({ time, available: false })),
-        activeDriverNames: [],
+        activeDrivers: [],
       };
     }
 
@@ -332,9 +338,16 @@ export class BookingsService {
         return { time, available: conflictChecks.some(conflict => !conflict) };
       }),
     );
-    // 신청 페이지에 "이 지역에 활동 중인 평가사님이 있어요" 후킹 카드용 — 이름만 노출
-    const activeDriverNames = regionMatched.map(d => d.name);
-    return { regionCovered: true, slots, activeDriverNames };
+    // 신청 페이지에 "이 지역에 활동 중인 평가사님이 있어요" 후킹 카드용 — 실제 리뷰 평점(리뷰
+    // 없으면 5점 기본)과 축약 후기 한 줄을 붙인다(getDriverStats/getDriverHighlight 참고).
+    const activeDrivers = await Promise.all(
+      regionMatched.map(async d => {
+        const stats = await this.reviewsService.getDriverStats(String(d.id));
+        const highlight = await this.reviewsService.getDriverHighlight(String(d.id));
+        return { name: d.name, rating: stats.average, reviewCount: stats.total, highlight };
+      }),
+    );
+    return { regionCovered: true, slots, activeDrivers };
   }
 
   // 편도 거리 기준 [준오지/오지] 분류 임계값 — 준오지는 발주사 가격협상 검토 대상,

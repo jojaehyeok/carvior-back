@@ -58,11 +58,26 @@ export class ReviewsService {
     });
   }
 
-  // 진단사별 평균 평점
+  // 진단사별 평균 평점 — 리뷰가 아직 없는 신규 진단사는 5점에서 시작(신뢰 배지 기본값),
+  // 실제 리뷰가 쌓이면 그 평균으로 자연스럽게 깎여 내려간다.
   async getDriverStats(driverId: string) {
     const reviews = await this.reviewRepository.find({ where: { driverId } });
-    if (!reviews.length) return { average: 0, total: 0 };
+    if (!reviews.length) return { average: 5, total: 0 };
     const avg = reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length;
     return { average: Math.round(avg * 10) / 10, total: reviews.length };
+  }
+
+  // /inspection 신청 페이지 평가사 카드에 보여줄 축약 후기 한 줄 — 가장 최근 리뷰의
+  // 코멘트를 짧게 자르고, 코멘트가 없는 리뷰뿐이면 평점 좋은 건 귀여운 기본 문구로 대신한다.
+  async getDriverHighlight(driverId: string): Promise<string | null> {
+    const reviews = await this.reviewRepository.find({ where: { driverId }, order: { createdAt: 'DESC' } });
+    if (!reviews.length) return null;
+    const withComment = reviews.find((r) => r.comment && r.comment.trim().length > 0);
+    if (withComment) {
+      const text = withComment!.comment!.trim();
+      return text.length > 22 ? `${text.slice(0, 22)}…` : text;
+    }
+    const goodReview = reviews.find((r) => r.rating >= 4);
+    return goodReview ? '너무 좋았어요~ 최고예요! 🩷' : null;
   }
 }

@@ -14,11 +14,13 @@ import { User } from 'src/users/entities/user.entity';
 import { S3Service } from 'src/s3/s3.service';
 import { SmsBillingLog } from 'src/sms-billing-logs/sms-billing-log.entity';
 import { DriverAssignmentPenalty } from 'src/driver-assignment-penalties/driver-assignment-penalty.entity';
+import { ReviewsModule } from 'src/reviews/reviews.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Booking, Driver, DriverCancelLog, Inspection, User, SmsBillingLog, DriverAssignmentPenalty]),
     ConfigModule,
+    ReviewsModule,
   ],
   controllers: [BookingsController, BookingsRedirectController],
   providers: [BookingsService, SolapiService, NotificationsService, S3Service],
