@@ -654,6 +654,13 @@ export class BookingsService {
     // handleClaim()이 보내는 시그니처(PENDING → status:CONFIRMED + assignedDriverId)만 여기 해당
     const isSelfClaim = booking.status === 'PENDING' && updateData.status === 'CONFIRMED' && !!updateData.assignedDriverId;
 
+    // 매입가는 계약금+잔금 합계로 자동 계산 — 둘 중 하나라도 들어오면 매입가를 다시 계산한다
+    if ('contractDeposit' in updateData || 'contractBalance' in updateData) {
+      const deposit = 'contractDeposit' in updateData ? updateData.contractDeposit : booking.contractDeposit;
+      const balance = 'contractBalance' in updateData ? updateData.contractBalance : booking.contractBalance;
+      updateData.purchasePrice = (deposit || 0) + (balance || 0);
+    }
+
     // 매입가/구전은 값이 바뀌어 새로 적힌 건 목록에서 빨간색(안 봄)으로 강조했다가, 관리자가
     // 목록에서 숫자를 한 번 클릭하면(별도 PATCH로 xxxSeen만 true) 파란색(확인함)으로 바뀐다 —
     // 여기서는 값이 실제로 달라질 때만 "새로 적힘" 상태로 되돌린다(같은 값 재저장은 무시).

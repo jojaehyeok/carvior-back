@@ -138,7 +138,13 @@ export class Booking {
   contractConfirmed: boolean; // 계약 상태 확인 여부(계약완료 확인/미확인)
 
   @Column({ type: 'int', nullable: true })
-  purchasePrice: number | null; // 매입가 (만원)
+  purchasePrice: number | null; // 매입가 (만원) — contractDeposit + contractBalance 합계로 자동 계산됨
+
+  @Column({ type: 'int', nullable: true })
+  contractDeposit: number | null; // 계약금 (만원)
+
+  @Column({ type: 'int', nullable: true })
+  contractBalance: number | null; // 잔금 (만원)
 
   // 매입가 처리 완료 여부 — 값이 새로 적히면(바뀌면) false(미완료)로 초기화되고,
   // 관리자가 목록에서 "미완료" 태그를 클릭하면 true(완료)로 토글됨
