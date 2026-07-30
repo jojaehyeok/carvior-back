@@ -13,10 +13,11 @@ import { Inspection } from 'src/inspection/entities/inspection.entity';
 import { User } from 'src/users/entities/user.entity';
 import { S3Service } from 'src/s3/s3.service';
 import { SmsBillingLog } from 'src/sms-billing-logs/sms-billing-log.entity';
+import { DriverAssignmentPenalty } from 'src/driver-assignment-penalties/driver-assignment-penalty.entity';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([Booking, Driver, DriverCancelLog, Inspection, User, SmsBillingLog]),
+    TypeOrmModule.forFeature([Booking, Driver, DriverCancelLog, Inspection, User, SmsBillingLog, DriverAssignmentPenalty]),
     ConfigModule,
   ],
   controllers: [BookingsController, BookingsRedirectController],

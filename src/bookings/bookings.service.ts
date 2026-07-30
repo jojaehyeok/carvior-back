@@ -10,6 +10,7 @@ import { DriverCancelLog } from '../driver-cancel-logs/driver-cancel-log.entity'
 import { Inspection } from '../inspection/entities/inspection.entity';
 import { User } from '../users/entities/user.entity';
 import { SmsBillingLog } from '../sms-billing-logs/sms-billing-log.entity';
+import { DriverAssignmentPenalty } from '../driver-assignment-penalties/driver-assignment-penalty.entity';
 import { distanceKm, geocodeAddress, isDriverActiveNow, isLocationFresh } from './auto-assign.util';
 
 // cavior 내에서 source 값을 고정 문자열로 보내는 B2C 신청 경로들 — 이 값들은
@@ -45,6 +46,8 @@ export class BookingsService {
     private readonly userRepository: Repository<User>,
     @InjectRepository(SmsBillingLog)
     private readonly smsBillingLogRepository: Repository<SmsBillingLog>,
+    @InjectRepository(DriverAssignmentPenalty)
+    private readonly assignmentPenaltyRepository: Repository<DriverAssignmentPenalty>,
     private readonly solapiService: SolapiService,
     private readonly notificationsService: NotificationsService,
   ) {}
@@ -428,6 +431,8 @@ export class BookingsService {
     // 진단사가 미배정 건을 앱에서 직접 셀프클레임(assignSource: 'self')한 건은 로드밸런싱
     // 집계에서 제외한다 — 자동배정 몫을 나눠 갖는 게 아니라 본인이 직접 더 잡은 것이므로,
     // 이걸 카운트에 넣으면 적극적으로 잡은 진단사가 오히려 다음 자동배정에서 불리해진다.
+    // 자동배정 건을 관리자가 다른 진단사에게 수동으로 넘긴 경우, 원래 받았던 진단사에게
+    // 7일간 +1 가상 건수 페널티가 붙어있을 수 있다(assign() 참고) — 실제 건수에 더해서 비교한다.
     const countFor = async (driverId: number) => {
       const rows = visitDatePart
         ? await this.bookingRepository.find({
@@ -443,7 +448,11 @@ export class BookingsService {
             where: { assignedDriverId: String(driverId), createdAt: MoreThanOrEqual(todayStart) },
             select: ['id', 'assignSource'],
           });
-      return rows.filter(r => r.assignSource !== 'self').length;
+      const real = rows.filter(r => r.assignSource !== 'self').length;
+      const penalty = await this.assignmentPenaltyRepository.count({
+        where: { driverId: String(driverId), expiresAt: MoreThanOrEqual(new Date()) },
+      });
+      return { real, penalty, total: real + penalty };
     };
 
     // 거리 계산 가능하면: 제일 가까운 사람 기준 +15km(왕복 30km, 준오지 기준의 절반) 이내에 있는
@@ -462,19 +471,21 @@ export class BookingsService {
       const withCounts = await Promise.all(
         nearbyCandidates.map(async r => ({ ...r, count: await countFor(r.driver.id) })),
       );
-      withCounts.sort((a, b) => a.count - b.count || a.km - b.km);
+      withCounts.sort((a, b) => a.count.total - b.count.total || a.km - b.km);
 
       const candidateLog = withCounts.map(({ driver, km, count }) => ({
         driverId: driver.id,
         driverName: driver.name,
         km: Math.round(km * 10) / 10,
-        todayCount: count,
+        todayCount: count.total,
+        rawCount: count.real,
+        penaltyCount: count.penalty,
         maxDailyBookings: driver.maxDailyBookings ?? 5,
-        atCap: count >= (driver.maxDailyBookings ?? 5),
+        atCap: count.total >= (driver.maxDailyBookings ?? 5),
       }));
 
       for (const { driver, count } of withCounts) {
-        if (count < (driver.maxDailyBookings ?? 5)) {
+        if (count.total < (driver.maxDailyBookings ?? 5)) {
           return {
             driver,
             log: {
@@ -512,7 +523,7 @@ export class BookingsService {
     const counts = await Promise.all(
       slotFree.map(async d => ({ driver: d, count: await countFor(d.id) })),
     );
-    counts.sort((a, b) => a.count - b.count);
+    counts.sort((a, b) => a.count.total - b.count.total);
     const picked = counts[0];
     if (!picked) return null;
     return {
@@ -524,7 +535,9 @@ export class BookingsService {
           driverId: driver.id,
           driverName: driver.name,
           km: null,
-          todayCount: count,
+          todayCount: count.total,
+          rawCount: count.real,
+          penaltyCount: count.penalty,
         })),
         chosenDriverId: picked.driver.id,
         chosenDriverName: picked.driver.name,
@@ -707,6 +720,22 @@ export class BookingsService {
   async assign(id: number, driverInfo: { id: string; name: string }, source: 'auto' | 'manual' | 'agent' = 'manual', assignedByAgentId?: string) {
     const booking = await this.bookingRepository.findOne({ where: { id } });
     if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+
+    // 자동배정으로 받은 건을 관리자가 다른 진단사에게 수동으로 넘긴 경우, 원래 받았던
+    // 진단사에게 7일간 자동배정 로드밸런싱 +1 페널티 — 에이전트가 직접 확보한 물건(자동배정이
+    // 아니었던 건)을 넘기는 경우는 해당 없음(공지 참고).
+    if (
+      source === 'manual' &&
+      booking.assignSource === 'auto' &&
+      booking.assignedDriverId &&
+      String(booking.assignedDriverId) !== String(driverInfo.id)
+    ) {
+      await this.assignmentPenaltyRepository.save({
+        driverId: String(booking.assignedDriverId),
+        bookingId: booking.id,
+        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      });
+    }
 
     booking.assignedDriverId = driverInfo.id;
     booking.assignedDriverName = driverInfo.name;
