@@ -229,8 +229,10 @@ export class Booking {
   @Column({ type: 'timestamp', nullable: true })
   assignedAt: Date | null;
 
+  // 'self' = 진단사 본인이 앱 "예약 요청" 탭에서 미배정 건을 직접 잡은 셀프클레임 —
+  // 자동배정 로드밸런싱 배정건수 집계에서는 제외한다(countFor 참고)
   @Column({ type: 'varchar', nullable: true })
-  assignSource: 'auto' | 'manual' | 'agent' | null;
+  assignSource: 'auto' | 'manual' | 'agent' | 'self' | null;
 
   // 리뷰 요청 SMS 중복 발송 방지용 — 한 건당 1회만 보낼 수 있게 최초 발송 시각을 기록
   @Column({ type: 'timestamp', nullable: true })

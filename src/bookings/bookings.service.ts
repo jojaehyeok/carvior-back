@@ -425,22 +425,29 @@ export class BookingsService {
     const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
     const kstMidnight = new Date(Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), kstNow.getUTCDate()));
     const todayStart = new Date(kstMidnight.getTime() - 9 * 60 * 60 * 1000);
-    const countFor = async (driverId: number) =>
-      visitDatePart
-        ? this.bookingRepository.count({
+    // 진단사가 미배정 건을 앱에서 직접 셀프클레임(assignSource: 'self')한 건은 로드밸런싱
+    // 집계에서 제외한다 — 자동배정 몫을 나눠 갖는 게 아니라 본인이 직접 더 잡은 것이므로,
+    // 이걸 카운트에 넣으면 적극적으로 잡은 진단사가 오히려 다음 자동배정에서 불리해진다.
+    const countFor = async (driverId: number) => {
+      const rows = visitDatePart
+        ? await this.bookingRepository.find({
             where: {
               assignedDriverId: String(driverId),
               status: In(['ASSIGNED', 'CONFIRMED', 'COMPLETED']),
               preferredDateTime: Like(`${visitDatePart}%`),
             },
+            select: ['id', 'assignSource'],
           })
         // 방문예정일 파싱 실패 시(형식 이상·미입력) 접수일 기준으로 폴백
-        : this.bookingRepository.count({
+        : await this.bookingRepository.find({
             where: { assignedDriverId: String(driverId), createdAt: MoreThanOrEqual(todayStart) },
+            select: ['id', 'assignSource'],
           });
+      return rows.filter(r => r.assignSource !== 'self').length;
+    };
 
     // 거리 계산 가능하면: 제일 가까운 사람 기준 +15km(왕복 30km, 준오지 기준의 절반) 이내에 있는
-    // "가까운 편" 진단사들끼리는 거리보다 오늘 배정건수가 적은 사람을 우선 — 한 명한테 쏠리는 것 방지.
+    // "가까운 편" 진단사들끼리는 거리보다 해당 방문예정일 배정건수가 적은 사람을 우선 — 한 명한테 쏠리는 것 방지.
     // 그 반경 밖은 굳이 균등 배정 명목으로 멀리 보낼 이유가 없으니 그냥 거리순.
     const NEARBY_RADIUS_KM = 15;
     const coords = await geocodeAddress(booking.address);
@@ -478,7 +485,7 @@ export class BookingsService {
               candidates: candidateLog,
               chosenDriverId: driver.id,
               chosenDriverName: driver.name,
-              reason: '반경 내 후보 중 오늘 배정건수가 가장 적음(동률 시 거리순)',
+              reason: '반경 내 후보 중 방문예정일 배정건수가 가장 적음(동률 시 거리순)',
               assignedAt: new Date().toISOString(),
             },
           };
@@ -495,13 +502,13 @@ export class BookingsService {
           candidates: candidateLog,
           chosenDriverId: ranked[0].driver.id,
           chosenDriverName: ranked[0].driver.name,
-          reason: '반경 내 후보 전원이 하루 최대 배정건수 도달 — 그중 가장 가까운 사람에게 배정',
+          reason: '반경 내 후보 전원이 해당 방문예정일 최대 배정건수 도달 — 그중 가장 가까운 사람에게 배정',
           assignedAt: new Date().toISOString(),
         },
       };
     }
 
-    // 거리 계산이 안 되면(지오코딩 실패·위치정보 없음) 오늘 배정건수가 가장 적은 사람 우선
+    // 거리 계산이 안 되면(지오코딩 실패·위치정보 없음) 방문예정일 배정건수가 가장 적은 사람 우선
     const counts = await Promise.all(
       slotFree.map(async d => ({ driver: d, count: await countFor(d.id) })),
     );
@@ -521,7 +528,7 @@ export class BookingsService {
         })),
         chosenDriverId: picked.driver.id,
         chosenDriverName: picked.driver.name,
-        reason: '주소 좌표 변환 실패 또는 위치정보 있는 후보 없음 — 오늘 배정건수만으로 비교',
+        reason: '주소 좌표 변환 실패 또는 위치정보 있는 후보 없음 — 방문예정일 배정건수만으로 비교',
         assignedAt: new Date().toISOString(),
       },
     };
@@ -672,6 +679,10 @@ export class BookingsService {
     }
 
     Object.assign(booking, updateData);
+    if (isSelfClaim) {
+      booking.assignSource = 'self';
+      booking.assignedAt = new Date();
+    }
     const updated = await this.bookingRepository.save(booking);
 
     if (isSelfClaim) {
