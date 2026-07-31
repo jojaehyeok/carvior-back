@@ -33,7 +33,7 @@ export class UsersController {
   @Post('register')
   register(@Body() body: {
     email: string; password: string; name: string; phone?: string; role?: string; company?: string; logoUrl?: string;
-    isExportOnly?: boolean;
+    isExportOnly?: boolean; canConfirmBilling?: boolean;
     dealerLicenseUrl?: string; businessRegUrl?: string; businessNumber?: string; companyName?: string;
     marketingConsent?: boolean;
   }) {

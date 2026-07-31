@@ -44,6 +44,11 @@ export class User {
   @Column({ default: false })
   isExportOnly: boolean;
 
+  // 발주사 관리자 계정 전용 — 같은 회사(company) 소속 관리자가 여러 명일 때, 매입가/구전
+  // 확인·미확인 토글을 이 계정만 할 수 있게 제한한다(예: 사무장 전담). false면 조회만 가능.
+  @Column({ default: false })
+  canConfirmBilling: boolean;
+
   // 딜러 전용 서류
   @Column({ nullable: true })
   dealerLicenseUrl: string; // 자동차 매매종사원증
