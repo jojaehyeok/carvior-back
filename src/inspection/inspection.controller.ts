@@ -138,7 +138,7 @@ export class InspectionController {
       carNumber?: string; carModel?: string; mileage?: number; color?: string; repairCost?: number;
       memo?: string; inspectionDetails?: { warningDesc?: string; leakDesc?: string; optionsDesc?: string; driveDesc?: string; engineDesc?: string };
       photos?: Record<string, string[]>; dashboardImage?: string; regImage?: string; vinImage?: string;
-      exportVideoUrls?: string[]; engineNoiseVideoUrl?: string;
+      exportVideoUrls?: string[]; engineNoiseVideoUrl?: string; videoUrls?: string[];
       checklistPhotos?: { warning?: string[]; options?: string[]; leak?: string[]; drive?: string[]; engine?: string[] };
     },
   ) {
@@ -184,6 +184,7 @@ export class InspectionController {
       },
       exportVideoUrls: inspection.exportVideoUrls ?? [],
       engineNoiseVideoUrl: inspection.engineNoiseVideoUrl ?? null,
+      videoUrls: inspection.videoUrls ?? [],
     };
   }
 }

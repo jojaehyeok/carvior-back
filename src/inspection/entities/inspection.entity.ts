@@ -49,10 +49,13 @@ export class Inspection {
     @Column({ type: 'json', nullable: true })
     exportVideoUrls: string[] | null;
 
-    // 일반 진단에서도 "주행중 이상 증상"을 체크했을 때만 노출되는 엔진 소음 확인용 영상(최대 15초).
-    // 수출건 전용인 exportVideoUrls와 달리 모든 진단 유형에서 쓸 수 있는 단일 슬롯.
+    // (구) 엔진 소음 확인용 단일 영상 — videoUrls로 대체됨. 과거 데이터 호환을 위해 컬럼만 유지.
     @Column({ type: 'text', nullable: true })
     engineNoiseVideoUrl: string | null;
+
+    // 엔진 이음/조향 이음/옵션작동 이상 등 진단사가 촬영한 영상 여러 개(사진과 동일하게 다건 업로드).
+    @Column({ type: 'json', nullable: true })
+    videoUrls: string[] | null;
 
     // 프런트엔드 payload 구조에 맞춘 상세 정보
     @Column({ type: 'json', nullable: true })

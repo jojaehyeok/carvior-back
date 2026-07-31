@@ -71,6 +71,18 @@ export class InspectionService {
   }
 
   /**
+   * 이미지는 항상 JPEG로 재인코딩되므로 확장자도 .jpg로 통일한다. 이미지가 아닌 파일
+   * (엔진음 등 진단 영상)은 원본 확장자를 그대로 살려야 S3 파일명만 보고도 어떤 파일인지
+   * 알 수 있다 — 예전엔 모든 업로드를 사진 전용으로 보고 무조건 .jpg를 강제해서, 영상을
+   * 올려도 파일명이 "...engine_noise....jpg"로 저장되는 문제가 있었다.
+   */
+  private safeFileNameFor(file: Express.Multer.File): string {
+    const isImage = (file.mimetype || '').startsWith('image/');
+    const ext = isImage ? 'jpg' : (file.originalname.match(/\.(\w+)$/)?.[1] || (file.mimetype || '').split('/')[1] || 'bin');
+    return file.originalname.replace(/\s/g, '_').replace(/\.\w+$/, `.${ext}`);
+  }
+
+  /**
    * 1. S3 이미지 업로드 (실제 파일 전송)
    */
   async uploadToS3(
@@ -83,7 +95,7 @@ export class InspectionService {
     const region = this.configService.get('AWS_S3_REGION') || 'ap-northeast-2';
     const safeCarNumber = carNumber || requestId;
     const timestamp = Date.now();
-    const safeFileName = file.originalname.replace(/\s/g, '_').replace(/\.\w+$/, '.jpg');
+    const safeFileName = this.safeFileNameFor(file);
     const key = `${safeCarNumber}/${category}/${timestamp}_${safeFileName}`;
 
     const start = Date.now();
@@ -141,7 +153,7 @@ export class InspectionService {
       const chunkResults = await Promise.all(
         chunk.map(async (file) => {
           const timestamp = Date.now();
-          const safeFileName = file.originalname.replace(/\s/g, '_').replace(/\.\w+$/, '.jpg');
+          const safeFileName = this.safeFileNameFor(file);
           const key = `${safeCarNumber}/${category}/${timestamp}_${safeFileName}`;
           const start = Date.now();
           console.log(`[S3 Batch] 업로드 시작 | key=${key} | size=${file.size}bytes`);
@@ -226,7 +238,7 @@ export class InspectionService {
     inspection.regImage = data.regImage;
     inspection.vinImage = data.vinImage;
     inspection.exportVideoUrls = Array.isArray(data.exportVideoUrls) ? data.exportVideoUrls : null;
-    inspection.engineNoiseVideoUrl = data.engineNoiseVideoUrl || null;
+    inspection.videoUrls = Array.isArray(data.videoUrls) ? data.videoUrls : null;
     inspection.photos = {
       exterior: data.photos?.exterior || [],
       wheel: data.photos?.wheel || [],
@@ -487,6 +499,7 @@ export class InspectionService {
     vinImage?: string;
     exportVideoUrls?: string[];
     engineNoiseVideoUrl?: string;
+    videoUrls?: string[];
     checklistPhotos?: { warning?: string[]; options?: string[]; leak?: string[]; drive?: string[]; engine?: string[] };
   }) {
     const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
@@ -524,6 +537,7 @@ export class InspectionService {
     if (data.vinImage !== undefined) inspection.vinImage = data.vinImage;
     if (data.exportVideoUrls !== undefined) inspection.exportVideoUrls = data.exportVideoUrls;
     if (data.engineNoiseVideoUrl !== undefined) inspection.engineNoiseVideoUrl = data.engineNoiseVideoUrl;
+    if (data.videoUrls !== undefined) inspection.videoUrls = data.videoUrls;
     if (data.checklistPhotos) {
       inspection.checklistPhotos = {
         warning: data.checklistPhotos.warning || [],
