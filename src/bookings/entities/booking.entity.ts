@@ -151,6 +151,11 @@ export class Booking {
   @Column({ default: true })
   purchasePriceSeen: boolean;
 
+  // purchasePriceSeen과 동일한 용도, 계약금(contractDeposit) 확인 전용 — 매입가 옆에
+  // 별도 열로 노출해서 계약금만 따로 확인 처리할 수 있게 한다.
+  @Column({ default: true })
+  contractDepositSeen: boolean;
+
   @Column({ default: false })
   isOldDealerPurchase: boolean; // (구) 구전 매입 여부 — oldDealerFee(금액 입력)로 대체, 컬럼은 하위호환용으로 유지
 

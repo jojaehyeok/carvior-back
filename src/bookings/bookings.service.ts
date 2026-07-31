@@ -703,6 +703,9 @@ export class BookingsService {
     if ('purchasePrice' in updateData && updateData.purchasePrice !== booking.purchasePrice) {
       booking.purchasePriceSeen = false;
     }
+    if ('contractDeposit' in updateData && updateData.contractDeposit !== booking.contractDeposit) {
+      booking.contractDepositSeen = false;
+    }
     if ('oldDealerFee' in updateData && updateData.oldDealerFee !== booking.oldDealerFee) {
       booking.oldDealerFeeSeen = false;
     }
