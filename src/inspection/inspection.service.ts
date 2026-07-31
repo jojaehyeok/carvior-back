@@ -321,8 +321,11 @@ export class InspectionService {
         // setTimeout이 아니라 DB 예약이라 그 사이 서버가 재배포돼도 유실되지 않는다.
         // 수신번호는 "관리자 계정 관리"에 등록된 그 발주사 관리자 계정의 연락처를 그대로 씀 —
         // 대시보드에서 번호를 바꾸면(업무폰 변경 등) 코드 수정 없이 알림도 그쪽으로 바로 감.
+        // 같은 회사코드로 관리자 계정이 여러 개(예: 사무장 계정 추가)여도 항상 가장 먼저
+        // 만든 계정으로 고정 — order 없이 findOne만 쓰면 어느 계정이 뽑힐지 보장되지 않아서
+        // 새 계정을 추가하는 순간 알림 수신 번호가 의도치 않게 바뀌어버릴 수 있다.
         const partnerAdmin = booking?.source
-          ? await this.userRepository.findOne({ where: { role: 'admin', company: booking.source } })
+          ? await this.userRepository.findOne({ where: { role: 'admin', company: booking.source }, order: { id: 'ASC' } })
           : null;
         const partnerPhone = partnerAdmin?.phone;
         if (partnerPhone) {
