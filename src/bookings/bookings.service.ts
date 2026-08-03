@@ -466,9 +466,13 @@ export class BookingsService {
           });
       const real = rows.filter(r => r.assignSource !== 'self').length;
       const penalty = await this.assignmentPenaltyRepository.count({
-        where: { driverId: String(driverId), expiresAt: MoreThanOrEqual(new Date()) },
+        where: { driverId: String(driverId), type: 'penalty', expiresAt: MoreThanOrEqual(new Date()) },
       });
-      return { real, penalty, total: real + penalty };
+      // 슈퍼관리자가 수동으로 부여하는 우대 — 로드밸런싱 집계에서 가상 건수를 빼줘서 우선순위를 높인다
+      const advantage = await this.assignmentPenaltyRepository.count({
+        where: { driverId: String(driverId), type: 'advantage', expiresAt: MoreThanOrEqual(new Date()) },
+      });
+      return { real, penalty, advantage, total: real + penalty - advantage };
     };
 
     // 거리 계산 가능하면: 제일 가까운 사람 기준 +15km(왕복 30km, 준오지 기준의 절반) 이내에 있는
@@ -496,6 +500,7 @@ export class BookingsService {
         todayCount: count.total,
         rawCount: count.real,
         penaltyCount: count.penalty,
+        advantageCount: count.advantage,
         maxDailyBookings: driver.maxDailyBookings ?? 5,
         atCap: count.total >= (driver.maxDailyBookings ?? 5),
       }));
@@ -652,10 +657,14 @@ export class BookingsService {
       throw new NotFoundException(`ID ${id}번에 해당하는 내역을 찾을 수 없습니다.`);
     }
 
-    // ── 진단사가 예약 취소한 경우: 로그 기록 + PENDING 복원 ──
+    // ── 진단사가 예약 취소한 경우: 로그 기록 + 사유별 분기 ──
+    // 고객 사유("판매자의 예약 취소")는 고객이 서비스 자체를 원하지 않는 것이므로
+    // 다른 진단사에게 넘길 필요 없이 그대로 취소 종료. 진단사 사정/노쇼는 다른
+    // 진단사가 대신 가야 하므로 기존대로 PENDING 복원해서 재배정 대상이 되게 한다.
     if (updateData.status === 'CANCELLED' && updateData.cancelledByDriver) {
       const prevDriverId = booking.assignedDriverId;
       const prevDriverName = booking.assignedDriverName;
+      const cancelReason = updateData.cancelReason || '';
 
       // 취소 로그 저장
       if (prevDriverId) {
@@ -665,11 +674,21 @@ export class BookingsService {
           bookingId: booking.id,
           carNumber: booking.carNumber,
           carOwner: booking.carOwner,
-          cancelReason: updateData.cancelReason || '',
+          cancelReason,
         });
       }
 
-      // PENDING 복원 + 진단사 정보 초기화
+      const isCustomerReason = cancelReason === '판매자의 예약 취소';
+      if (isCustomerReason) {
+        // 재배정 없이 취소 종료
+        booking.status = 'CANCELLED';
+        booking.assignedDriverId = null;
+        booking.assignedDriverName = null;
+        booking.cancelledByDriverAt = new Date();
+        return await this.bookingRepository.save(booking);
+      }
+
+      // 진단사 사정/노쇼: PENDING 복원 + 진단사 정보 초기화 (재배정 대상)
       booking.status = 'PENDING';
       booking.assignedDriverId = null;
       booking.assignedDriverName = null;
@@ -1187,5 +1206,39 @@ export class BookingsService {
       where: { bookingId: In(bookingIds) },
       order: { createdAt: 'DESC' },
     });
+  }
+
+  // 슈퍼관리자 페널티/우대 관리 — 활성(만료 안 된) 건만 진단사 이름과 함께 반환
+  async listDriverPenalties() {
+    const rows = await this.assignmentPenaltyRepository.find({
+      where: { expiresAt: MoreThanOrEqual(new Date()) },
+      order: { createdAt: 'DESC' },
+    });
+    const driverIds = [...new Set(rows.map(r => r.driverId))];
+    const drivers = driverIds.length
+      ? await this.driverRepository.find({ where: { id: In(driverIds.map(Number)) } })
+      : [];
+    const nameMap = new Map(drivers.map(d => [String(d.id), d.name]));
+    return rows.map(r => ({
+      ...r,
+      driverName: nameMap.get(r.driverId) ?? '알수없음',
+    }));
+  }
+
+  // 슈퍼관리자가 진단사에게 수동으로 페널티(로드밸런싱 +1) 또는 우대(-1)를 부여
+  async createDriverPenalty(data: { driverId: string; type: 'penalty' | 'advantage'; days?: number; reason?: string }) {
+    const days = data.days && data.days > 0 ? data.days : 7;
+    return await this.assignmentPenaltyRepository.save({
+      driverId: data.driverId,
+      type: data.type,
+      reason: data.reason || null,
+      expiresAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000),
+    });
+  }
+
+  // 페널티/우대 건 삭제(즉시 만료 처리와 동일한 효과)
+  async deleteDriverPenalty(id: number) {
+    await this.assignmentPenaltyRepository.delete(id);
+    return { success: true };
   }
 }

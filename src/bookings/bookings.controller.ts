@@ -4,6 +4,7 @@ import {
   Get,
   Body,
   Patch,
+  Delete,
   Param,
   BadRequestException,
   Query,
@@ -215,6 +216,29 @@ export class BookingsController {
   @Get('unregistered-sources')
   async getUnregisteredSources() {
     return await this.bookingsService.findUnregisteredSources();
+  }
+
+  // GET: 슈퍼관리자용 — 현재 활성(만료 안 된) 진단사 페널티/우대 목록
+  @Get('driver-penalties')
+  async getDriverPenalties() {
+    return await this.bookingsService.listDriverPenalties();
+  }
+
+  // POST: 슈퍼관리자가 진단사에게 수동으로 페널티/우대 부여
+  @Post('driver-penalty')
+  async createDriverPenalty(
+    @Body() body: { driverId: string; type: 'penalty' | 'advantage'; days?: number; reason?: string },
+  ) {
+    if (!body.driverId || !body.type) {
+      throw new BadRequestException('driverId와 type이 필요합니다.');
+    }
+    return await this.bookingsService.createDriverPenalty(body);
+  }
+
+  // DELETE: 페널티/우대 건 삭제
+  @Delete('driver-penalty/:id')
+  async deleteDriverPenalty(@Param('id') id: string) {
+    return await this.bookingsService.deleteDriverPenalty(parseInt(id));
   }
 
   @Patch(':id/assign')
