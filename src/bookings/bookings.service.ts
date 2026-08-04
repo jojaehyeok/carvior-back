@@ -747,8 +747,14 @@ export class BookingsService {
     if (isSelfClaim) {
       booking.assignSource = 'self';
       booking.assignedAt = new Date();
+      // 취소로 "재대기중" 상태였던 건을 셀프클레임하는 경우 — assign()과 동일하게
+      // 재대기 플래그를 초기화해야 새로 배정된 뒤에도 계속 "재대기중" 뱃지가 남지 않는다.
+      booking.cancelledByDriverAt = null;
     }
     const updated = await this.bookingRepository.save(booking);
+    if (isSelfClaim) {
+      await this.refreshDistanceFlags(updated);
+    }
 
     if (isSelfClaim) {
       try {
