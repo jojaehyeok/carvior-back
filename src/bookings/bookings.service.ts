@@ -371,7 +371,10 @@ export class BookingsService {
     let nearestDriverKm: number | null = null;
     const coords = await geocodeAddress(booking.address);
     if (coords) {
-      const withLocation = drivers.filter(d => d.lat != null && d.lng != null);
+      // isActive=false거나 위치 갱신이 오래 멈춘(오래된 자리에 고정된) 진단사까지 "가장 가까운
+      // 진단사"에 포함되면, 실제로는 아무도 근처에 없는데 거리가 가짜로 가깝게 나와 오지/준오지
+      // 판정이 빠지는 문제가 있었다 — 실제 배정 로직(tryAutoAssign)과 동일하게 걸러준다.
+      const withLocation = drivers.filter(d => d.lat != null && d.lng != null && d.isActive && isLocationFresh(d));
       if (withLocation.length > 0) {
         const nearest = Math.min(
           ...withLocation.map(d => distanceKm(coords.lat, coords.lng, d.lat!, d.lng!)),
