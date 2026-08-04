@@ -124,15 +124,7 @@ export class BookingsService {
     // 오지/준오지·긴급후보 뱃지용 거리 진단 — 미등록 발주사 건은 어차피 관리자가 별도로
     // 확인해야 하니 제외, 그 외엔 자동배정 성공 여부와 무관하게 항상 계산해둔다.
     if (!restricted) {
-      try {
-        const flags = await this.computeDistanceFlags(saved);
-        if (flags.nearestDriverKm != null || flags.urgentCandidate) {
-          await this.bookingRepository.update(saved.id, flags);
-          Object.assign(saved, flags);
-        }
-      } catch (e) {
-        console.error('❌ [거리진단 계산 실패]', (e as Error).message);
-      }
+      await this.refreshDistanceFlags(saved);
     }
 
     // 관리자(01022856017)에게 새 예약 접수 알림톡 발송 — 건당 비용이 드는 유료 채널이라
@@ -406,6 +398,21 @@ export class BookingsService {
     const urgentCandidate = isToday && regionMatched.length > 0 && activeMatched.length === 0;
 
     return { nearestDriverKm, remoteTier, urgentCandidate };
+  }
+
+  // computeDistanceFlags()는 접수 시점에만 계산되던 1회성 스냅샷이라, 그 뒤로 진단사 위치가
+  // 바뀌면 저장된 오지/준오지 뱃지가 낡은 값이 됐다. 배정이 다시 정해지는 시점(취소 후 재대기,
+  // 관리자 재배정 등)마다 이걸 다시 불러서 그 시점 기준 최신 위치로 갱신한다.
+  private async refreshDistanceFlags(booking: Booking): Promise<void> {
+    try {
+      const flags = await this.computeDistanceFlags(booking);
+      if (flags.nearestDriverKm != null || flags.urgentCandidate) {
+        await this.bookingRepository.update(booking.id, flags);
+        Object.assign(booking, flags);
+      }
+    } catch (e) {
+      console.error('❌ [거리진단 계산 실패]', (e as Error).message);
+    }
   }
 
   // 신청 주소·가용시간에 맞는 활성 진단사를 찾아 자동배정 대상을 고른다.
@@ -696,7 +703,9 @@ export class BookingsService {
       booking.assignedDriverId = null;
       booking.assignedDriverName = null;
       booking.cancelledByDriverAt = new Date();
-      return await this.bookingRepository.save(booking);
+      const savedCancel = await this.bookingRepository.save(booking);
+      await this.refreshDistanceFlags(savedCancel);
+      return savedCancel;
     }
 
     // ── 관리자가 배정 초기화 (unassign) ──
@@ -705,7 +714,9 @@ export class BookingsService {
       booking.assignedDriverId = null;
       booking.assignedDriverName = null;
       booking.cancelledByDriverAt = null;
-      return await this.bookingRepository.save(booking);
+      const savedUnassign = await this.bookingRepository.save(booking);
+      await this.refreshDistanceFlags(savedUnassign);
+      return savedUnassign;
     }
 
     // 진단사가 앱 "예약 요청" 탭에서 "내 담당으로 확정하기"를 눌러 셀프클레임한 경우 —
@@ -788,6 +799,8 @@ export class BookingsService {
     booking.assignSource = source;
 
     const saved = await this.bookingRepository.save(booking);
+    // 재배정 시점 기준 최신 진단사 위치로 오지/준오지 뱃지 갱신
+    await this.refreshDistanceFlags(saved);
 
     try {
       const driver = await this.driverRepository.findOne({ where: { id: Number(driverInfo.id) } });
