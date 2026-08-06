@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Bid } from './entities/bid.entity';
 import { StoreItem } from '../store-items/entities/store-item.entity';
 import { User } from '../users/entities/user.entity';
@@ -58,6 +58,35 @@ export class BidsService {
 
   findByItem(storeItemId: number) {
     return this.repo.find({ where: { storeItemId }, order: { amount: 'DESC' } });
+  }
+
+  // 딜러앱 "입찰한 물건" / "낙찰한 물건" 목록 — 딜러의 입찰 건마다 매물 정보를 같이 붙여서 반환
+  async findByDealer(dealerId: number) {
+    const bids = await this.repo.find({ where: { dealerId }, order: { createdAt: 'DESC' } });
+    if (!bids.length) return [];
+
+    const itemIds = [...new Set(bids.map((b) => b.storeItemId))];
+    const items = await this.storeItemRepo.findBy({ id: In(itemIds) });
+    const itemMap = new Map(items.map((i) => [i.id, i]));
+
+    return bids.map((bid) => {
+      const item = itemMap.get(bid.storeItemId);
+      return {
+        ...bid,
+        item: item
+          ? {
+              id: item.id,
+              carNumber: item.carNumber,
+              titleKo: item.titleKo,
+              photos: item.photos,
+              status: item.status,
+              priceKRW: item.priceKRW,
+              auctionEndAt: item.auctionEndAt,
+            }
+          : null,
+        isWinning: !!item && item.winningBidId === bid.id,
+      };
+    });
   }
 
   // 관리자가 특정 입찰(딜러)을 낙찰자로 확정 — 매물 마감 처리 + 판매자·낙찰딜러 양쪽에 SMS 안내

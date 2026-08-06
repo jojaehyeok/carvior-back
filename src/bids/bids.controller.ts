@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { BidsService } from './bids.service';
 import { InternalKeyGuard } from '../store-items/internal-key.guard';
 
@@ -19,6 +19,13 @@ export class BidsController {
   @UseGuards(InternalKeyGuard)
   findByItem(@Param('id') id: string) {
     return this.bidsService.findByItem(Number(id));
+  }
+
+  // 딜러앱 "입찰한 물건" / "낙찰한 물건" 탭용
+  @Get('external/bids/my')
+  @UseGuards(InternalKeyGuard)
+  findByDealer(@Query('dealerId') dealerId: string) {
+    return this.bidsService.findByDealer(Number(dealerId));
   }
 
   @Patch('admin/bids/:bidId/select-winner')
