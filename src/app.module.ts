@@ -26,6 +26,7 @@ import { ComplianceModule } from './compliance/compliance.module';
 import { ScheduledNotificationsModule } from './scheduled-notifications/scheduled-notifications.module';
 import { ClientErrorLogsModule } from './client-error-logs/client-error-logs.module';
 import { RentalModule } from './rental/rental.module';
+import { PartnerApplicationsModule } from './partner-applications/partner-applications.module';
 
 @Module({
   imports: [
@@ -77,6 +78,7 @@ import { RentalModule } from './rental/rental.module';
     DashboardModule,
     BidsModule,
     RentalModule,
+    PartnerApplicationsModule,
     ComplianceModule,
     ScheduledNotificationsModule,
     ClientErrorLogsModule,

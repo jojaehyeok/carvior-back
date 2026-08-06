@@ -629,6 +629,20 @@ export class BookingsService {
       .sort((a, b) => b.count - a.count);
   }
 
+  // 파트너패널(발주사 전용 관리페이지) 제안 자격 확인용 — 발주사를 거치지 않고
+  // 개별(B2C)로 신청해서 완료까지 간 건수만 센다. 전화번호는 접수자(contact) 또는
+  // 실소유주(customerContact) 어느 쪽으로 남았어도 매칭되게 둘 다 확인.
+  async countIndividualCompletedByPhone(phone: string): Promise<number> {
+    const clean = phone.replace(/[^0-9]/g, '');
+    if (!clean) return 0;
+    return this.bookingRepository.count({
+      where: [
+        { contact: clean, status: 'COMPLETED', source: In([...KNOWN_B2C_SOURCES]) },
+        { customerContact: clean, status: 'COMPLETED', source: In([...KNOWN_B2C_SOURCES]) },
+      ],
+    });
+  }
+
   // includeSelf 없이 source 미지정으로 조회하면(ChavatarApp의 전체 목록 조회가 바로 이 경우)
   // 자체 신청(self-{company}) 건은 기본적으로 제외됨 — 진단사가 방문할 필요 없는 건이
   // 앱 어느 화면에도 노출되지 않게 하기 위함(구버전 앱도 소급 적용됨). source를 명시하면

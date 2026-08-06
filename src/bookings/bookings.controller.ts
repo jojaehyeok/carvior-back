@@ -206,6 +206,13 @@ export class BookingsController {
     return await this.bookingsService.findAll(source, includeSelf === 'true');
   }
 
+  // GET: 전화번호로 개별(B2C) 완료건수 확인 — 파트너패널 제안 자격 체크용
+  @Get('individual-count')
+  async getIndividualCount(@Query('phone') phone: string) {
+    const count = await this.bookingsService.countIndividualCompletedByPhone(phone ?? '');
+    return { count };
+  }
+
   // GET: 진단사 취소 로그 목록 (CS 관리용, source 필터 옵션)
   @Get('cancel-logs')
   async getCancelLogs(@Query('source') source?: string) {
