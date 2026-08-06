@@ -635,6 +635,10 @@ export class BookingsService {
   async countIndividualCompletedByPhone(phone: string): Promise<number> {
     const clean = phone.replace(/[^0-9]/g, '');
     if (!clean) return 0;
+
+    // 파트너패널 QA 테스트 계정 — 실제 개별건수와 무관하게 항상 자격 충족으로 보이게(요청에 의함)
+    if (clean === '01022856017') return 10;
+
     return this.bookingRepository.count({
       where: [
         { contact: clean, status: 'COMPLETED', source: In([...KNOWN_B2C_SOURCES]) },
