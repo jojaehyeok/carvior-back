@@ -36,12 +36,18 @@ export class BidsService {
     const bid = this.repo.create({ storeItemId, dealerId: dealerId ?? undefined, dealerName, amount });
     const saved = await this.repo.save(bid);
 
-    // 셀프등록(진단 없이 판매자가 직접 올린) 매물이면 딜러가 입찰할 때마다 판매자에게 SMS로 알림
+    // 딜러가 입찰할 때마다 판매자에게 SMS로 알림 (검수출처 매물 포함 전체 확대)
     // — 알림톡 템플릿은 아직 검수 중이라 우선 SMS로 발송, 승인되면 알림톡으로 전환 예정
-    if (item.selfRegistered && item.sellerContact) {
+    if (item.sellerContact) {
       try {
-        const text = buildShortSms(item.carNumber || '내 차량', `${dealerName}님이 관심을 보였습니다. 확인해주세요.`);
-        await this.solapiService.sendSms(item.sellerContact, text);
+        const link = item.ownerAccessToken ? `https://carvior.store/my-listing/${item.ownerAccessToken}` : '';
+        let detail = `${dealerName}님이 관심을 보였습니다.`;
+        let text = `[카비어] ${item.carNumber || '내 차량'} ${detail}`;
+        while (Buffer.byteLength(`${text}\n${link}`, 'utf-8') > 88 && detail.length > 1) {
+          detail = detail.slice(0, -1);
+          text = `[카비어] ${item.carNumber || '내 차량'} ${detail}…`;
+        }
+        await this.solapiService.sendSms(item.sellerContact, link ? `${text}\n${link}` : text);
       } catch {
         // 알림 실패해도 입찰 저장은 정상 처리
       }
@@ -63,13 +69,17 @@ export class BidsService {
     if (!item) throw new NotFoundException('매물을 찾을 수 없습니다.');
 
     item.status = 'sold';
-    (item as any).auctionEndAt = new Date();
+    item.auctionEndAt = new Date();
+    item.saleStage = 'winner_selected';
+    item.winnerSelectedAt = new Date();
+    item.winningBidId = bid.id;
     await this.storeItemRepo.save(item);
 
     // 판매자에게: 딜러가 확정됐다는 안내
     if (item.sellerContact) {
       try {
-        const text = buildShortSms(item.carNumber || '내 차량', `딜러(${bid.dealerName})가 확정됐습니다. 곧 연락드릴 예정입니다.`);
+        const link = item.ownerAccessToken ? `\nhttps://carvior.store/my-listing/${item.ownerAccessToken}` : '';
+        const text = buildShortSms(item.carNumber || '내 차량', `딜러(${bid.dealerName})가 확정됐습니다. 곧 연락드릴 예정입니다.${link}`);
         await this.solapiService.sendSms(item.sellerContact, text);
       } catch { /* 알림 실패해도 낙찰 처리는 정상 진행 */ }
     }

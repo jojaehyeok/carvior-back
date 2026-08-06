@@ -117,6 +117,44 @@ export class StoreItem {
   @Column({ type: 'timestamp', nullable: true })
   auctionEndAt: Date;
 
+  // 차주가 로그인 없이 입찰현황을 확인하는 페이지용 토큰 — 경매 시작(active 전이) 시 생성.
+  @Column({ type: 'varchar', nullable: true, unique: true })
+  ownerAccessToken: string | null;
+
+  // 낙찰 이후 세부 진행단계. status(active/sold/hidden/pending/closed)와 별개로 관리.
+  @Column({ default: 'bidding' })
+  saleStage: string; // 'bidding' | 'winner_selected' | 'in_transit' | 'transit_done' | 'completed'
+
+  @Column({ type: 'int', nullable: true })
+  winningBidId: number | null;
+
+  // 차주가 "판매요청" 버튼으로 고른 입찰 — 확정 아님, 관리자 알림용 (실제 확정은 selectWinner)
+  @Column({ type: 'int', nullable: true })
+  ownerRequestedBidId: number | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  ownerRequestedAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  winnerSelectedAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  inTransitAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  transitDoneAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  completedAt: Date;
+
+  // 경매마감 알림 크론이 이미 발송했는지 (중복발송 방지용 dedup 키)
+  @Column({ type: 'timestamp', nullable: true })
+  deadlineNotifiedAt: Date;
+
+  // 명의이전 완료 후 등록증 사진 URL
+  @Column({ type: 'varchar', nullable: true })
+  transferredRegistrationUrl: string | null;
+
   @CreateDateColumn()
   registeredAt: Date;
 

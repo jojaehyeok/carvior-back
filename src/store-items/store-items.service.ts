@@ -1,10 +1,17 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import { randomUUID } from 'node:crypto';
 import { StoreItem } from './entities/store-item.entity';
 import { computeAuctionEndAt } from './auction-time.util';
 import { ComplianceService } from '../compliance/compliance.service';
+import { SolapiService } from '../solapi/solapi.service';
+import { BidsService } from '../bids/bids.service';
+
+function genOwnerAccessToken(): string {
+  return randomUUID().replace(/-/g, '').slice(0, 16);
+}
 
 // 진단완료(firstCompletedAt) 후 이 시간이 지나야 스마트옥션에 자동 게시됨
 // (그 사이 진단사 자체수정 2h + 진단매니저 검수·수정 4h = 총 6h, 스펙을 두 번 검수 후 게시)
@@ -18,6 +25,8 @@ export class StoreItemsService {
     @InjectDataSource()
     private readonly dataSource: DataSource,
     private readonly complianceService: ComplianceService,
+    private readonly solapiService: SolapiService,
+    private readonly bidsService: BidsService,
   ) {}
 
   async findAll(): Promise<any[]> {
@@ -115,7 +124,7 @@ export class StoreItemsService {
     const registrationOcr = (data as any).registrationOcr;
     delete (data as any).registrationOcr; // StoreItem 컬럼이 아니므로 저장 전에 제거
 
-    const item = this.repo.create({ ...data, status: 'pending' });
+    const item = this.repo.create({ ...data, status: 'pending', ownerAccessToken: genOwnerAccessToken() });
     const saved = await this.repo.save(item);
 
     // 자동차관리법 시행규칙 제144조의3 — 셀프등록 시 프론트에서 이미 스캔해둔 등록증
@@ -144,10 +153,53 @@ export class StoreItemsService {
       const now = new Date();
       data.auctionStartAt = now;
       data.auctionEndAt = computeAuctionEndAt(now);
+      if (!item.ownerAccessToken) data.ownerAccessToken = genOwnerAccessToken();
+    }
+
+    // saleStage 전환 시 해당 단계 타임스탬프 자동 스탬프 (호출부가 직접 안 챙겨도 되게)
+    if (data.saleStage && data.saleStage !== item.saleStage) {
+      const now = new Date();
+      if (data.saleStage === 'winner_selected' && !item.winnerSelectedAt) data.winnerSelectedAt = now;
+      if (data.saleStage === 'in_transit' && !item.inTransitAt) data.inTransitAt = now;
+      if (data.saleStage === 'transit_done' && !item.transitDoneAt) data.transitDoneAt = now;
+      if (data.saleStage === 'completed' && !item.completedAt) data.completedAt = now;
     }
 
     Object.assign(item, data);
     return this.repo.save(item);
+  }
+
+  async findByToken(token: string): Promise<StoreItem> {
+    const item = await this.repo.findOneBy({ ownerAccessToken: token });
+    if (!item) throw new NotFoundException('매물을 찾을 수 없습니다.');
+    return item;
+  }
+
+  // 차주가 익명 토큰 페이지에서 "판매요청" — 확정 아님, 관리자 알림만 발송.
+  // 실제 낙찰 확정은 관리자가 대시보드에서 bids.service.ts:selectWinner()로 처리.
+  async requestSale(token: string, bidId: number): Promise<{ ok: true }> {
+    const item = await this.findByToken(token);
+    if (item.status !== 'active') throw new BadRequestException('이미 처리된 매물입니다.');
+
+    const bids = await this.bidsService.findByItem(item.id);
+    const bid = bids.find((b) => b.id === bidId);
+    if (!bid) throw new NotFoundException('입찰 내역을 찾을 수 없습니다.');
+
+    item.ownerRequestedBidId = bid.id;
+    item.ownerRequestedAt = new Date();
+    await this.repo.save(item);
+
+    try {
+      const priceMan = Math.round(Number(bid.amount) / 10_000);
+      await this.solapiService.sendSms(
+        '01022856017',
+        `[카비어]${item.carNumber || ''} 차주가 ${bid.dealerName}(${priceMan}만) 판매요청, 확정필요`,
+      );
+    } catch {
+      // 알림 실패해도 요청 저장은 정상 처리
+    }
+
+    return { ok: true };
   }
 
   async remove(id: number): Promise<void> {

@@ -1,8 +1,12 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, NotFoundException } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, Query, UseGuards, UseInterceptors, UploadedFile, NotFoundException, BadRequestException } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
+import { extname } from 'path';
 import { StoreItemsService } from './store-items.service';
 import { StoreItem } from './entities/store-item.entity';
 import { SolapiService } from '../solapi/solapi.service';
 import { BlurService } from '../blur/blur.service';
+import { S3Service } from '../s3/s3.service';
 import { InternalKeyGuard } from './internal-key.guard';
 
 @Controller('v1/admin/store-items')
@@ -11,6 +15,7 @@ export class StoreItemsController {
     private readonly service: StoreItemsService,
     private readonly solapiService: SolapiService,
     private readonly blurService: BlurService,
+    private readonly s3Service: S3Service,
   ) {}
 
   @Get()
@@ -104,6 +109,17 @@ export class StoreItemsController {
     if (!id) throw new NotFoundException('id 파라미터가 필요합니다.');
     await this.service.remove(Number(id));
     return { ok: true };
+  }
+
+  // 거래완료 시 명의이전된 등록증 사진 업로드 — 저장과 동시에 saleStage를 completed로 전환
+  @Post(':id/transferred-registration')
+  @UseGuards(InternalKeyGuard)
+  @UseInterceptors(FileInterceptor('photo', { storage: memoryStorage() }))
+  async uploadTransferredRegistration(@Param('id') id: string, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('사진을 첨부해주세요.');
+    const key = `transferred-registrations/store-items/${id}/${Date.now()}${extname(file.originalname)}`;
+    const url = await this.s3Service.uploadFile(file, key);
+    return this.service.update(Number(id), { transferredRegistrationUrl: url, saleStage: 'completed' } as any);
   }
 
   // ── 조회수/좋아요 (공개 엔드포인트, Next.js /api 대체) ───────────
