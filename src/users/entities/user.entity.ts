@@ -23,8 +23,8 @@ export class User {
   @Column({ nullable: true })
   providerId: string;
 
-  @Column({ nullable: true })
-  profileImage: string;
+  @Column({ type: 'varchar', nullable: true })
+  profileImage: string | null;
 
   @Column({ default: 'user' })
   role: string; // 'user' | 'dealer' | 'admin'

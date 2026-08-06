@@ -92,7 +92,7 @@ export class UsersController {
   }
 
   @Patch(':id/admin-info')
-  updateAdminInfo(@Param('id') id: string, @Body() body: { name?: string; phone?: string; company?: string; logoUrl?: string; isExportOnly?: boolean }) {
+  updateAdminInfo(@Param('id') id: string, @Body() body: { name?: string; phone?: string; company?: string; logoUrl?: string; profileImage?: string; isExportOnly?: boolean }) {
     return this.svc.updateAdminInfo(Number(id), body);
   }
 
