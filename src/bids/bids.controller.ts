@@ -28,9 +28,23 @@ export class BidsController {
     return this.bidsService.findByDealer(Number(dealerId));
   }
 
+  // 딜러앱 — 낙찰 후 "네, 책임질 수 있는 견적입니다" 확인
+  @Patch('external/store-items/:id/confirm-winner')
+  @UseGuards(InternalKeyGuard)
+  confirmWinner(@Param('id') id: string, @Body('dealerId') dealerId: number) {
+    return this.bidsService.confirmWinner(Number(id), Number(dealerId));
+  }
+
   @Patch('admin/bids/:bidId/select-winner')
   @UseGuards(InternalKeyGuard)
   selectWinner(@Param('bidId') bidId: string) {
     return this.bidsService.selectWinner(Number(bidId));
+  }
+
+  // 딜바타 앱 — 입찰 전 정지 여부 확인
+  @Get('external/dealers/:id/penalty-status')
+  @UseGuards(InternalKeyGuard)
+  async getPenaltyStatus(@Param('id') id: string) {
+    return this.bidsService.getDealerPenaltyStatus(Number(id));
   }
 }

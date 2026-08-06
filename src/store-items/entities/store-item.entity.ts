@@ -138,6 +138,10 @@ export class StoreItem {
   @Column({ type: 'timestamp', nullable: true })
   winnerSelectedAt: Date;
 
+  // 낙찰 딜러가 "책임질 수 있는 견적입니다"를 눌러 확인한 시각 — 낙찰 후 2시간 이내 미확인 시 페널티 대상
+  @Column({ type: 'timestamp', nullable: true })
+  winnerConfirmedAt: Date | null;
+
   @Column({ type: 'timestamp', nullable: true })
   inTransitAt: Date;
 

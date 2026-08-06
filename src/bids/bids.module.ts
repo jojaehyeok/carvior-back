@@ -6,11 +6,13 @@ import { User } from '../users/entities/user.entity';
 import { BidsService } from './bids.service';
 import { BidsController } from './bids.controller';
 import { SolapiService } from '../solapi/solapi.service';
+import { DealerPenaltiesModule } from '../dealer-penalties/dealer-penalties.module';
+import { WinnerConfirmationPenaltyService } from './winner-confirmation-penalty.service';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Bid, StoreItem, User])],
+  imports: [TypeOrmModule.forFeature([Bid, StoreItem, User]), DealerPenaltiesModule],
   controllers: [BidsController],
-  providers: [BidsService, SolapiService],
+  providers: [BidsService, SolapiService, WinnerConfirmationPenaltyService],
   exports: [BidsService],
 })
 export class BidsModule {}

@@ -1,10 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { Bid } from './entities/bid.entity';
 import { StoreItem } from '../store-items/entities/store-item.entity';
 import { User } from '../users/entities/user.entity';
 import { SolapiService } from '../solapi/solapi.service';
+import { DealerPenaltiesService } from '../dealer-penalties/dealer-penalties.service';
+
+const MAX_BIDS_PER_DAY = 30;
 
 // SMS는 90byte 제한 — 초과분은 뒤에서부터 잘라내며 "…" 붙임 (재촬영요청 SMS와 동일 패턴)
 function buildShortSms(title: string, detail: string): string {
@@ -27,11 +30,22 @@ export class BidsService {
     @InjectRepository(User)
     private readonly userRepo: Repository<User>,
     private readonly solapiService: SolapiService,
+    private readonly dealerPenaltiesService: DealerPenaltiesService,
   ) {}
 
   async create(storeItemId: number, dealerId: number | null, dealerName: string, amount: number) {
     const item = await this.storeItemRepo.findOneBy({ id: storeItemId });
     if (!item) throw new NotFoundException('매물을 찾을 수 없습니다.');
+
+    if (dealerId) {
+      if (await this.dealerPenaltiesService.isPenalized(dealerId)) {
+        throw new ForbiddenException('현재 입찰이 제한된 상태입니다.');
+      }
+      const todayCount = await this.dealerPenaltiesService.countTodayBids(dealerId, this.repo);
+      if (todayCount >= MAX_BIDS_PER_DAY) {
+        throw new BadRequestException(`하루 입찰 가능 건수(${MAX_BIDS_PER_DAY}건)를 초과했습니다.`);
+      }
+    }
 
     const bid = this.repo.create({ storeItemId, dealerId: dealerId ?? undefined, dealerName, amount });
     const saved = await this.repo.save(bid);
@@ -54,6 +68,27 @@ export class BidsService {
     }
 
     return saved;
+  }
+
+  // 낙찰 딜러가 앱에서 "네, 책임질 수 있는 견적입니다"를 눌렀을 때
+  async confirmWinner(storeItemId: number, dealerId: number) {
+    const item = await this.storeItemRepo.findOneBy({ id: storeItemId });
+    if (!item) throw new NotFoundException('매물을 찾을 수 없습니다.');
+    if (!item.winningBidId) throw new BadRequestException('낙찰 확정된 입찰이 없습니다.');
+
+    const winningBid = await this.repo.findOneBy({ id: item.winningBidId });
+    if (!winningBid || winningBid.dealerId !== dealerId) {
+      throw new ForbiddenException('낙찰 딜러 본인만 확인할 수 있습니다.');
+    }
+
+    item.winnerConfirmedAt = new Date();
+    await this.storeItemRepo.save(item);
+    return { ok: true };
+  }
+
+  async getDealerPenaltyStatus(dealerId: number) {
+    const active = await this.dealerPenaltiesService.listActive(dealerId);
+    return { penalized: active.length > 0, penalties: active };
   }
 
   findByItem(storeItemId: number) {
