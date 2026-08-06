@@ -25,6 +25,7 @@ import { BidsModule } from './bids/bids.module';
 import { ComplianceModule } from './compliance/compliance.module';
 import { ScheduledNotificationsModule } from './scheduled-notifications/scheduled-notifications.module';
 import { ClientErrorLogsModule } from './client-error-logs/client-error-logs.module';
+import { RentalModule } from './rental/rental.module';
 
 @Module({
   imports: [
@@ -75,6 +76,7 @@ import { ClientErrorLogsModule } from './client-error-logs/client-error-logs.mod
     OcrModule,
     DashboardModule,
     BidsModule,
+    RentalModule,
     ComplianceModule,
     ScheduledNotificationsModule,
     ClientErrorLogsModule,
