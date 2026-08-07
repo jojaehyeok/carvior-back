@@ -108,6 +108,12 @@ export class BookingsService {
     // 자동배정/브로드캐스트를 보류한다. 그 외(카드 결제 성공 콜백, 일반 접수 등)는 그대로 true.
     const pendingDeposit = data.paymentMethod === 'BANK_TRANSFER';
     const booking = this.bookingRepository.create({ ...data, depositConfirmed: !pendingDeposit });
+    // 딜러 접수폼(간편신청/당근/검차 등)은 전부 요청사항을 additionalMemo로 보내는데, 대시보드는
+    // adminMemo만 표시·검색해서 접수 시점에 적은 요청사항이 관리자 눈에 안 띄는 문제가 있었다 —
+    // adminMemo가 따로 없으면 접수 시 additionalMemo를 그대로 넣어 대시보드에 바로 보이게 한다.
+    if (!booking.adminMemo && data.additionalMemo) {
+      booking.adminMemo = data.additionalMemo;
+    }
     let saved = await this.bookingRepository.save(booking);
 
     const restricted = await this.isRestrictedSource(saved.source);
