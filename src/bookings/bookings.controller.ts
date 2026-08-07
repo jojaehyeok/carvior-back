@@ -152,6 +152,17 @@ export class BookingsController {
     return { success: true, data: updatedBooking };
   }
 
+  // PATCH: 슈퍼관리자가 주소/희망일시 수정 후 배정을 초기화하고 자동배정을 다시 시도
+  // (기존 담당자 페널티 없음 — 프론트에서 슈퍼관리자에게만 노출)
+  @Patch(':id/retry-auto-assign')
+  async retryAutoAssign(
+    @Param('id') id: string,
+    @Body() body: { address?: string; preferredDateTime?: string },
+  ) {
+    const updatedBooking = await this.bookingsService.retryAutoAssign(Number(id), body);
+    return { success: true, data: updatedBooking };
+  }
+
   // PATCH: 평가사 앱이 배정 건 상세화면을 열 때 호출 — 대시보드에서 "확인함/미확인" 표시용
   @Patch(':id/mark-seen')
   async markSeen(@Param('id') id: number, @Body() body: { driverId?: string }) {

@@ -32,6 +32,11 @@ const KNOWN_B2C_SOURCES = new Set([
 // 자동배정·전체 브로드캐스트를 건너뛰고 관리자가 대시보드에서 직접 배정하게 둔다.
 const AUTO_ASSIGN_DAYS_THRESHOLD = 5;
 
+// 진단사 취소 사유 중 "고객이 일정만 바꿔달라고 했는데 담당 진단사가 그 시간에 갈 수 없는 경우" 전용 —
+// ChavatarApp의 CANCEL_REASONS 목록과 문자열이 정확히 일치해야 한다. 고객이 서비스 자체를 원치 않는
+// '판매자의 예약 취소'와 달리 다른 진단사에게 넘겨야 하고, 담당 진단사 잘못이 아니므로 페널티도 면제한다.
+const CUSTOMER_RESCHEDULE_CANCEL_REASON = '고객 일정변경(재배정 필요)';
+
 @Injectable()
 export class BookingsService {
   constructor(
@@ -222,6 +227,27 @@ export class BookingsService {
 
     booking.depositConfirmed = true;
     let saved = await this.bookingRepository.save(booking);
+    saved = await this.runAssignmentFlow(saved);
+    return saved;
+  }
+
+  // 슈퍼관리자가 대시보드에서 주소·희망일시를 수정한 뒤 "자동배정 재시도"를 눌렀을 때 호출.
+  // 배정을 먼저 초기화(assignedDriverId: null)한 뒤 runAssignmentFlow()를 다시 태우므로,
+  // assign() 내부의 "auto→manual 재배정 페널티" 조건(현재 assignedDriverId가 남아있어야 발동)이
+  // 걸리지 않는다 — 관리자가 사유 있는 조건 변경으로 재배정하는 것이지 기존 담당자 잘못이 아니기 때문.
+  async retryAutoAssign(id: number, updates: { address?: string; preferredDateTime?: string }): Promise<Booking> {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+
+    if (updates.address?.trim()) booking.address = updates.address.trim();
+    if (updates.preferredDateTime?.trim()) booking.preferredDateTime = updates.preferredDateTime.trim();
+    booking.status = 'PENDING';
+    booking.assignedDriverId = null;
+    booking.assignedDriverName = null;
+    booking.cancelledByDriverAt = null;
+
+    let saved = await this.bookingRepository.save(booking);
+    await this.refreshDistanceFlags(saved);
     saved = await this.runAssignmentFlow(saved);
     return saved;
   }
@@ -716,13 +742,32 @@ export class BookingsService {
         return await this.bookingRepository.save(booking);
       }
 
-      // 진단사 사정/노쇼: PENDING 복원 + 진단사 정보 초기화 (재배정 대상)
+      // 고객이 일정을 바꿔달라고 했는데 담당 진단사가 그 시간엔 못 가는 경우 — 진단사 잘못이
+      // 아니므로 페널티 없이 재배정 대상으로 돌린다. 그 외(진단사 사정/노쇼)는 진단사 귀책이라
+      // 7일간 자동배정 로드밸런싱 페널티를 부여한다(assign()의 수동재배정 페널티와 동일 기간).
+      const isRescheduleReason = cancelReason === CUSTOMER_RESCHEDULE_CANCEL_REASON;
+      if (!isRescheduleReason && prevDriverId) {
+        await this.assignmentPenaltyRepository.save({
+          driverId: prevDriverId,
+          bookingId: booking.id,
+          reason: cancelReason || null,
+          expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+        });
+      }
+
+      // PENDING 복원 + 진단사 정보 초기화 (재배정 대상)
       booking.status = 'PENDING';
       booking.assignedDriverId = null;
       booking.assignedDriverName = null;
       booking.cancelledByDriverAt = new Date();
-      const savedCancel = await this.bookingRepository.save(booking);
+      let savedCancel = await this.bookingRepository.save(booking);
       await this.refreshDistanceFlags(savedCancel);
+
+      // 고객 일정변경 재배정은 관리자가 따로 손대기 전에 바로 자동배정을 시도 — 다른 요일/시간대에
+      // 가능한 진단사가 있으면 즉시 넘어가고, 없으면 기존처럼 전체 브로드캐스트로 폴백한다.
+      if (isRescheduleReason) {
+        savedCancel = await this.runAssignmentFlow(savedCancel);
+      }
       return savedCancel;
     }
 
