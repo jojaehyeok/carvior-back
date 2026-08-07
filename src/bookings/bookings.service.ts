@@ -748,11 +748,11 @@ export class BookingsService {
         return await this.bookingRepository.save(booking);
       }
 
-      // 고객이 일정을 바꿔달라고 했는데 담당 진단사가 그 시간엔 못 가는 경우 — 진단사 잘못이
-      // 아니므로 페널티 없이 재배정 대상으로 돌린다. 그 외(진단사 사정/노쇼)는 진단사 귀책이라
-      // 7일간 자동배정 로드밸런싱 페널티를 부여한다(assign()의 수동재배정 페널티와 동일 기간).
-      const isRescheduleReason = cancelReason === CUSTOMER_RESCHEDULE_CANCEL_REASON;
-      if (!isRescheduleReason && prevDriverId) {
+      // 페널티는 "진단사 사정"(순수 진단사 귀책)만 대상 — 고객이 일정을 바꿔달라고 했는데 담당
+      // 진단사가 그 시간엔 못 가는 경우(고객 일정변경)도, 판매자가 현장에 없었던 경우(노쇼)도
+      // 진단사 잘못이 아니므로 페널티 없이 재배정 대상으로만 돌린다.
+      const isDriverFaultReason = cancelReason === '진단사 사정';
+      if (isDriverFaultReason && prevDriverId) {
         await this.assignmentPenaltyRepository.save({
           driverId: prevDriverId,
           bookingId: booking.id,
@@ -760,6 +760,7 @@ export class BookingsService {
           expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         });
       }
+      const isRescheduleReason = cancelReason === CUSTOMER_RESCHEDULE_CANCEL_REASON;
 
       // PENDING 복원 + 진단사 정보 초기화 (재배정 대상)
       booking.status = 'PENDING';
