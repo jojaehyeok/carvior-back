@@ -395,15 +395,27 @@ export class BookingsService {
     let nearestDriverKm: number | null = null;
     const coords = await geocodeAddress(booking.address);
     if (coords) {
-      // isActive=false거나 위치 갱신이 오래 멈춘(오래된 자리에 고정된) 진단사까지 "가장 가까운
-      // 진단사"에 포함되면, 실제로는 아무도 근처에 없는데 거리가 가짜로 가깝게 나와 오지/준오지
-      // 판정이 빠지는 문제가 있었다 — 실제 배정 로직(tryAutoAssign)과 동일하게 걸러준다.
-      const withLocation = drivers.filter(d => d.lat != null && d.lng != null && d.isActive && isLocationFresh(d));
-      if (withLocation.length > 0) {
-        const nearest = Math.min(
-          ...withLocation.map(d => distanceKm(coords.lat, coords.lng, d.lat!, d.lng!)),
-        );
-        nearestDriverKm = Math.round(nearest * 10) / 10;
+      // 배정된 진단사가 있으면(ASSIGNED/CONFIRMED/COMPLETED) "가장 가까운 진단사" 일반 스냅샷 대신
+      // 실제로 방문할 그 사람 기준 거리를 쓴다 — 배정 시점 이후 다른 사람이 배정되거나 위치가
+      // 바뀌면 스냅샷이 낡아져서, 실제로는 먼 진단사가 배정됐는데도 "안 멂"으로 남는 문제가 있었다.
+      const assignedDriver = booking.assignedDriverId
+        ? await this.driverRepository.findOne({ where: { id: Number(booking.assignedDriverId) } })
+        : null;
+
+      if (assignedDriver?.lat != null && assignedDriver?.lng != null) {
+        nearestDriverKm = Math.round(distanceKm(coords.lat, coords.lng, assignedDriver.lat, assignedDriver.lng) * 10) / 10;
+      } else if (!booking.assignedDriverId) {
+        // 아직 배정 전(PENDING)인 건은 기존처럼 "지금 가장 가까운 활성 진단사" 추정치를 참고용으로 쓴다.
+        // isActive=false거나 위치 갱신이 오래 멈춘(오래된 자리에 고정된) 진단사까지 포함되면 실제로는
+        // 아무도 근처에 없는데 거리가 가짜로 가깝게 나와 오지/준오지 판정이 빠지는 문제가 있었다 —
+        // 실제 배정 로직(tryAutoAssign)과 동일하게 걸러준다.
+        const withLocation = drivers.filter(d => d.lat != null && d.lng != null && d.isActive && isLocationFresh(d));
+        if (withLocation.length > 0) {
+          const nearest = Math.min(
+            ...withLocation.map(d => distanceKm(coords.lat, coords.lng, d.lat!, d.lng!)),
+          );
+          nearestDriverKm = Math.round(nearest * 10) / 10;
+        }
       }
     }
 
