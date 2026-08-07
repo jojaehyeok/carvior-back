@@ -32,11 +32,6 @@ const KNOWN_B2C_SOURCES = new Set([
 // 자동배정·전체 브로드캐스트를 건너뛰고 관리자가 대시보드에서 직접 배정하게 둔다.
 const AUTO_ASSIGN_DAYS_THRESHOLD = 5;
 
-// 진단사 취소 사유 중 "고객이 일정만 바꿔달라고 했는데 담당 진단사가 그 시간에 갈 수 없는 경우" 전용 —
-// ChavatarApp의 CANCEL_REASONS 목록과 문자열이 정확히 일치해야 한다. 고객이 서비스 자체를 원치 않는
-// '판매자의 예약 취소'와 달리 다른 진단사에게 넘겨야 하고, 담당 진단사 잘못이 아니므로 페널티도 면제한다.
-const CUSTOMER_RESCHEDULE_CANCEL_REASON = '고객 일정변경(재배정 필요)';
-
 @Injectable()
 export class BookingsService {
   constructor(
@@ -777,20 +772,18 @@ export class BookingsService {
           return await this.bookingRepository.save(booking);
         }
 
-        // 본인 활성시간 밖이라 정말 못 가는 경우 — 페널티 없이 재배정 대상으로 돌리고
-        // 바로 자동배정을 재시도한다(고객 일정변경 재배정과 동일한 흐름).
+        // 본인 활성시간 밖이라 정말 못 가는 경우 — 페널티 없이 재배정 대상(PENDING)으로만 돌리고,
+        // 나머지 사유들과 동일하게 관리자가 대시보드에서 수동배정/브로드캐스트로 처리하게 둔다.
         booking.status = 'PENDING';
         booking.assignedDriverId = null;
         booking.assignedDriverName = null;
         booking.cancelledByDriverAt = new Date();
-        let savedCustomerCancel = await this.bookingRepository.save(booking);
+        const savedCustomerCancel = await this.bookingRepository.save(booking);
         await this.refreshDistanceFlags(savedCustomerCancel);
-        savedCustomerCancel = await this.runAssignmentFlow(savedCustomerCancel);
         return savedCustomerCancel;
       }
 
-      // 페널티는 "진단사 사정"(순수 진단사 귀책)만 대상 — 고객이 일정을 바꿔달라고 했는데 담당
-      // 진단사가 그 시간엔 못 가는 경우(고객 일정변경)도, 판매자가 현장에 없었던 경우(노쇼)도
+      // 페널티는 "진단사 사정"(순수 진단사 귀책)만 대상 — 판매자가 현장에 없었던 경우(노쇼)는
       // 진단사 잘못이 아니므로 페널티 없이 재배정 대상으로만 돌린다.
       const isDriverFaultReason = cancelReason === '진단사 사정';
       if (isDriverFaultReason && prevDriverId) {
@@ -801,21 +794,14 @@ export class BookingsService {
           expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
         });
       }
-      const isRescheduleReason = cancelReason === CUSTOMER_RESCHEDULE_CANCEL_REASON;
 
-      // PENDING 복원 + 진단사 정보 초기화 (재배정 대상)
+      // PENDING 복원 + 진단사 정보 초기화 (관리자 수동배정/브로드캐스트 대상)
       booking.status = 'PENDING';
       booking.assignedDriverId = null;
       booking.assignedDriverName = null;
       booking.cancelledByDriverAt = new Date();
-      let savedCancel = await this.bookingRepository.save(booking);
+      const savedCancel = await this.bookingRepository.save(booking);
       await this.refreshDistanceFlags(savedCancel);
-
-      // 고객 일정변경 재배정은 관리자가 따로 손대기 전에 바로 자동배정을 시도 — 다른 요일/시간대에
-      // 가능한 진단사가 있으면 즉시 넘어가고, 없으면 기존처럼 전체 브로드캐스트로 폴백한다.
-      if (isRescheduleReason) {
-        savedCancel = await this.runAssignmentFlow(savedCancel);
-      }
       return savedCancel;
     }
 
