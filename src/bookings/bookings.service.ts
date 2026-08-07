@@ -752,12 +752,41 @@ export class BookingsService {
 
       const isCustomerReason = cancelReason === '판매자의 예약 취소';
       if (isCustomerReason) {
-        // 재배정 없이 취소 종료
-        booking.status = 'CANCELLED';
+        // "판매자의 예약 취소"는 페널티도 재배정도 없는 유일한 사유라 악용 소지가 있다 —
+        // 실제로는 본인 활성시간(스케줄)에 걸리는 시간대인데도 이 사유를 골라 페널티를 피하는
+        // 경우를 막기 위해, 취소 시점의 진단일시가 본인 활성시간 안이면(=원래 갈 수 있었으면)
+        // 페널티를 부과하고, 활성시간 밖이면(=정말 못 갔을 시간이면) 페널티 없이 다른
+        // 진단사에게 재배정한다.
+        const driver = prevDriverId
+          ? await this.driverRepository.findOne({ where: { id: Number(prevDriverId) } })
+          : null;
+        const wasWithinOwnSchedule = driver ? isDriverActiveNow(driver, booking.preferredDateTime) : false;
+
+        if (wasWithinOwnSchedule && prevDriverId) {
+          await this.assignmentPenaltyRepository.save({
+            driverId: prevDriverId,
+            bookingId: booking.id,
+            reason: cancelReason || null,
+            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          });
+          // 재배정 없이 취소 종료
+          booking.status = 'CANCELLED';
+          booking.assignedDriverId = null;
+          booking.assignedDriverName = null;
+          booking.cancelledByDriverAt = new Date();
+          return await this.bookingRepository.save(booking);
+        }
+
+        // 본인 활성시간 밖이라 정말 못 가는 경우 — 페널티 없이 재배정 대상으로 돌리고
+        // 바로 자동배정을 재시도한다(고객 일정변경 재배정과 동일한 흐름).
+        booking.status = 'PENDING';
         booking.assignedDriverId = null;
         booking.assignedDriverName = null;
         booking.cancelledByDriverAt = new Date();
-        return await this.bookingRepository.save(booking);
+        let savedCustomerCancel = await this.bookingRepository.save(booking);
+        await this.refreshDistanceFlags(savedCustomerCancel);
+        savedCustomerCancel = await this.runAssignmentFlow(savedCustomerCancel);
+        return savedCustomerCancel;
       }
 
       // 페널티는 "진단사 사정"(순수 진단사 귀책)만 대상 — 고객이 일정을 바꿔달라고 했는데 담당
