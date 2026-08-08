@@ -102,8 +102,21 @@ export class StoreItemsService {
     return rows;
   }
 
-  async findByUser(userId: number): Promise<StoreItem[]> {
-    return this.repo.find({ where: { userId }, order: { registeredAt: 'DESC' } });
+  async findByUser(userId: number): Promise<any[]> {
+    // findAll()과 동일하게 inspections를 JOIN해서 hasReport/carHash를 계산해야 함.
+    // repo.find()로 store_items 원본만 반환하면 hasReport가 항상 기본값(false)이라
+    // 이미 진단완료된 매물도 마이페이지에서 "검차 신청"이 다시 노출되는 버그가 있었음.
+    return this.dataSource.query(
+      `
+      SELECT si.*, i.carHash, i.firstCompletedAt,
+        CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
+      FROM store_items si
+      LEFT JOIN inspections i ON i.bookingId = si.bookingId
+      WHERE si.userId = ?
+      ORDER BY si.registeredAt DESC
+      `,
+      [userId],
+    );
   }
 
   async findOne(id: number): Promise<StoreItem> {
