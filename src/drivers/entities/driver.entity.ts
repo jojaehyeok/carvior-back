@@ -35,6 +35,10 @@ export class Driver {
   @Column({ type: 'varchar', nullable: true })
   licenseImageUrl: string;
 
+  // 진단리포트/평가사 소개에 노출할 프로필 사진 — 관리자가 대시보드 평가사 관리에서 등록
+  @Column({ type: 'varchar', nullable: true })
+  photoUrl: string;
+
   @Column({ type: 'varchar', nullable: true })
   pushToken: string;
 
