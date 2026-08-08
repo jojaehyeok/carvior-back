@@ -578,12 +578,29 @@ export class InspectionService {
     // 진단 당시엔 차종이 미입력이라 "알수없음"으로 스냅샷됐어도, 이후 관리자가 대시보드에서
     // Booking.carModel을 채워 넣었을 수 있으므로 그 값으로 대체해서 리포트에 보여준다.
     const hasRealCarModel = (v?: string | null) => !!v && v !== '알수없음' && v !== '미정';
+
+    // 리포트에 평가사 프로필 사진 + 누적 진단 완료 건수(전체 기간)를 붙인다 — 관리자가
+    // 평가사 관리에서 사진을 등록 안 해뒀으면 photoUrl은 null(프론트에서 로고로 대체).
+    let driverPhotoUrl: string | null = null;
+    let driverCompletedCount = 0;
+    if (booking?.assignedDriverId) {
+      try {
+        const driver = await this.driversService.findById(Number(booking.assignedDriverId));
+        driverPhotoUrl = driver.photoUrl || null;
+      } catch { /* 진단사 정보 조회 실패해도 리포트 자체는 정상 노출 */ }
+      driverCompletedCount = await this.bookingRepository.count({
+        where: { assignedDriverId: booking.assignedDriverId, status: 'COMPLETED' },
+      });
+    }
+
     return {
       ...inspection,
       carModel: hasRealCarModel(inspection.carModel) ? inspection.carModel : (booking?.carModel ?? inspection.carModel),
       dealerName: booking?.dealerName ?? null,
       driverName: booking?.assignedDriverName ?? null,
       assignedDriverId: booking?.assignedDriverId ?? null,
+      driverPhotoUrl,
+      driverCompletedCount,
       carOwner: booking?.carOwner ?? null,
       // 구매동행(카비어 검차 서비스, /inspection에서 결제한 건) 리포트에만 리뷰 작성
       // 섹션을 노출한다 — 딜러가 의뢰한 B2B 리포트는 리뷰 대상이 아니라서 구분해서 내려줌.

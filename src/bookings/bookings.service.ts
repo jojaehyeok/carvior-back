@@ -327,7 +327,7 @@ export class BookingsService {
   ): Promise<{
     regionCovered: boolean;
     slots: { time: string; available: boolean }[];
-    activeDrivers: { name: string; rating: number; reviewCount: number; highlight: string | null }[];
+    activeDrivers: { name: string; rating: number; reviewCount: number; highlight: string | null; photoUrl: string | null; completedCount: number }[];
   }> {
     const drivers = await this.driverRepository.find({ where: { status: 'APPROVED', isActive: true } });
     // isActive(활동중지) 여부와 무관하게 "이 지역을 담당하는 평가사가 존재하는가"만 먼저 판단 —
@@ -358,12 +358,16 @@ export class BookingsService {
       }),
     );
     // 신청 페이지에 "이 지역에 활동 중인 평가사님이 있어요" 후킹 카드용 — 실제 리뷰 평점(리뷰
-    // 없으면 5점 기본)과 축약 후기 한 줄을 붙인다(getDriverStats/getDriverHighlight 참고).
+    // 없으면 5점 기본)과 축약 후기 한 줄, 프로필 사진(미등록 시 null → 프론트에서 로고로 대체),
+    // 누적 진단 완료 건수(전체 기간)를 붙인다(getDriverStats/getDriverHighlight 참고).
     const activeDrivers = await Promise.all(
       regionMatched.map(async d => {
         const stats = await this.reviewsService.getDriverStats(String(d.id));
         const highlight = await this.reviewsService.getDriverHighlight(String(d.id));
-        return { name: d.name, rating: stats.average, reviewCount: stats.total, highlight };
+        const completedCount = await this.bookingRepository.count({
+          where: { assignedDriverId: String(d.id), status: 'COMPLETED' },
+        });
+        return { name: d.name, rating: stats.average, reviewCount: stats.total, highlight, photoUrl: d.photoUrl || null, completedCount };
       }),
     );
     return { regionCovered: true, slots, activeDrivers };
