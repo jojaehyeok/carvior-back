@@ -111,7 +111,7 @@ export class StoreItemsController {
     return { ok: true };
   }
 
-  // 관리자가 낙찰 딜러의 차대금 입금을 육안으로 확인 — winner_selected → in_transit 전환 게이트
+  // 관리자가 낙찰 딜러의 탁송료(+낙찰수수료) 입금을 육안으로 확인 — winner_selected → in_transit 전환 게이트
   @Patch(':id/confirm-deposit')
   @UseGuards(InternalKeyGuard)
   confirmDeposit(@Param('id') id: string) {

@@ -128,7 +128,8 @@ export class StoreItem {
   @Column({ type: 'int', nullable: true })
   winningBidId: number | null;
 
-  // 낙찰 딜러가 입금한 차대금을 관리자가 육안으로 확인했는지 여부.
+  // 낙찰 딜러가 입금한 탁송료(+낙찰수수료)를 관리자가 육안으로 확인했는지 여부.
+  // 차량 매매대금(차대금)은 카비어를 거치지 않는 딜러-차주 직거래라 이 필드와 무관함.
   // winner_selected → in_transit 전환 게이트 (bookings 모듈의 depositConfirmed와 같은 수동확인 패턴).
   @Column({ default: false })
   depositConfirmed: boolean;

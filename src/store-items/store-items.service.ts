@@ -139,8 +139,9 @@ export class StoreItemsService {
     return item;
   }
 
-  // 관리자가 대시보드에서 낙찰 딜러의 차대금 입금을 육안으로 확인하고 누르는 버튼 —
+  // 관리자가 대시보드에서 낙찰 딜러의 탁송료(+낙찰수수료) 입금을 육안으로 확인하고 누르는 버튼 —
   // winner_selected 상태에서 이걸 확인해야 in_transit(탁송중)으로 넘어갈 수 있음.
+  // 차량 매매대금(차대금)은 카비어를 거치지 않는 딜러-차주 직거래라 여기서 다루지 않음.
   async confirmDeposit(id: number): Promise<StoreItem> {
     const item = await this.repo.findOneBy({ id });
     if (!item) throw new NotFoundException(`스토어 아이템 ${id}를 찾을 수 없습니다.`);
