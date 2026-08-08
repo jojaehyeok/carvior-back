@@ -128,6 +128,14 @@ export class StoreItem {
   @Column({ type: 'int', nullable: true })
   winningBidId: number | null;
 
+  // 낙찰 딜러가 입금한 차대금을 관리자가 육안으로 확인했는지 여부.
+  // winner_selected → in_transit 전환 게이트 (bookings 모듈의 depositConfirmed와 같은 수동확인 패턴).
+  @Column({ default: false })
+  depositConfirmed: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  depositConfirmedAt: Date | null;
+
   // 차주가 "판매요청" 버튼으로 고른 입찰 — 확정 아님, 관리자 알림용 (실제 확정은 selectWinner)
   @Column({ type: 'int', nullable: true })
   ownerRequestedBidId: number | null;

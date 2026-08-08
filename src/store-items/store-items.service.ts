@@ -139,6 +139,18 @@ export class StoreItemsService {
     return item;
   }
 
+  // 관리자가 대시보드에서 낙찰 딜러의 차대금 입금을 육안으로 확인하고 누르는 버튼 —
+  // winner_selected 상태에서 이걸 확인해야 in_transit(탁송중)으로 넘어갈 수 있음.
+  async confirmDeposit(id: number): Promise<StoreItem> {
+    const item = await this.repo.findOneBy({ id });
+    if (!item) throw new NotFoundException(`스토어 아이템 ${id}를 찾을 수 없습니다.`);
+    if (item.depositConfirmed) return item; // 이미 확인 처리된 건 — 중복 클릭 방지
+
+    item.depositConfirmed = true;
+    item.depositConfirmedAt = new Date();
+    return this.repo.save(item);
+  }
+
   async create(data: Partial<StoreItem>): Promise<StoreItem> {
     if (data.carNumber) {
       const exists = await this.repo.findOne({ where: { carNumber: data.carNumber } });

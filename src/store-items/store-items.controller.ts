@@ -111,6 +111,13 @@ export class StoreItemsController {
     return { ok: true };
   }
 
+  // 관리자가 낙찰 딜러의 차대금 입금을 육안으로 확인 — winner_selected → in_transit 전환 게이트
+  @Patch(':id/confirm-deposit')
+  @UseGuards(InternalKeyGuard)
+  confirmDeposit(@Param('id') id: string) {
+    return this.service.confirmDeposit(Number(id));
+  }
+
   // 거래완료 시 명의이전된 등록증 사진 업로드 — 저장과 동시에 saleStage를 completed로 전환
   @Post(':id/transferred-registration')
   @UseGuards(InternalKeyGuard)
