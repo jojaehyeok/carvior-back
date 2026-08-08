@@ -17,6 +17,20 @@ function genOwnerAccessToken(): string {
 // (그 사이 진단사 자체수정 2h + 진단매니저 검수·수정 4h = 총 6h, 스펙을 두 번 검수 후 게시)
 const AUTO_PUBLISH_DELAY_MS = 6 * 60 * 60 * 1000;
 
+// 셀프등록 매물은 bookingId가 없거나(널) 실제 예약ID가 아닌 클라이언트 타임스탬프라서
+// inspections.bookingId와 매칭이 안 될 수 있음 — 그런 경우 같은 차량번호로 이미 완료된
+// (carHash 존재) 진단이 있으면 그걸로 대체 매칭. bookingId 매칭을 우선시하고,
+// 없을 때만 carNumber로 폴백.
+const INSPECTION_JOIN = `
+  LEFT JOIN inspections i ON i.id = (
+    SELECT i2.id FROM inspections i2
+    WHERE i2.bookingId = si.bookingId
+       OR (i2.carNumber = si.carNumber AND i2.carHash IS NOT NULL)
+    ORDER BY (i2.bookingId = si.bookingId) DESC, i2.completedAt DESC
+    LIMIT 1
+  )
+`;
+
 @Injectable()
 export class StoreItemsService {
   constructor(
@@ -34,7 +48,7 @@ export class StoreItemsService {
       SELECT si.*, i.carHash, i.firstCompletedAt, i.checkedDamages,
         CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
       FROM store_items si
-      LEFT JOIN inspections i ON i.bookingId = si.bookingId
+      ${INSPECTION_JOIN}
       ORDER BY
         CASE WHEN i.carHash IS NOT NULL THEN 0 ELSE 1 END,
         si.registeredAt DESC
@@ -111,7 +125,7 @@ export class StoreItemsService {
       SELECT si.*, i.carHash, i.firstCompletedAt,
         CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
       FROM store_items si
-      LEFT JOIN inspections i ON i.bookingId = si.bookingId
+      ${INSPECTION_JOIN}
       WHERE si.userId = ?
       ORDER BY si.registeredAt DESC
       `,
