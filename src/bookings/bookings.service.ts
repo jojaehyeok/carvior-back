@@ -1011,15 +1011,20 @@ export class BookingsService {
     return { tier: 'NONE', refundAmount: 0, cancelFee: amount };
   }
 
-  private async findBookingForCustomer(id: number, contact: string): Promise<Booking> {
+  // 연락처 또는 이름 중 하나만 맞아도 본인 확인 통과 (신청 당시 정보를 둘 다 정확히
+  // 기억 못 하는 고객이 많아 OR 조건으로 완화함 — 예약번호(id)를 알고 있다는 전제가 있어
+  // 이름만으로 확인해도 리스크가 낮음)
+  private async findBookingForCustomer(id: number, contact?: string, name?: string): Promise<Booking> {
     const booking = await this.bookingRepository.findOne({ where: { id } });
     const inputDigits = this.normalizePhone(contact);
+    const nameTrimmed = (name || '').trim();
     const matches =
       !!booking &&
-      inputDigits.length > 0 &&
-      (this.normalizePhone(booking.contact) === inputDigits || this.normalizePhone(booking.customerContact) === inputDigits);
+      ((inputDigits.length > 0 &&
+        (this.normalizePhone(booking.contact) === inputDigits || this.normalizePhone(booking.customerContact) === inputDigits)) ||
+        (nameTrimmed.length > 0 && booking.carOwner?.trim() === nameTrimmed));
     if (!matches) {
-      throw new NotFoundException('예약 정보를 찾을 수 없습니다. 예약번호와 연락처를 다시 확인해주세요.');
+      throw new NotFoundException('예약 정보를 찾을 수 없습니다. 예약번호와 이름 또는 연락처를 다시 확인해주세요.');
     }
     return booking!;
   }
@@ -1040,38 +1045,51 @@ export class BookingsService {
     };
   }
 
-  // GET: 예약번호 + 연락처로 본인 예약 조회 (셀프 취소 전 확인 화면용, 인증 없이 공개된 조회 API)
-  async lookupForCustomer(id: number, contact: string) {
-    const booking = await this.findBookingForCustomer(id, contact);
+  // GET: 예약번호 + (연락처 또는 이름)로 본인 예약 조회 (셀프 취소 전 확인 화면용, 인증 없이 공개된 조회 API)
+  async lookupForCustomer(id: number, contact?: string, name?: string) {
+    const booking = await this.findBookingForCustomer(id, contact, name);
     return this.toCustomerView(booking);
   }
 
-  // GET: 예약번호를 몰라도 신청자 이름 + 연락처로 본인 예약을 찾을 수 있게 하는 조회 API —
-  // 같은 이름+번호로 여러 건을 신청했을 수 있어 배열로 반환한다.
-  async lookupByNameAndContact(name: string, contact: string) {
+  // GET: 예약번호를 몰라도 신청자 이름 또는 연락처만으로 본인 예약을 찾을 수 있게 하는 조회 API —
+  // 원래는 이름+연락처 둘 다 정확히 일치해야 했는데, 신청 당시 정보를 정확히 기억 못 하는
+  // 고객이 많아 "이름 OR 연락처" 중 하나만 맞아도 찾아지도록 완화함.
+  // 같은 이름/번호로 여러 건을 신청했을 수 있어 배열로 반환한다.
+  async lookupByNameAndContact(name?: string, contact?: string) {
     const nameTrimmed = (name || '').trim();
     const inputDigits = this.normalizePhone(contact);
-    if (!nameTrimmed || inputDigits.length === 0) {
-      throw new BadRequestException('이름과 연락처를 모두 입력해주세요.');
+    if (!nameTrimmed && inputDigits.length === 0) {
+      throw new BadRequestException('이름 또는 연락처 중 하나는 입력해주세요.');
     }
 
-    const candidates = await this.bookingRepository.find({
-      where: { carOwner: nameTrimmed },
-      order: { createdAt: 'DESC' },
-      take: 20,
-    });
+    // DB에서는 넓게 후보를 추리고(이름 일치 OR 연락처 부분일치), 실제 최종 판정은 아래
+    // normalizePhone 비교로 정확히 함 — 연락처가 하이픈 없이 저장되는 게 기본이라 LIKE로 충분.
+    const qb = this.bookingRepository
+      .createQueryBuilder('b')
+      .orderBy('b.createdAt', 'DESC')
+      .take(50);
+    if (nameTrimmed) qb.orWhere('b.carOwner = :name', { name: nameTrimmed });
+    if (inputDigits) {
+      qb.orWhere('b.contact LIKE :digits', { digits: `%${inputDigits}%` });
+      qb.orWhere('b.customerContact LIKE :digits', { digits: `%${inputDigits}%` });
+    }
+    const candidates = await qb.getMany();
+
     const matched = candidates.filter(
-      (b) => this.normalizePhone(b.contact) === inputDigits || this.normalizePhone(b.customerContact) === inputDigits,
+      (b) =>
+        (nameTrimmed.length > 0 && b.carOwner?.trim() === nameTrimmed) ||
+        (inputDigits.length > 0 &&
+          (this.normalizePhone(b.contact) === inputDigits || this.normalizePhone(b.customerContact) === inputDigits)),
     );
     if (matched.length === 0) {
-      throw new NotFoundException('일치하는 예약을 찾을 수 없습니다. 이름과 연락처를 다시 확인해주세요.');
+      throw new NotFoundException('일치하는 예약을 찾을 수 없습니다. 이름 또는 연락처를 다시 확인해주세요.');
     }
     return matched.map((b) => this.toCustomerView(b));
   }
 
   // PATCH: 고객 셀프 취소 — 상태만 CANCELLED로 바꾸고 실제 환불은 관리자가 수동 처리
-  async selfCancel(id: number, contact: string) {
-    const booking = await this.findBookingForCustomer(id, contact);
+  async selfCancel(id: number, contact?: string, name?: string) {
+    const booking = await this.findBookingForCustomer(id, contact, name);
 
     if (booking.status === 'COMPLETED') {
       throw new BadRequestException('이미 진단이 완료된 건은 취소할 수 없습니다.');

@@ -54,25 +54,26 @@ export class BookingsController {
     return this.bookingsService.getAvailableSlots(address, date);
   }
 
-  // GET: 고객 셀프서비스 — 예약번호를 몰라도 신청자 이름 + 연락처로 본인 예약 조회(공개 API)
+  // GET: 고객 셀프서비스 — 이름 또는 연락처 중 하나만 맞아도 본인 예약 조회(공개 API).
+  // 신청 당시 입력한 이름/연락처를 둘 다 정확히 기억 못 하는 고객이 많아 OR 조건으로 완화함.
   @Get('lookup-by-name')
-  async lookupByName(@Query('name') name: string, @Query('contact') contact: string) {
-    if (!name || !contact) throw new BadRequestException('이름과 연락처를 모두 입력해주세요.');
+  async lookupByName(@Query('name') name?: string, @Query('contact') contact?: string) {
+    if (!name?.trim() && !contact?.trim()) throw new BadRequestException('이름 또는 연락처 중 하나는 입력해주세요.');
     return this.bookingsService.lookupByNameAndContact(name, contact);
   }
 
-  // GET: 고객 셀프서비스 — 예약번호 + 연락처로 본인 예약 조회(취소 전 확인 화면용, 공개 API)
+  // GET: 고객 셀프서비스 — 예약번호 + (연락처 또는 이름)로 본인 예약 조회(취소 전 확인 화면용, 공개 API)
   @Get(':id/lookup')
-  async lookupForCustomer(@Param('id') id: string, @Query('contact') contact: string) {
-    if (!contact) throw new BadRequestException('연락처를 입력해주세요.');
-    return this.bookingsService.lookupForCustomer(Number(id), contact);
+  async lookupForCustomer(@Param('id') id: string, @Query('contact') contact?: string, @Query('name') name?: string) {
+    if (!contact?.trim() && !name?.trim()) throw new BadRequestException('이름 또는 연락처 중 하나는 입력해주세요.');
+    return this.bookingsService.lookupForCustomer(Number(id), contact, name);
   }
 
-  // PATCH: 고객 셀프서비스 취소 — 연락처로 본인 확인 후 상태만 CANCELLED로 변경(환불은 관리자 수동 처리)
+  // PATCH: 고객 셀프서비스 취소 — 연락처 또는 이름으로 본인 확인 후 상태만 CANCELLED로 변경(환불은 관리자 수동 처리)
   @Patch(':id/self-cancel')
-  async selfCancel(@Param('id') id: string, @Body('contact') contact: string) {
-    if (!contact) throw new BadRequestException('연락처를 입력해주세요.');
-    return this.bookingsService.selfCancel(Number(id), contact);
+  async selfCancel(@Param('id') id: string, @Body('contact') contact?: string, @Body('name') name?: string) {
+    if (!contact?.trim() && !name?.trim()) throw new BadRequestException('이름 또는 연락처 중 하나는 입력해주세요.');
+    return this.bookingsService.selfCancel(Number(id), contact, name);
   }
 
   // POST: 발주사(대시보드)가 명의이전 완료된 등록증 사진을 직접 업로드 — 애니원모터스 등 전용
