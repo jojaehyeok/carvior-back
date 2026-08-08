@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { PartnerApplicationsService } from './partner-applications.service';
 import { InternalKeyGuard } from '../store-items/internal-key.guard';
 
@@ -9,6 +9,12 @@ export class PartnerApplicationsController {
   @Post('external/partner-applications')
   create(@Body() body: { name: string; phone: string; email?: string; companyName?: string; message?: string; qualifyingCount: number }) {
     return this.service.create(body);
+  }
+
+  // 마이페이지에서 로그인 유저의 신청/승인 상태를 배너에 반영하기 위한 공개 조회 API
+  @Get('external/partner-applications/by-phone')
+  findByPhone(@Query('phone') phone: string) {
+    return this.service.findLatestByPhone(phone ?? '');
   }
 
   @Get('admin/partner-applications')

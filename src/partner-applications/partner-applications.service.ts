@@ -16,6 +16,13 @@ export class PartnerApplicationsService {
     return this.repo.find({ order: { createdAt: 'DESC' } });
   }
 
+  // 마이페이지에서 로그인 유저(전화번호 기준)가 이미 신청했는지/승인됐는지 확인하는 공개 조회용.
+  // 같은 번호로 여러 번 신청했을 수 있어 가장 최근 것만 반환.
+  findLatestByPhone(phone: string): Promise<PartnerApplication | null> {
+    const clean = phone.replace(/[^0-9]/g, '');
+    return this.repo.findOne({ where: { phone: clean }, order: { createdAt: 'DESC' } });
+  }
+
   async create(data: { name: string; phone: string; email?: string; companyName?: string; message?: string; qualifyingCount: number }): Promise<PartnerApplication> {
     const app = this.repo.create(data);
     const saved = await this.repo.save(app);

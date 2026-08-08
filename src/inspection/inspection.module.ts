@@ -11,6 +11,7 @@ import { DriversModule } from 'src/drivers/drivers.module';
 import { ComplianceModule } from 'src/compliance/compliance.module';
 import { ScheduledNotificationsModule } from 'src/scheduled-notifications/scheduled-notifications.module';
 import { TranslateModule } from 'src/translate/translate.module';
+import { BookingsModule } from 'src/bookings/bookings.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { TranslateModule } from 'src/translate/translate.module';
     ComplianceModule,
     ScheduledNotificationsModule,
     TranslateModule,
+    BookingsModule,
   ],
   controllers: [InspectionController],
   providers: [InspectionService, SolapiService],
