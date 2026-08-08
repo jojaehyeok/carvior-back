@@ -29,6 +29,7 @@ import { RentalModule } from './rental/rental.module';
 import { PartnerApplicationsModule } from './partner-applications/partner-applications.module';
 import { InspectionPaymentsModule } from './inspection-payments/inspection-payments.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
+import { SaleListingsModule } from './sale-listings/sale-listings.module';
 
 @Module({
   imports: [
@@ -86,6 +87,7 @@ import { VehiclesModule } from './vehicles/vehicles.module';
     ClientErrorLogsModule,
     InspectionPaymentsModule,
     VehiclesModule,
+    SaleListingsModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, SolapiService, S3Service],
