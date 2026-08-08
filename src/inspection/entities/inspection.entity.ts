@@ -123,4 +123,10 @@ export class Inspection {
     // null이면 아직 한 번도 번역 요청이 없었다는 뜻(무료 API 호출량 절약을 위해 지연 계산).
     @Column({ type: 'json', nullable: true })
     translations: Record<string, Record<string, string>> | null;
+
+    // 차량판매중개 시스템용 — 이 진단이 어느 Vehicle(차량 정체성)에 속하는지.
+    // 기존 진단 기능은 이 컬럼과 무관하게 그대로 동작하며, 최초 진단완료 시점에
+    // inspection.service.ts에서 채워짐(신규 추가 로직, 기존 로직 변경 없음).
+    @Column({ type: 'int', nullable: true })
+    vehicleId: number | null;
 }

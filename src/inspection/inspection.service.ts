@@ -17,6 +17,7 @@ import { ComplianceService } from 'src/compliance/compliance.service';
 import { ScheduledNotificationsService } from 'src/scheduled-notifications/scheduled-notifications.service';
 import { TranslateService } from 'src/translate/translate.service';
 import { BookingsService } from 'src/bookings/bookings.service';
+import { VehiclesService } from 'src/vehicles/vehicles.service';
 
 const PARTNER_COMPLETION_DELAY_MS = 60 * 60 * 1000; // 1시간
 
@@ -32,6 +33,7 @@ export class InspectionService {
     private readonly scheduledNotificationsService: ScheduledNotificationsService,
     private readonly translateService: TranslateService,
     private readonly bookingsService: BookingsService,
+    private readonly vehiclesService: VehiclesService,
     @InjectRepository(Inspection)
     private readonly inspectionRepository: Repository<Inspection>,
     @InjectRepository(Booking)
@@ -301,6 +303,27 @@ export class InspectionService {
       // 예약 테이블의 상태를 'COMPLETED'로 변경
       const booking = await this.bookingRepository.findOne({ where: { id: bId } });
       await this.bookingRepository.update(bId, { status: 'COMPLETED' });
+
+      // 차량판매중개 시스템 — 최초 완료 시점에만 Vehicle과 연결(재제출은 이미 연결돼있으므로 스킵).
+      // 검차 신청자(booking.carOwner/contact)가 실제 차주라는 보장이 없으므로, 여기서는 절대
+      // 판매매물을 만들지 않고 "미매칭 검차차량" 상태로만 등록한다 — 판매 전환은 운영자가
+      // 차주에게 직접 확인한 뒤 별도 화면에서 수행(vehicles 모듈).
+      if (isFirstCompletion) {
+        try {
+          const vehicle = await this.vehiclesService.linkInspection({
+            inspectionId: savedResult.id,
+            carNumber: inspection.carNumber,
+            requesterName: booking?.carOwner ?? null,
+            requesterContact: booking?.contact ?? null,
+            ownerContact: booking?.customerContact ?? null,
+          });
+          if (!inspection.vehicleId) {
+            await this.inspectionRepository.update(inspection.id, { vehicleId: vehicle.id });
+          }
+        } catch (e) {
+          console.error('[미매칭 검차차량] Vehicle 연결 실패', e);
+        }
+      }
 
       if (isFirstCompletion) {
         // 진단 완료 알림톡 발송 (서버 환경 안전한 KST 포맷) — 최초 제출에만, 재제출(수정)엔 재발송 안 함
