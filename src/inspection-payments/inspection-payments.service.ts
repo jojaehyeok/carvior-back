@@ -7,13 +7,22 @@ import { SolapiService } from '../solapi/solapi.service';
 // 라우트가 이 역할이었는데, Apache가 새/일부 Next 라우트를 화이트리스트에 안 넣어두면 백엔드로
 // 요청이 새서 404가 나는 인프라 문제가 있었음(v1/* 만 항상 백엔드로 보장 라우팅됨). 그래서 결제승인
 // 로직 자체를 여기(NestJS, v1/*)로 옮김 — 프론트는 이 엔드포인트를 브라우저에서 직접 호출.
-const TOSS_SECRET_KEY = process.env.TOSS_SECRET_KEY ?? '';
-
-const NAVERPAY_CLIENT_ID     = process.env.NAVERPAY_CLIENT_ID ?? process.env.NEXT_PUBLIC_NAVERPAY_CLIENT_ID ?? '';
-const NAVERPAY_CLIENT_SECRET = process.env.NAVERPAY_CLIENT_SECRET ?? '';
-const NAVERPAY_PARTNER_ID    = process.env.NAVERPAY_PARTNER_ID ?? '';
-const NAVERPAY_CHAIN_ID      = process.env.NAVERPAY_CHAIN_ID ?? '';
-const NAVERPAY_MODE          = process.env.NAVERPAY_MODE ?? 'development';
+//
+// env는 반드시 함수 안에서(요청 시점에) 읽어야 함 — 모듈 최상단 const로 읽으면 NestJS가
+// ConfigModule(.env 로딩)을 초기화하기 *전에* 이 파일이 먼저 import되면서 process.env가 아직
+// 비어있는 시점의 값이 영원히 캐싱돼버림(재시작해도 안 고쳐지는 버그였음 — 직접 겪음).
+function tossSecretKey() {
+  return process.env.TOSS_SECRET_KEY ?? '';
+}
+function naverPayConfig() {
+  return {
+    clientId:     process.env.NAVERPAY_CLIENT_ID ?? process.env.NEXT_PUBLIC_NAVERPAY_CLIENT_ID ?? '',
+    clientSecret: process.env.NAVERPAY_CLIENT_SECRET ?? '',
+    partnerId:    process.env.NAVERPAY_PARTNER_ID ?? '',
+    chainId:      process.env.NAVERPAY_CHAIN_ID ?? '',
+    mode:         process.env.NAVERPAY_MODE ?? 'development',
+  };
+}
 
 interface InspectionOrderPayload {
   carNumber?: string;
@@ -82,7 +91,7 @@ export class InspectionPaymentsService {
     const tossRes = await fetch('https://api.tosspayments.com/v1/payments/confirm', {
       method: 'POST',
       headers: {
-        Authorization: `Basic ${Buffer.from(`${TOSS_SECRET_KEY}:`).toString('base64')}`,
+        Authorization: `Basic ${Buffer.from(`${tossSecretKey()}:`).toString('base64')}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ paymentKey, orderId, amount }),
@@ -100,21 +109,22 @@ export class InspectionPaymentsService {
     paymentId: string; merchantPayKey: string; amount: number;
   } & InspectionOrderPayload) {
     const { paymentId, merchantPayKey, amount } = body;
+    const { clientId, clientSecret, partnerId, chainId, mode } = naverPayConfig();
 
-    if (!NAVERPAY_CLIENT_SECRET || !NAVERPAY_PARTNER_ID) {
+    if (!clientSecret || !partnerId) {
       // 가맹점 승인 전(진짜 키가 아직 없음) — 여기서 실패시켜 "결제 안 됐는데 접수된" 사고를 막는다.
       return { code: 'Fail', message: '네이버페이 가맹점 승인이 아직 완료되지 않았습니다.' };
     }
 
-    const host = NAVERPAY_MODE === 'production' ? 'apis.naver.com' : 'dev.apis.naver.com';
-    const url  = `https://${host}/${NAVERPAY_PARTNER_ID}/naverpay/payments/v2.2/apply/payment?paymentId=${encodeURIComponent(paymentId)}`;
+    const host = mode === 'production' ? 'apis.naver.com' : 'dev.apis.naver.com';
+    const url  = `https://${host}/${partnerId}/naverpay/payments/v2.2/apply/payment?paymentId=${encodeURIComponent(paymentId)}`;
 
     const npRes = await fetch(url, {
       method: 'POST',
       headers: {
-        'X-Naver-Client-Id': NAVERPAY_CLIENT_ID,
-        'X-Naver-Client-Secret': NAVERPAY_CLIENT_SECRET,
-        ...(NAVERPAY_CHAIN_ID ? { 'X-NaverPay-Chain-Id': NAVERPAY_CHAIN_ID } : {}),
+        'X-Naver-Client-Id': clientId,
+        'X-Naver-Client-Secret': clientSecret,
+        ...(chainId ? { 'X-NaverPay-Chain-Id': chainId } : {}),
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams({ paymentId }).toString(),
