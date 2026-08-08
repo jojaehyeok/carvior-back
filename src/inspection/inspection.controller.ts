@@ -153,6 +153,8 @@ export class InspectionController {
       dealerName: inspection.dealerName ?? null,
       driverName: inspection.driverName ?? null,
       assignedDriverId: inspection.assignedDriverId ?? null,
+      driverPhotoUrl: inspection.driverPhotoUrl ?? null,
+      driverCompletedCount: inspection.driverCompletedCount ?? 0,
       isConsumerBooking: !!inspection.isConsumerBooking,
       car_info: {
         number: inspection.carNumber,
