@@ -76,6 +76,18 @@ export class BookingsController {
     return this.bookingsService.selfCancel(Number(id), contact, name);
   }
 
+  // PATCH: 신청자(대부분 구매예정자) 본인이 마이페이지에서 "구매완료" 셀프 표시/해제
+  @Patch(':id/buyer-purchase-status')
+  async updateBuyerPurchaseStatus(
+    @Param('id') id: string,
+    @Body('contact') contact?: string,
+    @Body('name') name?: string,
+    @Body('completed') completed?: boolean,
+  ) {
+    if (!contact?.trim() && !name?.trim()) throw new BadRequestException('이름 또는 연락처 중 하나는 입력해주세요.');
+    return this.bookingsService.updateBuyerPurchaseStatus(Number(id), contact, !!completed, name);
+  }
+
   // POST: 발주사(대시보드)가 명의이전 완료된 등록증 사진을 직접 업로드 — 애니원모터스 등 전용
   // 딜러/고객 전송 여부는 각각 체크박스로 선택하며, 둘 다 선택하지 않으면 SMS 없이 사진만
   // 교체된다(등록증을 잘못 올린 경우 재업로드 — 이미 보낸 단축링크가 새 사진으로 그대로 반영됨)

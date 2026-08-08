@@ -259,6 +259,12 @@ export class Booking {
   @Column({ type: 'int', nullable: true })
   refundAmount: number | null;
 
+  // 검차 신청은 대부분 "남의 차를 사려고" 신청하는 경우라, 구매자 본인이 마이페이지에서
+  // 셀프로 표시하는 구매완료 여부 — StoreItem의 판매완료 셀프토글과 같은 패턴.
+  // 검증 수단이 없어서 100% 신뢰 가능한 값은 아니고, 어디까지나 자기 신고임.
+  @Column({ default: false })
+  buyerPurchaseCompleted: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 

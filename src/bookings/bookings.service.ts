@@ -1040,6 +1040,7 @@ export class BookingsService {
       amount: booking.amount,
       paymentMethod: booking.paymentMethod,
       depositConfirmed: booking.depositConfirmed,
+      buyerPurchaseCompleted: booking.buyerPurchaseCompleted,
       createdAt: booking.createdAt,
       refundPreview: this.computeRefund(booking),
     };
@@ -1113,6 +1114,14 @@ export class BookingsService {
     } catch {}
 
     return { success: true, data: saved, refund };
+  }
+
+  // 마이페이지에서 신청자(대부분 구매예정자) 본인이 "구매완료" 셀프 표시 — 검증 수단이
+  // 없는 자기신고 값이라 상태를 강제로 바꾸는 용도로 쓰면 안 됨(표시용).
+  async updateBuyerPurchaseStatus(id: number, contact: string | undefined, completed: boolean, name?: string): Promise<Booking> {
+    const booking = await this.findBookingForCustomer(id, contact, name);
+    booking.buyerPurchaseCompleted = completed;
+    return this.bookingRepository.save(booking);
   }
 
   // 발주사(대시보드)가 명의이전 완료 후 등록증 사진을 직접 업로드
