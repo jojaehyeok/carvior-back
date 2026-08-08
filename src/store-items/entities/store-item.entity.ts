@@ -128,14 +128,22 @@ export class StoreItem {
   @Column({ type: 'int', nullable: true })
   winningBidId: number | null;
 
-  // 낙찰 딜러가 입금한 탁송료(+낙찰수수료)를 관리자가 육안으로 확인했는지 여부.
-  // 차량 매매대금(차대금)은 카비어를 거치지 않는 딜러-차주 직거래라 이 필드와 무관함.
-  // winner_selected → in_transit 전환 게이트 (bookings 모듈의 depositConfirmed와 같은 수동확인 패턴).
+  // 낙찰 딜러가 입금한 차대금(카비어가 에스크로 형태로 잠시 보관)을 관리자가 육안으로
+  // 확인했는지 여부. winner_selected → in_transit 전환 게이트
+  // (bookings 모듈의 depositConfirmed와 같은 수동확인 패턴 — 실제 은행 API 연동은 아님).
   @Column({ default: false })
   depositConfirmed: boolean;
 
   @Column({ type: 'timestamp', nullable: true })
   depositConfirmedAt: Date | null;
+
+  // 에스크로로 보관 중이던 차대금을 차주에게 실제로 지급(송금)했는지 여부 — 탁송이 시작되면
+  // (saleStage: in_transit) 관리자가 차주 계좌로 송금 후 이 값을 확인 처리한다.
+  @Column({ default: false })
+  sellerPayoutConfirmed: boolean;
+
+  @Column({ type: 'timestamp', nullable: true })
+  sellerPayoutConfirmedAt: Date | null;
 
   // 차주가 "판매요청" 버튼으로 고른 입찰 — 확정 아님, 관리자 알림용 (실제 확정은 selectWinner)
   @Column({ type: 'int', nullable: true })

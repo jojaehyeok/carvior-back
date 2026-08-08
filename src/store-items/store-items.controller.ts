@@ -111,11 +111,18 @@ export class StoreItemsController {
     return { ok: true };
   }
 
-  // 관리자가 낙찰 딜러의 탁송료(+낙찰수수료) 입금을 육안으로 확인 — winner_selected → in_transit 전환 게이트
+  // 관리자가 낙찰 딜러의 차대금 입금(에스크로 예치)을 육안으로 확인 — winner_selected → in_transit 전환 게이트
   @Patch(':id/confirm-deposit')
   @UseGuards(InternalKeyGuard)
   confirmDeposit(@Param('id') id: string) {
     return this.service.confirmDeposit(Number(id));
+  }
+
+  // 관리자가 에스크로 보관 중이던 차대금을 차주 계좌로 실제 송금한 뒤 확인
+  @Patch(':id/confirm-seller-payout')
+  @UseGuards(InternalKeyGuard)
+  confirmSellerPayout(@Param('id') id: string) {
+    return this.service.confirmSellerPayout(Number(id));
   }
 
   // 거래완료 시 명의이전된 등록증 사진 업로드 — 저장과 동시에 saleStage를 completed로 전환

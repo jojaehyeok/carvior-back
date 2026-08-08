@@ -139,9 +139,8 @@ export class StoreItemsService {
     return item;
   }
 
-  // 관리자가 대시보드에서 낙찰 딜러의 탁송료(+낙찰수수료) 입금을 육안으로 확인하고 누르는 버튼 —
+  // 관리자가 대시보드에서 낙찰 딜러의 차대금 입금(에스크로 예치)을 육안으로 확인하고 누르는 버튼 —
   // winner_selected 상태에서 이걸 확인해야 in_transit(탁송중)으로 넘어갈 수 있음.
-  // 차량 매매대금(차대금)은 카비어를 거치지 않는 딜러-차주 직거래라 여기서 다루지 않음.
   async confirmDeposit(id: number): Promise<StoreItem> {
     const item = await this.repo.findOneBy({ id });
     if (!item) throw new NotFoundException(`스토어 아이템 ${id}를 찾을 수 없습니다.`);
@@ -149,6 +148,19 @@ export class StoreItemsService {
 
     item.depositConfirmed = true;
     item.depositConfirmedAt = new Date();
+    return this.repo.save(item);
+  }
+
+  // 에스크로로 보관 중이던 차대금을 관리자가 실제로 차주 계좌에 송금한 뒤 확인하는 버튼 —
+  // 탁송 시작(in_transit) 이후에만 의미가 있음. 실제 송금은 관리자가 수동으로 처리하고
+  // 여기선 "지급했다"는 상태만 기록(은행 API 연동 아님).
+  async confirmSellerPayout(id: number): Promise<StoreItem> {
+    const item = await this.repo.findOneBy({ id });
+    if (!item) throw new NotFoundException(`스토어 아이템 ${id}를 찾을 수 없습니다.`);
+    if (item.sellerPayoutConfirmed) return item; // 이미 확인 처리된 건 — 중복 클릭 방지
+
+    item.sellerPayoutConfirmed = true;
+    item.sellerPayoutConfirmedAt = new Date();
     return this.repo.save(item);
   }
 
