@@ -145,6 +145,14 @@ export class StoreItem {
   @Column({ type: 'timestamp', nullable: true })
   sellerPayoutConfirmedAt: Date | null;
 
+  // 차주가 마이페이지에서 신청한 탁송 희망 일시 — 차대금 입금확인(depositConfirmed) 이후에만
+  // 신청 가능. 실제 탁송기사 배정/일정 조율은 관리자가 이 값을 보고 수동으로 진행한다.
+  @Column({ type: 'varchar', nullable: true })
+  transportPreferredDateTime: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  transportRequestedAt: Date | null;
+
   // 차주가 "판매요청" 버튼으로 고른 입찰 — 확정 아님, 관리자 알림용 (실제 확정은 selectWinner)
   @Column({ type: 'int', nullable: true })
   ownerRequestedBidId: number | null;

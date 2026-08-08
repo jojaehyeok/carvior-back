@@ -22,4 +22,9 @@ export class StoreItemsPublicController {
   requestSale(@Param('token') token: string, @Body('bidId') bidId: number) {
     return this.storeItemsService.requestSale(token, Number(bidId));
   }
+
+  @Post(':token/request-transport')
+  requestTransport(@Param('token') token: string, @Body('preferredDateTime') preferredDateTime: string) {
+    return this.storeItemsService.requestTransport(token, preferredDateTime);
+  }
 }

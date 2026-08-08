@@ -254,6 +254,34 @@ export class StoreItemsService {
     return { ok: true };
   }
 
+  // 차주가 마이페이지에서 "탁송 신청하기"를 눌렀을 때 — 차대금 입금확인 전에는 탁송을 준비할
+  // 이유가 없으니 depositConfirmed가 true여야만 신청 가능. 실제 탁송기사 배정은 관리자가
+  // 대시보드에서 이 희망일시를 보고 수동으로 진행한다(자동 배정 아님).
+  async requestTransport(token: string, preferredDateTime: string): Promise<StoreItem> {
+    const item = await this.findByToken(token);
+    if (!item.depositConfirmed) {
+      throw new BadRequestException('차대금 입금 확인 후에 탁송을 신청할 수 있습니다.');
+    }
+    if (!preferredDateTime?.trim()) {
+      throw new BadRequestException('탁송 희망 일시를 입력해주세요.');
+    }
+
+    item.transportPreferredDateTime = preferredDateTime;
+    item.transportRequestedAt = new Date();
+    const saved = await this.repo.save(item);
+
+    try {
+      await this.solapiService.sendSms(
+        '01022856017',
+        `[카비어]${item.carNumber || ''} 차주 탁송신청 희망일시:${preferredDateTime}`,
+      );
+    } catch {
+      // 알림 실패해도 신청 저장은 정상 처리
+    }
+
+    return saved;
+  }
+
   async remove(id: number): Promise<void> {
     const item = await this.repo.findOneBy({ id });
     if (!item) throw new NotFoundException(`스토어 아이템 ${id}를 찾을 수 없습니다.`);
