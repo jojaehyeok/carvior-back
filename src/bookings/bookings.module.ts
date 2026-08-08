@@ -24,5 +24,6 @@ import { ReviewsModule } from 'src/reviews/reviews.module';
   ],
   controllers: [BookingsController, BookingsRedirectController],
   providers: [BookingsService, SolapiService, NotificationsService, S3Service],
+  exports: [BookingsService],
 })
 export class BookingsModule { }

@@ -27,6 +27,7 @@ import { ScheduledNotificationsModule } from './scheduled-notifications/schedule
 import { ClientErrorLogsModule } from './client-error-logs/client-error-logs.module';
 import { RentalModule } from './rental/rental.module';
 import { PartnerApplicationsModule } from './partner-applications/partner-applications.module';
+import { InspectionPaymentsModule } from './inspection-payments/inspection-payments.module';
 
 @Module({
   imports: [
@@ -82,6 +83,7 @@ import { PartnerApplicationsModule } from './partner-applications/partner-applic
     ComplianceModule,
     ScheduledNotificationsModule,
     ClientErrorLogsModule,
+    InspectionPaymentsModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, SolapiService, S3Service],
