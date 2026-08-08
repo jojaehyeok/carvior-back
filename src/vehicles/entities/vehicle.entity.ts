@@ -22,18 +22,18 @@ export class Vehicle {
   latestInspectionId: number | null;
 
   // 검차 신청자(구매예정자일 수도, 차주 본인일 수도) — 최초 검차 완료 시점의 Booking에서 스냅샷
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   requesterName: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   requesterContact: string | null;
 
   // 실제 차주 — 운영자가 확인 후 채움. Booking.customerContact가 있으면 최초값으로 시딩되지만,
   // 신청자가 곧 차주가 아닌 경우엔 운영자가 미매칭 관리 화면에서 직접 조사해서 입력해야 함.
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   ownerName: string | null;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', nullable: true })
   ownerContact: string | null;
 
   // 실제 차주가 로그인 계정을 갖고 있으면 연결(느슨한 연결, FK 제약 없음 — 이 프로젝트 관례와 동일)
