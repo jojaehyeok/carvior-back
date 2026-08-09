@@ -1101,11 +1101,16 @@ export class BookingsService {
     // 완전히 구매해서 본인 상사에서 따로 팔 예정이라 마이페이지에서 숨긴 건은 목록에서 제외.
     // 진단완료됐는데 2주 넘도록 "구매완료"도 "숨기기"도 안 눌린 건은 대부분 구매를 포기한
     // 케이스라, 계속 더미로 쌓이지 않도록 목록에서 자동 제외(레코드 자체는 삭제 안 함).
+    // 취소된 건은 날짜만 바꿔서 재신청하면 되는 경우가 대부분이라 1주일이면 충분히 짧게 제외.
     const STALE_MS = 14 * 24 * 60 * 60 * 1000;
+    const CANCELLED_STALE_MS = 7 * 24 * 60 * 60 * 1000;
     const visible = matched.filter((b) => {
       if (b.buyerHidden) return false;
       if (b.status === 'COMPLETED' && !b.buyerPurchaseCompleted) {
         return Date.now() - new Date(b.createdAt).getTime() <= STALE_MS;
+      }
+      if (b.status === 'CANCELLED') {
+        return Date.now() - new Date(b.updatedAt).getTime() <= CANCELLED_STALE_MS;
       }
       return true;
     });
