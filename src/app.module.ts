@@ -30,6 +30,7 @@ import { PartnerApplicationsModule } from './partner-applications/partner-applic
 import { InspectionPaymentsModule } from './inspection-payments/inspection-payments.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
 import { SaleListingsModule } from './sale-listings/sale-listings.module';
+import { SaleTransactionsModule } from './sale-transactions/sale-transactions.module';
 
 @Module({
   imports: [
@@ -88,6 +89,7 @@ import { SaleListingsModule } from './sale-listings/sale-listings.module';
     InspectionPaymentsModule,
     VehiclesModule,
     SaleListingsModule,
+    SaleTransactionsModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, SolapiService, S3Service],
