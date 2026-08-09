@@ -1051,6 +1051,7 @@ export class BookingsService {
       paymentMethod: booking.paymentMethod,
       depositConfirmed: booking.depositConfirmed,
       buyerPurchaseCompleted: booking.buyerPurchaseCompleted,
+      buyerHidden: booking.buyerHidden,
       createdAt: booking.createdAt,
       refundPreview: this.computeRefund(booking),
       thumbnailUrl,
@@ -1097,7 +1098,9 @@ export class BookingsService {
     if (matched.length === 0) {
       throw new NotFoundException('일치하는 예약을 찾을 수 없습니다. 이름 또는 연락처를 다시 확인해주세요.');
     }
-    return Promise.all(matched.map((b) => this.toCustomerView(b)));
+    // 완전히 구매해서 본인 상사에서 따로 팔 예정이라 마이페이지에서 숨긴 건은 목록에서 제외
+    const visible = matched.filter((b) => !b.buyerHidden);
+    return Promise.all(visible.map((b) => this.toCustomerView(b)));
   }
 
   // PATCH: 고객 셀프 취소 — 상태만 CANCELLED로 바꾸고 실제 환불은 관리자가 수동 처리
@@ -1133,6 +1136,14 @@ export class BookingsService {
   async updateBuyerPurchaseStatus(id: number, contact: string | undefined, completed: boolean, name?: string): Promise<Booking> {
     const booking = await this.findBookingForCustomer(id, contact, name);
     booking.buyerPurchaseCompleted = completed;
+    return this.bookingRepository.save(booking);
+  }
+
+  // 완전히 구매해서 본인 상사(딜러)에서 따로 팔 예정 — 카비어에 낼 의사가 없어서
+  // 마이페이지 목록에서 아예 숨김(단방향, 되돌리는 UI는 아직 없음).
+  async updateBuyerHidden(id: number, contact: string | undefined, hidden: boolean, name?: string): Promise<Booking> {
+    const booking = await this.findBookingForCustomer(id, contact, name);
+    booking.buyerHidden = hidden;
     return this.bookingRepository.save(booking);
   }
 

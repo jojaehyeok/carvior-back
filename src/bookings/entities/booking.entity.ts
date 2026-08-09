@@ -265,6 +265,12 @@ export class Booking {
   @Column({ default: false })
   buyerPurchaseCompleted: boolean;
 
+  // 완전히 구매해서 본인 상사(딜러)에서 따로 팔 예정이라 카비어 스마트옥션에 낼 의사가 없는
+  // 건 — 마이페이지 목록에서 완전히 숨김. buyerPurchaseCompleted와 별개(구매완료는 했지만
+  // 카비어에는 안 낼 거라는 뜻).
+  @Column({ default: false })
+  buyerHidden: boolean;
+
   @CreateDateColumn()
   createdAt: Date;
 
