@@ -1,4 +1,4 @@
-import { Controller, Get, Param, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
 import { SaleListingsService } from './sale-listings.service';
 import { InternalKeyGuard } from '../store-items/internal-key.guard';
 
@@ -33,5 +33,16 @@ export class SaleListingsExternalController {
   @Get(':id')
   findOneForDealer(@Param('id') id: string) {
     return this.service.findOneForDealer(Number(id));
+  }
+
+  // 마이페이지 "스마트옥션에 출품하기" — 구매완료한 검차 신청자가 셀프서비스로 즉시 출품
+  @Post('self-list')
+  createSelfServiceListing(
+    @Body('carNumber') carNumber: string,
+    @Body('ownerName') ownerName: string,
+    @Body('ownerContact') ownerContact: string,
+    @Body('askingPrice') askingPrice: number,
+  ) {
+    return this.service.createSelfServiceListing(carNumber, ownerName, ownerContact, Number(askingPrice));
   }
 }

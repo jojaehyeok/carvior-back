@@ -54,6 +54,34 @@ export class SaleListingsService {
     return saved;
   }
 
+  // 마이페이지 "스마트옥션에 출품하기" 전용 셀프서비스 플로우 — 검차를 신청했던 사람이
+  // 실제로 그 차를 구매완료했다고 스스로 표시한 뒤, 이제 본인이 차주가 됐으니 직접 판매동의도
+  // 함께 처리한다(관리자 전화확인 대신 구매자 본인 확인으로 대체 — 스펙 3번 "차주 동의 없이
+  // 매물 생성 금지" 원칙은 유지하되 동의 주체만 다름). 기존 스마트옥션(StoreItem)으로 출품하던
+  // 걸 이 시스템으로 대체(2026-08-09 결정).
+  async createSelfServiceListing(
+    carNumber: string,
+    ownerName: string,
+    ownerContact: string,
+    askingPrice: number,
+  ): Promise<SaleListing> {
+    const clean = (carNumber || '').trim();
+    const vehicle = await this.vehicleRepo.findOne({ where: { carNumber: clean } });
+    if (!vehicle) throw new NotFoundException('검차 이력이 있는 차량만 출품할 수 있습니다.');
+    if (vehicle.saleStatus === 'LISTED') {
+      throw new BadRequestException('이미 출품된 차량입니다.');
+    }
+
+    vehicle.ownerName = ownerName;
+    vehicle.ownerContact = ownerContact;
+    vehicle.requesterIsOwner = true;
+    vehicle.saleStatus = 'OWNER_AGREED_TO_SELL';
+    if (!vehicle.ownerRespondedAt) vehicle.ownerRespondedAt = new Date();
+    await this.vehicleRepo.save(vehicle);
+
+    return this.createFromVehicle(vehicle.id, { askingPrice });
+  }
+
   // 판매매물 목록(관리자 화면) — 차량/검차 정보를 함께 반환
   async findAll(): Promise<any[]> {
     return this.dataSource.query(`
