@@ -1098,8 +1098,17 @@ export class BookingsService {
     if (matched.length === 0) {
       throw new NotFoundException('일치하는 예약을 찾을 수 없습니다. 이름 또는 연락처를 다시 확인해주세요.');
     }
-    // 완전히 구매해서 본인 상사에서 따로 팔 예정이라 마이페이지에서 숨긴 건은 목록에서 제외
-    const visible = matched.filter((b) => !b.buyerHidden);
+    // 완전히 구매해서 본인 상사에서 따로 팔 예정이라 마이페이지에서 숨긴 건은 목록에서 제외.
+    // 진단완료됐는데 2주 넘도록 "구매완료"도 "숨기기"도 안 눌린 건은 대부분 구매를 포기한
+    // 케이스라, 계속 더미로 쌓이지 않도록 목록에서 자동 제외(레코드 자체는 삭제 안 함).
+    const STALE_MS = 14 * 24 * 60 * 60 * 1000;
+    const visible = matched.filter((b) => {
+      if (b.buyerHidden) return false;
+      if (b.status === 'COMPLETED' && !b.buyerPurchaseCompleted) {
+        return Date.now() - new Date(b.createdAt).getTime() <= STALE_MS;
+      }
+      return true;
+    });
     return Promise.all(visible.map((b) => this.toCustomerView(b)));
   }
 
