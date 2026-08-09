@@ -74,4 +74,36 @@ export class SaleListingsService {
     if (!listing) throw new NotFoundException(`판매매물 ${id}을 찾을 수 없습니다.`);
     return listing;
   }
+
+  // 딜러 화면(4단계, 판매차량 목록)용 — 스펙 15번 금지사항: 차주 개인정보(ownerName/ownerContact/
+  // requesterName/requesterContact)는 절대 포함하지 않는다. 검차사진/결과/희망가격만 노출.
+  async findAllForDealer(): Promise<any[]> {
+    return this.dataSource.query(`
+      SELECT sl.id, sl.askingPrice, sl.minimumAcceptablePrice, sl.listingStatus,
+        sl.biddingStartAt, sl.biddingEndAt, sl.createdAt,
+        v.carNumber,
+        i.carModel, i.mileage, i.color, i.carHash
+      FROM sale_listings sl
+      LEFT JOIN vehicles v ON v.id = sl.vehicleId
+      LEFT JOIN inspections i ON i.id = sl.inspectionId
+      WHERE sl.listingStatus IN ('ACTIVE', 'TARGET_PRICE_MET')
+      ORDER BY sl.createdAt DESC
+    `);
+  }
+
+  async findOneForDealer(id: number): Promise<any> {
+    const rows = await this.dataSource.query(`
+      SELECT sl.id, sl.askingPrice, sl.minimumAcceptablePrice, sl.listingStatus,
+        sl.biddingStartAt, sl.biddingEndAt, sl.createdAt,
+        v.carNumber,
+        i.carModel, i.mileage, i.color, i.carHash, i.photos, i.inspectionDetails,
+        i.checklistPhotos, i.carStatus, i.checkedDamages
+      FROM sale_listings sl
+      LEFT JOIN vehicles v ON v.id = sl.vehicleId
+      LEFT JOIN inspections i ON i.id = sl.inspectionId
+      WHERE sl.id = ?
+    `, [id]);
+    if (!rows[0]) throw new NotFoundException(`판매매물 ${id}을 찾을 수 없습니다.`);
+    return rows[0];
+  }
 }
