@@ -1029,7 +1029,17 @@ export class BookingsService {
     return booking!;
   }
 
-  private toCustomerView(booking: Booking) {
+  // 진단 완료 건은 검차사진이 이미 있으므로 마이페이지 카드 썸네일로 첫 사진을 그대로 씀
+  // (카비어 로고 플레이스홀더 대신) — carHash도 같이 내려줘서 프론트가 /auction/market
+  // 스타일 상세뷰로 연결할 수 있게 함.
+  private async toCustomerView(booking: Booking) {
+    const inspection = booking.status === 'COMPLETED'
+      ? await this.inspectionRepository.findOne({ where: { bookingId: booking.id } })
+      : null;
+    const p = inspection?.photos;
+    const thumbnailUrl = p
+      ? (p.exterior?.[0] ?? p.interior?.[0] ?? p.extra?.[0] ?? p.engine?.[0] ?? p.wheel?.[0] ?? p.undercarriage?.[0] ?? p.damage?.[0])
+      : undefined;
     return {
       id: booking.id,
       carNumber: booking.carNumber,
@@ -1043,6 +1053,8 @@ export class BookingsService {
       buyerPurchaseCompleted: booking.buyerPurchaseCompleted,
       createdAt: booking.createdAt,
       refundPreview: this.computeRefund(booking),
+      thumbnailUrl,
+      carHash: inspection?.carHash,
     };
   }
 
@@ -1085,7 +1097,7 @@ export class BookingsService {
     if (matched.length === 0) {
       throw new NotFoundException('일치하는 예약을 찾을 수 없습니다. 이름 또는 연락처를 다시 확인해주세요.');
     }
-    return matched.map((b) => this.toCustomerView(b));
+    return Promise.all(matched.map((b) => this.toCustomerView(b)));
   }
 
   // PATCH: 고객 셀프 취소 — 상태만 CANCELLED로 바꾸고 실제 환불은 관리자가 수동 처리
