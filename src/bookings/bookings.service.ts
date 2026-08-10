@@ -846,6 +846,11 @@ export class BookingsService {
 
     Object.assign(booking, updateData);
     if (isSelfClaim) {
+      // ChavatarApp의 handleClaim()이 status:'CONFIRMED'로 보내는데, 이 값은 시스템 상태값
+      // (PENDING→ASSIGNED→COMPLETED)에 없는 값이라 대시보드의 "✅ 확인" 배지 조건
+      // (status==='ASSIGNED')을 못 타서 계속 미확인으로 보이던 버그 — assign()과 동일하게
+      // ASSIGNED로 정규화한다.
+      booking.status = 'ASSIGNED';
       booking.assignSource = 'self';
       booking.assignedAt = new Date();
       // 취소로 "재대기중" 상태였던 건을 셀프클레임하는 경우 — assign()과 동일하게
