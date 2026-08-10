@@ -139,6 +139,32 @@ export class StoreItemsService {
     return item;
   }
 
+  // 딜바타(딜러 앱) 경매장 탭용 — findAll()의 자동게시/자동마감 로직은 그대로 재사용하되
+  // (중복 구현 방지), 딜러에게 노출하면 안 되는 필드(adminMemo/sellerContact)는 제거하고
+  // 입찰 가능한(active) 매물만 내려준다.
+  async findActiveForDealer(): Promise<any[]> {
+    const rows = await this.findAll();
+    return rows
+      .filter((r: any) => r.status === 'active')
+      .map((r: any) => {
+        const { adminMemo, sellerContact, ...safe } = r;
+        return safe;
+      });
+  }
+
+  async findOneForDealer(id: number): Promise<any> {
+    const rows = await this.dataSource.query(`
+      SELECT si.*, i.carHash, i.firstCompletedAt,
+        CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
+      FROM store_items si
+      ${INSPECTION_JOIN}
+      WHERE si.id = ?
+    `, [id]);
+    if (!rows[0]) throw new NotFoundException(`스토어 아이템 ${id}를 찾을 수 없습니다.`);
+    const { adminMemo, sellerContact, ...safe } = rows[0];
+    return safe;
+  }
+
   // 관리자가 대시보드에서 낙찰 딜러의 차대금 입금(에스크로 예치)을 육안으로 확인하고 누르는 버튼 —
   // winner_selected 상태에서 이걸 확인해야 in_transit(탁송중)으로 넘어갈 수 있음.
   async confirmDeposit(id: number): Promise<StoreItem> {
