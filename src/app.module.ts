@@ -31,6 +31,7 @@ import { InspectionPaymentsModule } from './inspection-payments/inspection-payme
 import { VehiclesModule } from './vehicles/vehicles.module';
 import { SaleListingsModule } from './sale-listings/sale-listings.module';
 import { SaleTransactionsModule } from './sale-transactions/sale-transactions.module';
+import { SettlementExtraCostModule } from './settlement-extra-cost/settlement-extra-cost.module';
 
 @Module({
   imports: [
@@ -90,6 +91,7 @@ import { SaleTransactionsModule } from './sale-transactions/sale-transactions.mo
     VehiclesModule,
     SaleListingsModule,
     SaleTransactionsModule,
+    SettlementExtraCostModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, SolapiService, S3Service],
