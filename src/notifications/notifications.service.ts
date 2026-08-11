@@ -43,7 +43,10 @@ export class NotificationsService implements OnModuleInit {
           notification: { title, body },
           android: {
             priority: 'high',
-            notification: { sound: 'default' },
+            notification: {
+              sound: 'carvior_premium_beer_ad_notification',
+              channelId: 'cavior-alerts',
+            },
           },
           data: data ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) : {},
         });
@@ -66,7 +69,8 @@ export class NotificationsService implements OnModuleInit {
           },
           body: JSON.stringify({
             to: pushToken,
-            sound: 'default',
+            sound: 'carvior_premium_beer_ad_notification',
+            channelId: 'cavior-alerts',
             title,
             body,
             data: data ?? {},
