@@ -45,7 +45,7 @@ export class StoreItemsService {
 
   async findAll(): Promise<any[]> {
     const rows = await this.dataSource.query(`
-      SELECT si.*, i.carHash, i.firstCompletedAt, i.checkedDamages,
+      SELECT si.*, i.carHash, i.firstCompletedAt, i.checkedDamages, i.repairCost,
         CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
       FROM store_items si
       ${INSPECTION_JOIN}
@@ -122,7 +122,7 @@ export class StoreItemsService {
     // 이미 진단완료된 매물도 마이페이지에서 "검차 신청"이 다시 노출되는 버그가 있었음.
     return this.dataSource.query(
       `
-      SELECT si.*, i.carHash, i.firstCompletedAt,
+      SELECT si.*, i.carHash, i.firstCompletedAt, i.repairCost,
         CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
       FROM store_items si
       ${INSPECTION_JOIN}
@@ -154,7 +154,7 @@ export class StoreItemsService {
 
   async findOneForDealer(id: number): Promise<any> {
     const rows = await this.dataSource.query(`
-      SELECT si.*, i.carHash, i.firstCompletedAt,
+      SELECT si.*, i.carHash, i.firstCompletedAt, i.repairCost,
         CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
       FROM store_items si
       ${INSPECTION_JOIN}
