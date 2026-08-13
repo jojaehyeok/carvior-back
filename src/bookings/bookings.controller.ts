@@ -76,6 +76,19 @@ export class BookingsController {
     return this.bookingsService.selfCancel(Number(id), contact, name);
   }
 
+  // PATCH: 고객 셀프서비스 — 취소된 예약을 1시간 이내면 재결제 없이 날짜만 바꿔 재신청
+  @Patch(':id/reschedule')
+  async reschedule(
+    @Param('id') id: string,
+    @Body('contact') contact?: string,
+    @Body('name') name?: string,
+    @Body('preferredDateTime') preferredDateTime?: string,
+  ) {
+    if (!contact?.trim() && !name?.trim()) throw new BadRequestException('이름 또는 연락처 중 하나는 입력해주세요.');
+    if (!preferredDateTime?.trim()) throw new BadRequestException('희망일시를 선택해주세요.');
+    return this.bookingsService.reschedule(Number(id), contact, name, preferredDateTime);
+  }
+
   // PATCH: 신청자(대부분 구매예정자) 본인이 마이페이지에서 "구매완료" 셀프 표시/해제
   @Patch(':id/buyer-purchase-status')
   async updateBuyerPurchaseStatus(

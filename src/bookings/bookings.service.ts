@@ -1150,6 +1150,40 @@ export class BookingsService {
     return { success: true, data: saved, refund };
   }
 
+  // PATCH: 고객 셀프서비스 — 취소된 예약을 결제 후 1시간 이내(=환불정책상 전액환불 구간)라면
+  // 새로 신청/재결제 없이 날짜만 바꿔서 그대로 되살린다. 이 창구를 넘기면 이미 관리자가
+  // 수동 환불을 처리했을 가능성이 있어 막고 새로 신청하도록 안내한다.
+  async reschedule(id: number, contact: string | undefined, name: string | undefined, preferredDateTime: string) {
+    const booking = await this.findBookingForCustomer(id, contact, name);
+
+    if (booking.status !== 'CANCELLED') {
+      throw new BadRequestException('취소된 예약만 날짜를 바꿔 재신청할 수 있습니다.');
+    }
+    if (Date.now() - booking.createdAt.getTime() >= 60 * 60 * 1000) {
+      throw new BadRequestException('신청 후 1시간이 지나 날짜 변경이 불가합니다. 새로 신청해주세요.');
+    }
+    const newVisitTime = this.parsePreferredDateTime(preferredDateTime);
+    if (!newVisitTime) {
+      throw new BadRequestException('올바른 희망일시를 선택해주세요.');
+    }
+
+    const prevDateTime = booking.preferredDateTime;
+    booking.status = 'PENDING';
+    booking.cancelledBySelf = false;
+    booking.refundAmount = null;
+    booking.preferredDateTime = preferredDateTime;
+    const saved = await this.bookingRepository.save(booking);
+
+    try {
+      await this.solapiService.sendSms(
+        '01022856017',
+        `[카비어] 고객 날짜변경 재신청 ${booking.carNumber} ${prevDateTime} → ${preferredDateTime}`,
+      );
+    } catch {}
+
+    return { success: true, data: await this.toCustomerView(saved) };
+  }
+
   // 마이페이지에서 신청자(대부분 구매예정자) 본인이 "구매완료" 셀프 표시 — 검증 수단이
   // 없는 자기신고 값이라 상태를 강제로 바꾸는 용도로 쓰면 안 됨(표시용).
   async updateBuyerPurchaseStatus(id: number, contact: string | undefined, completed: boolean, name?: string): Promise<Booking> {
