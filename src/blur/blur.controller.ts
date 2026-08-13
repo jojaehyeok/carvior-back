@@ -66,4 +66,19 @@ export class BlurController {
     const url = await this.blurService.manualBlurRegions(body.imageUrl, body.regions ?? []);
     return { ok: true, url };
   }
+
+  // 자동/수동 블러가 사진을 잘못 덮어썼을 때, S3 버전관리(2026-08-13 활성화)로 남은
+  // 이전 버전 목록을 조회 — 그 이전에 덮어써진 사진은 버전 기록이 없어 빈 배열 반환
+  @Post('list-versions')
+  async listVersions(@Body() body: { imageUrl: string }) {
+    const versions = await this.blurService.listVersions(body.imageUrl);
+    return { ok: true, versions };
+  }
+
+  // 골라낸 과거 버전을 현재 버전으로 복원
+  @Post('restore-version')
+  async restoreVersion(@Body() body: { imageUrl: string; versionId: string }): Promise<{ ok: boolean; url: string }> {
+    const url = await this.blurService.restoreVersion(body.imageUrl, body.versionId);
+    return { ok: true, url };
+  }
 }

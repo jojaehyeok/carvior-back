@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, ListObjectVersionsCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
 import * as https from 'https';
 import * as http from 'http';
@@ -158,14 +158,18 @@ export class BlurService implements OnModuleInit {
       .toBuffer();
   }
 
-  private async reuploadToS3(buffer: Buffer, originalUrl: string): Promise<string> {
+  private parseS3Key(url: string): string {
     // 재처리(같은 사진을 다시 blur)로 들어온 ?v= 캐시버스팅 쿼리는 키 계산에서 제외
-    const withoutQuery = originalUrl.split('?')[0];
+    const withoutQuery = url.split('?')[0];
     const after = withoutQuery.split('.amazonaws.com/')[1];
-    if (!after) throw new Error('S3 URL 파싱 실패: ' + originalUrl);
+    if (!after) throw new Error('S3 URL 파싱 실패: ' + url);
     // store/ 중복 방지
     const cleanAfter = after.startsWith('store/') ? after.slice('store/'.length) : after;
-    const key = `store/${cleanAfter}`;
+    return `store/${cleanAfter}`;
+  }
+
+  private async reuploadToS3(buffer: Buffer, originalUrl: string): Promise<string> {
+    const key = this.parseS3Key(originalUrl);
 
     await this.s3.send(
       new PutObjectCommand({
@@ -177,6 +181,37 @@ export class BlurService implements OnModuleInit {
     );
     // 같은 키를 덮어쓰면 브라우저/CDN이 이전(방향 틀어진) 캐시를 계속 보여줄 수 있어
     // 버전 쿼리로 캐시를 무효화
+    return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}?v=${Date.now()}`;
+  }
+
+  // 버킷 버전관리(2026-08-13 활성화)가 켜진 이후 덮어써진 사진만 이전 버전 목록을 볼 수 있음 —
+  // 그 이전에 덮어써진 건 버전 기록 자체가 없어 복구 불가.
+  async listVersions(imageUrl: string): Promise<{ versionId: string; lastModified: string; isLatest: boolean; sizeKB: number }[]> {
+    const key = this.parseS3Key(imageUrl);
+    const res = await this.s3.send(new ListObjectVersionsCommand({ Bucket: this.bucket, Prefix: key }));
+    return (res.Versions ?? [])
+      .filter((v) => v.Key === key)
+      .sort((a, b) => (b.LastModified?.getTime() ?? 0) - (a.LastModified?.getTime() ?? 0))
+      .map((v) => ({
+        versionId: v.VersionId!,
+        lastModified: v.LastModified?.toISOString() ?? '',
+        isLatest: !!v.IsLatest,
+        sizeKB: Math.round((v.Size ?? 0) / 1024),
+      }));
+  }
+
+  // 골라낸 과거 버전을 현재 버전으로 승격(=복원) — S3는 버전을 되감는 개념이 없어서
+  // 과거 버전을 그대로 복사해 새 현재 버전으로 만드는 방식으로 구현
+  async restoreVersion(imageUrl: string, versionId: string): Promise<string> {
+    const key = this.parseS3Key(imageUrl);
+    const encodedKey = encodeURIComponent(key).replace(/%2F/g, '/');
+    await this.s3.send(
+      new CopyObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        CopySource: `${this.bucket}/${encodedKey}?versionId=${versionId}`,
+      }),
+    );
     return `https://${this.bucket}.s3.${this.region}.amazonaws.com/${key}?v=${Date.now()}`;
   }
 
