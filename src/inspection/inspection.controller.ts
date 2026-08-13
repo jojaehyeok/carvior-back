@@ -129,6 +129,16 @@ export class InspectionController {
     return this.inspectionService.updateDamages(parseInt(bookingId), checkedDamages);
   }
 
+  // 완료된 리포트도 번호판 블러 보정본 교체는 4시간 잠금 없이 허용 (내용 조작 아님)
+  @Patch(':bookingId/blur-fix')
+  @UseGuards(InternalKeyGuard)
+  replaceBlurredPhoto(
+    @Param('bookingId') bookingId: string,
+    @Body() body: { category: string; index: number; newUrl: string },
+  ) {
+    return this.inspectionService.replaceBlurredPhoto(parseInt(bookingId), body.category, Number(body.index), body.newUrl);
+  }
+
   // 7. 관리자/발주사 → 완료된 리포트 오탈자·누락값 직접 수정 (스마트옥션 매물 등록과는 별개)
   @Patch(':bookingId/report-fields')
   @UseGuards(InternalKeyGuard)

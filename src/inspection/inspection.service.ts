@@ -601,6 +601,36 @@ export class InspectionService {
     return saved;
   }
 
+  // 완료된 리포트라도 "같은 사진의 번호판 블러 보정본으로 교체"는 4시간 잠금과 무관하게
+  // 허용 — 내용 조작이 아니라 개인정보(번호판) 보정이라 updateReportFields의 잠금 취지와
+  // 무관함. 단, 완전히 다른 사진으로 바꿔치기하는 악용을 막기 위해 원본 파일명(타임스탬프_
+  // 원본파일명 부분)이 같은 URL로만 교체 가능하게 제한한다.
+  private static readonly PHOTO_CATEGORIES = ['exterior', 'wheel', 'undercarriage', 'interior', 'engine', 'damage', 'extra', 'extraMemo'] as const;
+
+  async replaceBlurredPhoto(bookingId: number, category: string, index: number, newUrl: string) {
+    const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
+    if (!inspection) throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
+
+    if (!InspectionService.PHOTO_CATEGORIES.includes(category as any)) {
+      throw new BadRequestException('잘못된 사진 카테고리입니다.');
+    }
+
+    const arr = (inspection.photos as any)?.[category];
+    if (!Array.isArray(arr) || !arr[index]) {
+      throw new BadRequestException('해당 사진을 찾을 수 없습니다.');
+    }
+
+    const filename = (url: string) => url.split('?')[0].split('/').pop();
+    if (filename(arr[index]) !== filename(newUrl)) {
+      throw new BadRequestException('같은 사진의 블러 보정 버전으로만 교체할 수 있습니다.');
+    }
+
+    const updated = [...arr];
+    updated[index] = newUrl;
+    inspection.photos = { ...(inspection.photos as any), [category]: updated };
+    return this.inspectionRepository.save(inspection);
+  }
+
   async getInspectionByBookingId(bookingId: number) {
     const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
     if (!inspection) throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
