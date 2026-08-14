@@ -32,8 +32,13 @@ export class NotificationsService implements OnModuleInit {
     title: string,
     body: string,
     data?: Record<string, unknown>,
+    // 자동배정 확정/미배정 신규요청 브로드캐스트처럼 상황별로 알림음을 구분해야 할 때만 넘김 —
+    // 안 넘기면 기존 기본 채널/사운드 그대로 사용(수동배정, 취소 안내 등 나머지 전부).
+    channel?: { channelId: string; sound: string },
   ) {
     if (!pushToken) return;
+    const channelId = channel?.channelId ?? 'cavior-alerts';
+    const sound = channel?.sound ?? 'carvior_premium_beer_ad_notification';
 
     // FCM v1 (네이티브 빌드 토큰)
     if (this.fcmReady && !pushToken.startsWith('ExponentPushToken')) {
@@ -44,8 +49,8 @@ export class NotificationsService implements OnModuleInit {
           android: {
             priority: 'high',
             notification: {
-              sound: 'carvior_premium_beer_ad_notification',
-              channelId: 'cavior-alerts',
+              sound,
+              channelId,
             },
           },
           data: data ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) : {},
@@ -69,8 +74,8 @@ export class NotificationsService implements OnModuleInit {
           },
           body: JSON.stringify({
             to: pushToken,
-            sound: 'carvior_premium_beer_ad_notification',
-            channelId: 'cavior-alerts',
+            sound,
+            channelId,
             title,
             body,
             data: data ?? {},
