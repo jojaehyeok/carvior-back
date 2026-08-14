@@ -3,6 +3,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, Between, In } from 'typeorm';
 import { Review } from './entities/review.entity';
 import { Booking } from '../bookings/entities/booking.entity';
+import { Driver } from '../drivers/entities/driver.entity';
+import { Inspection } from '../inspection/entities/inspection.entity';
 
 @Injectable()
 export class ReviewsService {
@@ -11,7 +13,32 @@ export class ReviewsService {
     private readonly reviewRepository: Repository<Review>,
     @InjectRepository(Booking)
     private readonly bookingRepository: Repository<Booking>,
+    @InjectRepository(Driver)
+    private readonly driverRepository: Repository<Driver>,
+    @InjectRepository(Inspection)
+    private readonly inspectionRepository: Repository<Inspection>,
   ) {}
+
+  // 홈페이지 공개 후기 카드용 — 평가사 프로필사진·차종명만 얇게 붙여준다(평가사 연락처·
+  // 위치 등 민감정보가 담긴 드라이버 레코드 전체를 그대로 내려주면 안 되므로 여기서만 조합)
+  private async enrichForPublic(reviews: Review[]) {
+    const driverIds = [...new Set(reviews.map((r) => r.driverId).filter(Boolean))] as string[];
+    const bookingIds = reviews.map((r) => r.bookingId);
+
+    const drivers: Driver[] = driverIds.length ? await this.driverRepository.findBy({ id: In(driverIds) as any }) : [];
+    const inspections: Inspection[] = bookingIds.length ? await this.inspectionRepository.findBy({ bookingId: In(bookingIds) }) : [];
+
+    const photoByDriverId = new Map<string, string | null>();
+    for (const d of drivers) photoByDriverId.set(String((d as any).id), (d as any).photoUrl ?? null);
+    const modelByBookingId = new Map<number, string | null>();
+    for (const i of inspections) modelByBookingId.set(i.bookingId, i.carModel ?? null);
+
+    return reviews.map((r) => ({
+      ...r,
+      driverPhotoUrl: r.driverId ? photoByDriverId.get(String(r.driverId)) ?? null : null,
+      carModel: modelByBookingId.get(r.bookingId) ?? null,
+    }));
+  }
 
   async create(data: {
     bookingId: number;
@@ -34,15 +61,17 @@ export class ReviewsService {
   // bookingId로 Booking을 먼저 조회해 매칭한다(대시보드 회사별 CS리뷰 스코프용).
   async findAll(source?: string) {
     if (!source) {
-      return await this.reviewRepository.find({ order: { createdAt: 'DESC' } });
+      const reviews = await this.reviewRepository.find({ order: { createdAt: 'DESC' } });
+      return this.enrichForPublic(reviews);
     }
     const bookings = await this.bookingRepository.find({ where: { source }, select: ['id'] });
     const bookingIds = bookings.map((b) => b.id);
     if (bookingIds.length === 0) return [];
-    return await this.reviewRepository.find({
+    const reviews = await this.reviewRepository.find({
       where: { bookingId: In(bookingIds) },
       order: { createdAt: 'DESC' },
     });
+    return this.enrichForPublic(reviews);
   }
 
   // 특정 진단사의 오늘 완료분 리뷰
