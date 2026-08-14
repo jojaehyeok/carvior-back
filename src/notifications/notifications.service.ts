@@ -32,13 +32,14 @@ export class NotificationsService implements OnModuleInit {
     title: string,
     body: string,
     data?: Record<string, unknown>,
-    // 자동배정 확정/미배정 신규요청 브로드캐스트처럼 상황별로 알림음을 구분해야 할 때만 넘김 —
-    // 안 넘기면 기존 기본 채널/사운드 그대로 사용(수동배정, 취소 안내 등 나머지 전부).
+    // 미배정 신규요청 브로드캐스트("도착했습니다")처럼 기본음과 달라야 할 때만 넘김 —
+    // 안 넘기면 기본음("배정되었습니다")을 씀. 배정 관련 알림(자동/수동/에이전트 배정, 재배정 등)은
+    // 전부 이 기본값을 그대로 타므로 따로 넘길 필요 없음.
     channel?: { channelId: string; sound: string },
   ) {
     if (!pushToken) return;
-    const channelId = channel?.channelId ?? 'cavior-alerts';
-    const sound = channel?.sound ?? 'carvior_premium_beer_ad_notification';
+    const channelId = channel?.channelId ?? 'cavior-auto-assigned';
+    const sound = channel?.sound ?? 'carvior_auto_assigned';
 
     // FCM v1 (네이티브 빌드 토큰)
     if (this.fcmReady && !pushToken.startsWith('ExponentPushToken')) {

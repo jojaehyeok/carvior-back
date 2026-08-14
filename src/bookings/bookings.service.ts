@@ -32,9 +32,9 @@ const KNOWN_B2C_SOURCES = new Set([
 // 자동배정·전체 브로드캐스트를 건너뛰고 관리자가 대시보드에서 직접 배정하게 둔다.
 const AUTO_ASSIGN_DAYS_THRESHOLD = 5;
 
-// 자동배정 확정 알림과 미배정 신규요청 브로드캐스트는 서로 다른 상황이라
-// 앱 쪽 알림음도 구분됨(ChavatarApp app/(tabs)/index.tsx의 채널 정의와 매칭).
-const PUSH_CHANNEL_AUTO_ASSIGNED = { channelId: 'cavior-auto-assigned', sound: 'carvior_auto_assigned' };
+// 배정 관련 알림(자동/수동/에이전트 배정)은 NotificationsService.sendPush의 기본음
+// ("배정되었습니다")을 그대로 씀. 미배정 신규요청 브로드캐스트만 예외로 다른 채널/음을 씀
+// (ChavatarApp app/(tabs)/index.tsx의 채널 정의와 매칭).
 const PUSH_CHANNEL_NEW_REQUEST = { channelId: 'cavior-new-request', sound: 'carvior_new_request' };
 
 @Injectable()
@@ -928,7 +928,6 @@ export class BookingsService {
           source === 'auto' ? '(자동배정) 신규 신청이 접수되었습니다.' : source === 'agent' ? '(에이전트 배정) 진단건이 배정되었습니다.' : '(수동배정) 진단건이 확정되었습니다.',
           `${saved.carOwner}님 · ${saved.carNumber} · ${saved.preferredDateTime}`,
           { bookingId: saved.id },
-          source === 'auto' ? PUSH_CHANNEL_AUTO_ASSIGNED : undefined,
         );
       }
 
