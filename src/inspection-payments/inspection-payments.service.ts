@@ -25,16 +25,20 @@ function naverPayConfig() {
 }
 
 interface InspectionOrderPayload {
+  source?: string;
   carNumber?: string;
+  carModel?: string;
   carOwner?: string;
   contact?: string;
   address?: string;
+  detailAddress?: string;
   preferredDateTime?: string;
   email?: string;
   dealerName?: string;
   dealerContact?: string;
   listingUrl?: string;
   carOrigin?: string;
+  additionalMemo?: string;
   amount?: number;
 }
 
@@ -53,11 +57,15 @@ export class InspectionPaymentsService {
     order: InspectionOrderPayload,
   ) {
     const orderPayload = {
-      source:            'CARVIOR_INSPECTION',
+      // 딜바타(딜러 앱) 제휴검차처럼 소스 구분이 필요한 호출자는 override 가능 —
+      // 안 넘기면 기존 웹 구매동행(/inspection)과 동일하게 CARVIOR_INSPECTION 유지.
+      source:            order.source ?? 'CARVIOR_INSPECTION',
       carNumber:         order.carNumber  ?? '',
+      carModel:          order.carModel   ?? '',
       carOwner:          order.carOwner   ?? '',
       contact:           order.contact    ?? '',
       address:           order.address    ?? '',
+      detailAddress:     order.detailAddress ?? '',
       preferredDateTime: order.preferredDateTime ?? '',
       paymentMethod,
       amount:            order.amount,
@@ -68,6 +76,7 @@ export class InspectionPaymentsService {
       dealerName:        order.dealerName ?? '',
       dealerContact:     order.dealerContact ?? '',
       listingUrl:        order.listingUrl ?? '',
+      additionalMemo:    order.additionalMemo ?? '',
     };
 
     await this.bookingsService.create(orderPayload as any);
