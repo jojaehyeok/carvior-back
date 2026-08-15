@@ -96,6 +96,12 @@ export class UsersController {
     return this.svc.updateAdminInfo(Number(id), body);
   }
 
+  @Patch(':id/push-token')
+  async savePushToken(@Param('id') id: string, @Body('pushToken') pushToken: string) {
+    await this.svc.updatePushToken(Number(id), pushToken);
+    return { success: true };
+  }
+
   @Patch(':id/marketing-consent')
   updateMarketingConsent(@Param('id') id: string, @Body() body: { marketingConsent: boolean }) {
     return this.svc.updateMarketingConsent(Number(id), !!body.marketingConsent);

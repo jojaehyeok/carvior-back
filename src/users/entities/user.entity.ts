@@ -69,6 +69,10 @@ export class User {
   @Column({ default: false })
   marketingConsent: boolean;
 
+  // 딜바타(딜러 앱) 푸쉬 알림용 — drivers.pushToken과 동일 패턴(Expo/FCM 토큰 그대로 저장)
+  @Column({ type: 'varchar', nullable: true })
+  pushToken: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

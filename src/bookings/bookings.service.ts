@@ -24,6 +24,8 @@ const KNOWN_B2C_SOURCES = new Set([
   'INSPECTION',
   'SIMPLE_FORM',
   'PRIVATE_DEAL_FORM',
+  // 딜바타(딜러 앱) "제휴검차" 탭 — 딜러 본인이 개인적으로 사려는 차량을 검차 신청
+  'DEALER_PARTNER_INSPECTION',
 ]);
 
 // 자동배정은 "지금 이 순간 활성 상태인 진단사"만 보고 판단하는 즉시배정 로직이라,
@@ -701,9 +703,12 @@ export class BookingsService {
   // 앱 어느 화면에도 노출되지 않게 하기 위함(구버전 앱도 소급 적용됨). source를 명시하면
   // 정확히 일치하는 것만 가져오므로 이 필터와 무관 — "자체 진단 목록" 탭은 source에
   // "self-{company}"를 그대로 넘겨서 조회하니 영향 없음.
-  async findAll(source?: string, includeSelf = false): Promise<(Booking & { carHash?: string | null; firstCompletedAt?: Date | null })[]> {
+  async findAll(source?: string, includeSelf = false, contact?: string): Promise<(Booking & { carHash?: string | null; firstCompletedAt?: Date | null })[]> {
     const bookings = await this.bookingRepository.find({
-      where: source ? { source } : {},
+      where: {
+        ...(source ? { source } : {}),
+        ...(contact ? { contact } : {}),
+      },
       order: { createdAt: 'DESC' },
     });
     const visible = (!source && !includeSelf)

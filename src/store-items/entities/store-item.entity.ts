@@ -184,6 +184,28 @@ export class StoreItem {
   @Column({ type: 'varchar', nullable: true })
   transferredRegistrationUrl: string | null;
 
+  // 낙찰 딜러가 실물 확인을 위해 방문할 일정 — winner_selected 단계 안의 보조 정보,
+  // saleStage 체인(bidding→winner_selected→in_transit→...)은 그대로 두고 별도 컬럼으로만 관리.
+  @Column({ type: 'timestamp', nullable: true })
+  visitScheduledAt: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  visitRequestedAt: Date | null;
+
+  // 방문 후 실물 확인 결과로 딜러가 신청하는 가격 재조정(감가). 판매자/관리자 확인 전까지는
+  // priceAdjustmentConfirmed=false인 "신청" 상태로만 존재 — 자동으로 가격에 반영하지 않는다.
+  @Column({ type: 'int', nullable: true })
+  priceAdjustmentAmount: number | null;
+
+  @Column({ type: 'text', nullable: true })
+  priceAdjustmentReason: string | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  priceAdjustmentRequestedAt: Date | null;
+
+  @Column({ default: false })
+  priceAdjustmentConfirmed: boolean;
+
   @CreateDateColumn()
   registeredAt: Date;
 

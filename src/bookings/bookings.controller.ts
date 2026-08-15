@@ -251,8 +251,8 @@ export class BookingsController {
   // 예: /api/v1/external/request/list?source=anyone-motors
   // source 없이 조회 시 자체 신청(self-) 건은 기본 제외됨 — includeSelf=true로 명시하면 포함
   @Get('list')
-  async getList(@Query('source') source?: string, @Query('includeSelf') includeSelf?: string) {
-    return await this.bookingsService.findAll(source, includeSelf === 'true');
+  async getList(@Query('source') source?: string, @Query('includeSelf') includeSelf?: string, @Query('contact') contact?: string) {
+    return await this.bookingsService.findAll(source, includeSelf === 'true', contact);
   }
 
   // GET: 전화번호로 개별(B2C) 완료건수 확인 — 파트너패널 제안 자격 체크용

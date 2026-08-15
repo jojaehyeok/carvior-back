@@ -8,11 +8,12 @@ import { BidsController } from './bids.controller';
 import { SolapiService } from '../solapi/solapi.service';
 import { DealerPenaltiesModule } from '../dealer-penalties/dealer-penalties.module';
 import { WinnerConfirmationPenaltyService } from './winner-confirmation-penalty.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Module({
   imports: [TypeOrmModule.forFeature([Bid, StoreItem, User]), DealerPenaltiesModule],
   controllers: [BidsController],
-  providers: [BidsService, SolapiService, WinnerConfirmationPenaltyService],
+  providers: [BidsService, SolapiService, WinnerConfirmationPenaltyService, NotificationsService],
   exports: [BidsService],
 })
 export class BidsModule {}

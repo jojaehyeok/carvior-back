@@ -17,8 +17,8 @@ export class BidsController {
 
   @Get('external/store-items/:id/bids')
   @UseGuards(InternalKeyGuard)
-  findByItem(@Param('id') id: string) {
-    return this.bidsService.findByItem(Number(id));
+  countByItem(@Param('id') id: string, @Query('dealerId') dealerId?: string) {
+    return this.bidsService.countByItem(Number(id), dealerId ? Number(dealerId) : undefined);
   }
 
   // 딜러앱 "입찰한 물건" / "낙찰한 물건" 탭용
@@ -33,6 +33,20 @@ export class BidsController {
   @UseGuards(InternalKeyGuard)
   confirmWinner(@Param('id') id: string, @Body('dealerId') dealerId: number) {
     return this.bidsService.confirmWinner(Number(id), Number(dealerId));
+  }
+
+  // 딜러앱 — 낙찰 후 실물 확인 방문일정 입력
+  @Patch('external/store-items/:id/visit-schedule')
+  @UseGuards(InternalKeyGuard)
+  scheduleVisit(@Param('id') id: string, @Body() body: { dealerId: number; visitScheduledAt: string }) {
+    return this.bidsService.scheduleVisit(Number(id), Number(body.dealerId), body.visitScheduledAt);
+  }
+
+  // 딜러앱 — 방문 후 실물 확인 결과로 감가 신청
+  @Patch('external/store-items/:id/price-adjustment')
+  @UseGuards(InternalKeyGuard)
+  requestPriceAdjustment(@Param('id') id: string, @Body() body: { dealerId: number; amount: number; reason: string }) {
+    return this.bidsService.requestPriceAdjustment(Number(id), Number(body.dealerId), Number(body.amount), body.reason);
   }
 
   @Patch('admin/bids/:bidId/select-winner')

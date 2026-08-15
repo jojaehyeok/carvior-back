@@ -146,6 +146,10 @@ export class UsersService {
     return this.repo.save(user);
   }
 
+  async updatePushToken(id: number, pushToken: string): Promise<void> {
+    await this.repo.update(id, { pushToken });
+  }
+
   async findAdmins(): Promise<User[]> {
     return this.repo.find({ where: { role: 'admin' }, order: { createdAt: 'DESC' } });
   }
