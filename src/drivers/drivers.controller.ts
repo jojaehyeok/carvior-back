@@ -1,4 +1,4 @@
-import { Controller, Post, Body, UploadedFile, UseInterceptors, Patch, Param, Get, BadRequestException } from '@nestjs/common';
+import { Controller, Post, Body, UploadedFile, UseInterceptors, Patch, Delete, Param, Get, BadRequestException } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DriversService } from './drivers.service';
 import { S3Service } from '../s3/s3.service';
@@ -48,6 +48,12 @@ export class DriversController {
   @Get(':id')
   async findOne(@Param('id') id: string) {
     return this.driversService.findById(Number(id));
+  }
+
+  // 회원 탈퇴 — 앱에서 진단사 본인이 비밀번호를 입력해 직접 계정을 삭제
+  @Delete(':id')
+  async remove(@Param('id') id: string, @Body('password') password: string) {
+    return await this.driversService.remove(Number(id), password);
   }
 
   @Patch(':id/availability')

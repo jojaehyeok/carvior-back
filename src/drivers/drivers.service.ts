@@ -1,4 +1,4 @@
-import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
@@ -123,6 +123,22 @@ export class DriversService {
     if (!driver) throw new NotFoundException('진단사를 찾을 수 없습니다.');
     driver.photoUrl = photoUrl;
     return await this.driverRepository.save(driver);
+  }
+
+  // 회원 탈퇴 — 비밀번호 확인 후 계정을 완전히 삭제한다. assignedDriverId/assignedDriverName은
+  // Booking의 실제 FK가 아니라 배정 시점에 남긴 문자열 스냅샷이라, 계정이 지워져도 과거 배정
+  // 이력·정산 기록은 그대로 유지된다(개인정보만 사라지고 거래 이력은 보존되는 일반적인 패턴).
+  async remove(id: number, password: string) {
+    const driver = await this.driverRepository
+      .createQueryBuilder('driver')
+      .addSelect('driver.password')
+      .where('driver.id = :id', { id })
+      .getOne();
+    if (!driver) throw new NotFoundException('진단사를 찾을 수 없습니다.');
+    const valid = await this.verifyPassword(driver, password);
+    if (!valid) throw new UnauthorizedException('비밀번호가 일치하지 않습니다.');
+    await this.driverRepository.delete(id);
+    return { success: true };
   }
 
   async savePushToken(id: number, pushToken: string) {
