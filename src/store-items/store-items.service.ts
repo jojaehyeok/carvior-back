@@ -152,6 +152,31 @@ export class StoreItemsService {
       });
   }
 
+  // 일반 고객용(신규 고객 앱) 매물 목록 — 딜러용 필드(입찰/에스크로/탁송 진행상태,
+  // 차주 연락처·차량번호 등)를 전부 걸러내고, 웹 /buy 페이지에 이미 공개로 노출되는
+  // 항목만 화이트리스트로 반환한다. hidePrice가 켜진 매물은 가격을 숨긴다.
+  private static readonly PUBLIC_FIELDS = [
+    'id', 'titleKo', 'titleEn', 'trim', 'year', 'mileage', 'fuel', 'displacement',
+    'transmission', 'color', 'colorKo', 'accident', 'priceKRW', 'priceUSD', 'category',
+    'region', 'hasReport', 'location', 'doors', 'seats', 'inspectedAt', 'photos',
+    'specs', 'options', 'views', 'likes', 'carHash', 'registeredAt',
+  ] as const;
+
+  async findActiveForPublic(): Promise<any[]> {
+    const rows = await this.findAll();
+    return rows
+      .filter((r: any) => r.status === 'active')
+      .map((r: any) => {
+        const safe: Record<string, unknown> = {};
+        for (const key of StoreItemsService.PUBLIC_FIELDS) safe[key] = r[key];
+        if (r.hidePrice) {
+          safe.priceKRW = null;
+          safe.priceUSD = null;
+        }
+        return safe;
+      });
+  }
+
   async findOneForDealer(id: number): Promise<any> {
     const rows = await this.dataSource.query(`
       SELECT si.*, i.carHash, i.firstCompletedAt, i.repairCost,
