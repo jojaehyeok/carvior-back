@@ -1,4 +1,4 @@
-import { Controller, Get } from '@nestjs/common';
+import { Controller, Get, Param } from '@nestjs/common';
 import { StoreItemsService } from './store-items.service';
 
 // 일반 고객용(신규 고객 앱) 매물 둘러보기 — 로그인/내부키 없이 완전 공개.
@@ -11,5 +11,10 @@ export class StoreItemsConsumerController {
   @Get()
   findActiveForPublic() {
     return this.service.findActiveForPublic();
+  }
+
+  @Get(':id')
+  findOneForPublic(@Param('id') id: string) {
+    return this.service.findOneForPublic(Number(id));
   }
 }

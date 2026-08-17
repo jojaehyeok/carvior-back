@@ -177,6 +177,18 @@ export class StoreItemsService {
       });
   }
 
+  async findOneForPublic(id: number): Promise<any> {
+    const row = await this.findOneForDealer(id);
+    if (row.status !== 'active') throw new NotFoundException(`스토어 아이템 ${id}를 찾을 수 없습니다.`);
+    const safe: Record<string, unknown> = {};
+    for (const key of StoreItemsService.PUBLIC_FIELDS) safe[key] = row[key];
+    if (row.hidePrice) {
+      safe.priceKRW = null;
+      safe.priceUSD = null;
+    }
+    return safe;
+  }
+
   async findOneForDealer(id: number): Promise<any> {
     const rows = await this.dataSource.query(`
       SELECT si.*, i.carHash, i.firstCompletedAt, i.repairCost,
