@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, ConflictException, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { JwtService } from '@nestjs/jwt';
 import { User } from './entities/user.entity';
 import * as bcrypt from 'bcryptjs';
 
@@ -9,7 +10,13 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private readonly repo: Repository<User>,
+    private readonly jwt: JwtService,
   ) {}
+
+  // 고객용 네이티브 앱 전용 — 웹은 계속 NextAuth 자체 세션을 쓰므로 영향 없음
+  private issueToken(userId: number): string {
+    return this.jwt.sign({ sub: userId });
+  }
 
   async findByEmail(email: string): Promise<User | null> {
     return this.repo.findOne({ where: { email } });
@@ -34,7 +41,7 @@ export class UsersService {
     businessNumber?: string;
     companyName?: string;
     marketingConsent?: boolean;
-  }): Promise<User> {
+  }): Promise<User & { token: string }> {
     const existing = await this.findByEmail(data.email);
     if (existing) throw new ConflictException('이미 사용 중인 이메일입니다.');
 
@@ -58,10 +65,14 @@ export class UsersService {
       dealerStatus:      isDealer ? 'pending' : 'none',
       marketingConsent:  data.marketingConsent ?? false,
     });
-    return this.repo.save(user);
+    const saved = await this.repo.save(user);
+    // save()는 select:false와 무관하게 넘겨받은 객체를 그대로 반환하므로
+    // 해시된 비밀번호라도 응답에 남지 않게 명시적으로 제거한다
+    const { password: _pw, ...safe } = saved as any;
+    return { ...(safe as User), token: this.issueToken(saved.id) };
   }
 
-  async login(email: string, password: string): Promise<User> {
+  async login(email: string, password: string): Promise<User & { token: string }> {
     const user = await this.repo
       .createQueryBuilder('user')
       .addSelect('user.password')
@@ -73,7 +84,9 @@ export class UsersService {
     if (!ok)  throw new UnauthorizedException('이메일 또는 비밀번호가 올바르지 않습니다.');
 
     const { password: _, ...safe } = user as any;
-    return safe as User;
+    // 웹은 이 응답에서 자기가 쓰는 필드만 읽고 나머지는 무시하므로 token 필드
+    // 추가는 NextAuth CredentialsProvider 쪽에 영향 없음(고객용 앱 전용 필드)
+    return { ...(safe as User), token: this.issueToken(user.id) };
   }
 
   async findOrCreateSocial(data: {
@@ -82,28 +95,31 @@ export class UsersService {
     email?: string;
     name?: string;
     profileImage?: string;
-  }): Promise<User> {
+  }): Promise<User & { token: string }> {
     let user = await this.repo.findOne({
       where: { provider: data.provider, providerId: data.providerId },
     });
     if (!user && data.email) {
       user = await this.repo.findOne({ where: { email: data.email } });
     }
+    let saved: User;
     if (user) {
       user.provider   = data.provider;
       user.providerId = data.providerId;
       if (data.name)         user.name         = data.name;
       if (data.profileImage) user.profileImage = data.profileImage;
-      return this.repo.save(user);
+      saved = await this.repo.save(user);
+    } else {
+      const newUser = this.repo.create({
+        provider:     data.provider,
+        providerId:   data.providerId,
+        email:        data.email,
+        name:         data.name,
+        profileImage: data.profileImage,
+      });
+      saved = await this.repo.save(newUser);
     }
-    const newUser = this.repo.create({
-      provider:     data.provider,
-      providerId:   data.providerId,
-      email:        data.email,
-      name:         data.name,
-      profileImage: data.profileImage,
-    });
-    return this.repo.save(newUser);
+    return { ...saved, token: this.issueToken(saved.id) };
   }
 
   async findAll(): Promise<User[]> {
