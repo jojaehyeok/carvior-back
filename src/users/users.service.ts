@@ -13,9 +13,16 @@ export class UsersService {
     private readonly jwt: JwtService,
   ) {}
 
-  // 고객용 네이티브 앱 전용 — 웹은 계속 NextAuth 자체 세션을 쓰므로 영향 없음
+  // 고객용 네이티브 앱 전용 — 웹은 계속 NextAuth 자체 세션을 쓰므로 영향 없음.
+  // JWT_SECRET이 서버 .env에 없으면 jwt.sign()이 그대로 던져서 로그인 자체가 500으로
+  // 죽는 사고가 있었음(2026-08-18) — 토큰 발급 실패가 로그인 성공 여부를 막으면 안 되므로
+  // 반드시 여기서 흡수하고 빈 문자열로 대체한다(고객앱 토큰 저장만 실패, 웹 로그인은 정상).
   private issueToken(userId: number): string {
-    return this.jwt.sign({ sub: userId });
+    try {
+      return this.jwt.sign({ sub: userId });
+    } catch (e) {
+      return '';
+    }
   }
 
   async findByEmail(email: string): Promise<User | null> {
