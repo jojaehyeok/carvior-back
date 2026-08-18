@@ -285,6 +285,8 @@ export class InspectionService {
         front: Number(data.frontTire) || 0,
         back: Number(data.backTire) || 0,
       },
+      interiorCleaning: Number(data.interiorCleaning) || 0,
+      glassLightDamage: Number(data.glassLightDamage) || 0,
     };
 
     // [손상 체크 및 메모]
