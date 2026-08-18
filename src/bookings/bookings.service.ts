@@ -269,6 +269,12 @@ export class BookingsService {
   // 평가사 앱이 배정된 건의 상세화면을 열 때 호출 — 최초 1회만 기록(이미 확인한 건 재호출돼도
   // 시각을 덮어쓰지 않음). driverId를 함께 받아 실제 배정된 담당자가 맞는지 확인하고,
   // 배정 해제·재배정 등으로 이미 다른 사람 건이 됐으면 조용히 무시한다.
+  async findOne(id: number): Promise<Booking> {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+    return booking;
+  }
+
   async markSeen(id: number, driverId?: string): Promise<Booking> {
     const booking = await this.bookingRepository.findOne({ where: { id } });
     if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');

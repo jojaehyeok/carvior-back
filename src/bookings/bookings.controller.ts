@@ -304,6 +304,13 @@ export class BookingsController {
     return await this.bookingsService.listDriverPenalties();
   }
 
+  // GET: 단건 조회(관리자용) — 대시보드 매입가 산출 페이지처럼 예약 하나만 필요할 때.
+  // 반드시 위의 고정 경로(list/individual-count 등)들 다음에 와야 ":id"가 그것들을 가로채지 않는다.
+  @Get(':id')
+  async getOne(@Param('id') id: string) {
+    return await this.bookingsService.findOne(Number(id));
+  }
+
   // POST: 슈퍼관리자가 진단사에게 수동으로 페널티/우대 부여
   @Post('driver-penalty')
   async createDriverPenalty(
