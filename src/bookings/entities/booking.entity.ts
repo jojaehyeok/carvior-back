@@ -87,6 +87,18 @@ export class Booking {
   @Column({ type: 'varchar', nullable: true })
   carModel: string | null;
 
+  // 진단사가 "상세정보"(제원/시세, EnCarAPI)에서 고른 세부 등급 — 한번 고르면 이 예약에
+  // 고정 저장되어 다음에 다시 열어도 재검색 없이 그대로 뜬다. 진단사가 직접 취소(재선택)해야
+  // 바뀐다. 관리자 대시보드에서도 어떤 등급으로 잡았는지 확인 가능.
+  @Column({ type: 'varchar', nullable: true })
+  carSpecManufacturer: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  carSpecModel: string | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  carSpecBadge: string | null;
+
   @Column({ nullable: true })
   carOwner: string;
 

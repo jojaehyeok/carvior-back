@@ -208,6 +208,20 @@ export class BookingsController {
     return { success: true, data: updatedBooking };
   }
 
+  // PATCH: 진단사가 "상세정보(제원/시세)"에서 등급 선택/재선택(취소) — spec이 없으면 초기화
+  @Patch(':id/car-spec')
+  async setCarSpec(
+    @Param('id') id: number,
+    @Body() body: { manufacturer?: string; model?: string; badge?: string },
+  ) {
+    const spec =
+      body?.manufacturer && body?.model
+        ? { manufacturer: body.manufacturer, model: body.model, badge: body.badge ?? '' }
+        : null;
+    const updatedBooking = await this.bookingsService.setCarSpec(Number(id), spec);
+    return { success: true, data: updatedBooking };
+  }
+
   // PATCH: 관리자가 대기 건을 "긴급·당일배정"으로 전체 진단사에게 강제 브로드캐스트
   @Patch(':id/urgent-broadcast')
   async broadcastUrgent(@Param('id') id: number) {

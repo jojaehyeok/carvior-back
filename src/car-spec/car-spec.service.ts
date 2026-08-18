@@ -73,4 +73,34 @@ export class CarSpecService {
       thumbnailPath: r.Photo ?? null,
     }));
   }
+
+  // listings()로 받은 매물 id로 상세 조회 — 실사진, 출고가, 사고/성능점검 여부, 옵션까지 나옴.
+  // 주의: 이 vehicleId는 EnCar에 실제로 올라온 "매물"의 id다. 진단 중인 고객 차량의 차대번호(VIN)로
+  // 조회하는 게 아니라, listings()가 돌려준 비교매물 중 하나를 더 자세히 보고 싶을 때만 쓸 수 있다.
+  async vehicleDetail(id: string) {
+    const data = await this.call(`/api/vehicle/${id}`, {});
+    if (!data) return null;
+    return {
+      id: data.vehicleId,
+      manufacturer: data.category?.manufacturerName,
+      model: data.category?.modelName,
+      grade: data.category?.gradeName,
+      year: data.category?.formYear,
+      originPriceManwon: data.category?.originPrice ?? null,
+      mileage: data.spec?.mileage,
+      displacement: data.spec?.displacement,
+      transmission: data.spec?.transmissionName,
+      fuel: data.spec?.fuelName,
+      color: data.spec?.colorName,
+      body: data.spec?.bodyName,
+      seatCount: data.spec?.seatCount,
+      priceManwon: data.advertisement?.price ?? null,
+      status: data.advertisement?.status ?? null,
+      hasAccidentRecord: !!data.condition?.accident?.recordView,
+      hasInspectionRecord: Array.isArray(data.condition?.inspection?.formats) && data.condition.inspection.formats.length > 0,
+      simpleRepair: !!data.condition?.simpleRepair,
+      // 실제 이미지 CDN 도메인이 확인되기 전까지는 원본 상대경로만 그대로 넘긴다(추측 금지).
+      photoPath: data.photos?.[0]?.location ?? null,
+    };
+  }
 }

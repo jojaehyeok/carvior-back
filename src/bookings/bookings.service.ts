@@ -278,6 +278,20 @@ export class BookingsService {
     return this.bookingRepository.save(booking);
   }
 
+  // 진단사가 "상세정보(제원/시세)"에서 등급을 고르거나 취소(재선택)할 때 호출.
+  // spec이 null이면 세 컬럼 모두 비워서 재검색 상태로 되돌린다.
+  async setCarSpec(
+    id: number,
+    spec: { manufacturer: string; model: string; badge: string } | null,
+  ): Promise<Booking> {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+    booking.carSpecManufacturer = spec?.manufacturer ?? null;
+    booking.carSpecModel = spec?.model ?? null;
+    booking.carSpecBadge = spec?.badge ?? null;
+    return this.bookingRepository.save(booking);
+  }
+
   // 특히 당일 접수(긴급) 건들이 30분 간격으로 다닥다닥 들어올 때, 같은 진단사가 물리적으로
   // 이동·진단을 마칠 시간도 없이 겹쳐서 자동배정되는 걸 막기 위한 최소 간격
   private readonly MIN_SLOT_GAP_MINUTES = 60;
