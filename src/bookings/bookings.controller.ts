@@ -212,13 +212,23 @@ export class BookingsController {
   @Patch(':id/car-spec')
   async setCarSpec(
     @Param('id') id: number,
-    @Body() body: { manufacturer?: string; model?: string; badge?: string },
+    @Body() body: {
+      manufacturer?: string; model?: string; badge?: string;
+      rangeLow?: number; rangeHigh?: number;
+      depLow?: number; depHigh?: number; depPct?: number;
+    },
   ) {
     const spec =
       body?.manufacturer && body?.model
         ? { manufacturer: body.manufacturer, model: body.model, badge: body.badge ?? '' }
         : null;
-    const updatedBooking = await this.bookingsService.setCarSpec(Number(id), spec);
+    const estimate = spec
+      ? {
+          rangeLow: body.rangeLow, rangeHigh: body.rangeHigh,
+          depLow: body.depLow, depHigh: body.depHigh, depPct: body.depPct,
+        }
+      : null;
+    const updatedBooking = await this.bookingsService.setCarSpec(Number(id), spec, estimate);
     return { success: true, data: updatedBooking };
   }
 

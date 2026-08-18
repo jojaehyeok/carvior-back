@@ -280,15 +280,26 @@ export class BookingsService {
 
   // 진단사가 "상세정보(제원/시세)"에서 등급을 고르거나 취소(재선택)할 때 호출.
   // spec이 null이면 세 컬럼 모두 비워서 재검색 상태로 되돌린다.
+  // estimate는 그 시점에 앱이 계산한 시세 추정치(+사고감가 반영치) — 관리자 대시보드가
+  // 재계산 없이 그대로 보여주는 용도. spec이 null이면 같이 비운다.
   async setCarSpec(
     id: number,
     spec: { manufacturer: string; model: string; badge: string } | null,
+    estimate?: {
+      rangeLow?: number; rangeHigh?: number;
+      depLow?: number; depHigh?: number; depPct?: number;
+    } | null,
   ): Promise<Booking> {
     const booking = await this.bookingRepository.findOne({ where: { id } });
     if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
     booking.carSpecManufacturer = spec?.manufacturer ?? null;
     booking.carSpecModel = spec?.model ?? null;
     booking.carSpecBadge = spec?.badge ?? null;
+    booking.estPriceLow = spec ? estimate?.rangeLow ?? null : null;
+    booking.estPriceHigh = spec ? estimate?.rangeHigh ?? null : null;
+    booking.estPriceDepLow = spec ? estimate?.depLow ?? null : null;
+    booking.estPriceDepHigh = spec ? estimate?.depHigh ?? null : null;
+    booking.estPriceDepPct = spec ? estimate?.depPct ?? null : null;
     return this.bookingRepository.save(booking);
   }
 

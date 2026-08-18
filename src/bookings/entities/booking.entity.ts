@@ -99,6 +99,25 @@ export class Booking {
   @Column({ type: 'varchar', nullable: true })
   carSpecBadge: string | null;
 
+  // 상세정보 그래프에서 계산된 시세 추정치 — 앱에서 등급 선택/손상체크 시점에 계산해서 저장.
+  // 관리자 대시보드(매입 판단용, SUPER_ADMIN 전용)에서 재계산 없이 그대로 보여주는 데 씀.
+  @Column({ type: 'int', nullable: true })
+  estPriceLow: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  estPriceHigh: number | null;
+
+  // 사고감가 반영 추정치 — 손상 체크가 없으면 null(감가 없음이 아니라 "계산 안 됨"과 구분 안 함,
+  // 데모 단계라 우선 이 정도로 둠).
+  @Column({ type: 'int', nullable: true })
+  estPriceDepLow: number | null;
+
+  @Column({ type: 'int', nullable: true })
+  estPriceDepHigh: number | null;
+
+  @Column({ type: 'float', nullable: true })
+  estPriceDepPct: number | null;
+
   @Column({ nullable: true })
   carOwner: string;
 
