@@ -58,7 +58,9 @@ export class CarSpecService {
       count: 'true',
     });
     const results = (data?.SearchResults ?? []) as any[];
-    return results.slice(0, 20).map((r) => ({
+    // 산점도 그래프(주행거리별 시세 추세선)를 그리려면 표본이 어느 정도 있어야 해서
+    // 기존 20건 → 60건으로 늘림(회귀선 계산은 프론트에서 함, 여기선 표본만 더 줌).
+    return results.slice(0, 60).map((r) => ({
       id: r.Id,
       model: r.Model,
       badge: r.Badge,
