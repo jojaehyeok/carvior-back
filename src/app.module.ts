@@ -32,6 +32,7 @@ import { VehiclesModule } from './vehicles/vehicles.module';
 import { SaleListingsModule } from './sale-listings/sale-listings.module';
 import { SaleTransactionsModule } from './sale-transactions/sale-transactions.module';
 import { SettlementExtraCostModule } from './settlement-extra-cost/settlement-extra-cost.module';
+import { CarSpecModule } from './car-spec/car-spec.module';
 
 @Module({
   imports: [
@@ -92,6 +93,7 @@ import { SettlementExtraCostModule } from './settlement-extra-cost/settlement-ex
     SaleListingsModule,
     SaleTransactionsModule,
     SettlementExtraCostModule,
+    CarSpecModule,
   ],
   controllers: [AppController, AuthController],
   providers: [AppService, SolapiService, S3Service],
