@@ -46,10 +46,13 @@ export class CarSpecService {
   }
 
   // 제조사/모델(+트림)로 실제 비교 매물(제원+실거래 시세)을 가져온다.
+  // 주의: 파라미터명이 "model"이 아니라 "model_group"이어야 한다(badge_group과 같은 규칙).
+  // model=으로 보내면 조용히 무시되고, 일부 차종(예: 기아 스포티지)은 결과가 아예 0건으로
+  // 나와서 실기기 테스트 중 발견함 — 반드시 model_group으로 유지할 것.
   async listings(manufacturer: string, model: string, badge?: string) {
     const data = await this.call('/api/catalog', {
       manufacturer,
-      model,
+      model_group: model,
       badge_group: badge,
       lang: 'ko',
       count: 'true',
