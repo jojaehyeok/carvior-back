@@ -8,6 +8,10 @@ export class CarSpecService {
   private readonly logger = new Logger(CarSpecService.name);
   private readonly base = process.env.ENCAR_API_BASE || 'https://api.encarapi.com';
   private readonly apiKey = process.env.ENCAR_API_KEY || '';
+  // EnCarAPI가 돌려주는 Photo 경로는 도메인이 없는 상대경로("/carpicture03/pic4243/42438787_")다.
+  // 문서엔 CDN 호스트가 안 나와 있어서, 실제 매물 하나로 ci.encar.com / imgcar.encar.com 등을
+  // 직접 테스트해 확인함(ci.encar.com만 200 + image/jpeg, CloudFront로 서빙됨).
+  private readonly IMAGE_HOST = 'https://ci.encar.com';
 
   private async call(path: string, params: Record<string, string | undefined>) {
     if (!this.apiKey) {
@@ -68,9 +72,8 @@ export class CarSpecService {
       mileage: r.Mileage,
       fuel: r.FuelType,
       priceManwon: r.Price, // 만원 단위
-      // Photo는 도메인 없는 상대경로("/carpicture09/pic4239/42391320_")로 옴 — 실제 이미지
-      // CDN 호스트를 EnCarAPI 문서에서 확인 전까지는 원본 경로만 그대로 넘긴다(추측 금지).
-      thumbnailPath: r.Photo ?? null,
+      // r.Photo는 파일명 없는 접두 경로("..._")라 대표사진(001) 파일명을 붙여서 완성한다.
+      thumbnailUrl: r.Photo ? `${this.IMAGE_HOST}${r.Photo}001.jpg` : null,
     }));
   }
 
@@ -99,8 +102,9 @@ export class CarSpecService {
       hasAccidentRecord: !!data.condition?.accident?.recordView,
       hasInspectionRecord: Array.isArray(data.condition?.inspection?.formats) && data.condition.inspection.formats.length > 0,
       simpleRepair: !!data.condition?.simpleRepair,
-      // 실제 이미지 CDN 도메인이 확인되기 전까지는 원본 상대경로만 그대로 넘긴다(추측 금지).
-      photoPath: data.photos?.[0]?.location ?? null,
+      photoUrls: Array.isArray(data.photos)
+        ? data.photos.map((p: any) => `${this.IMAGE_HOST}${p.location}`)
+        : [],
     };
   }
 }
