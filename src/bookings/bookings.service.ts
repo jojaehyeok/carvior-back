@@ -39,6 +39,11 @@ const AUTO_ASSIGN_DAYS_THRESHOLD = 5;
 // (ChavatarApp app/(tabs)/index.tsx의 채널 정의와 매칭).
 const PUSH_CHANNEL_NEW_REQUEST = { channelId: 'cavior-new-request', sound: 'carvior_new_request' };
 
+// 관리자가 이미 배정된 건의 정보(고객번호/관리자메모 등)를 나중에 수정했을 때, 담당
+// 진단사에게 "확인해주세요" 알림을 보내는 전용 채널 — 배정 알림과는 성격이 달라서
+// (급한 신규건 알림이 아니라 참고용 정보 갱신) 차분한 별도음으로 구분한다.
+const PUSH_CHANNEL_BOOKING_UPDATED = { channelId: 'cavior-booking-updated', sound: 'carvior_booking_updated' };
+
 @Injectable()
 export class BookingsService {
   constructor(
@@ -855,6 +860,10 @@ export class BookingsService {
       booking.oldDealerFeeSeen = false;
     }
 
+    // 담당 진단사에게 "예약 정보가 바뀌었어요" 알림을 보내기 위해, 덮어쓰기 전 값을 남겨둔다.
+    const prevCustomerContact = booking.customerContact;
+    const prevAdminMemo = booking.adminMemo;
+
     Object.assign(booking, updateData);
     if (isSelfClaim) {
       // ChavatarApp의 handleClaim()이 status:'CONFIRMED'로 보내는데, 이 값은 시스템 상태값
@@ -885,6 +894,30 @@ export class BookingsService {
           );
         }
       } catch (e) {}
+    }
+
+    // 이미 배정된 건을 관리자가 나중에 수정한 경우, 담당 진단사에게 "확인해주세요" 알림.
+    // 대상: (1) 없던 고객번호가 새로 채워짐, (2) 관리자메모가 바뀜. 셀프클레임 등 배정 자체를
+    // 바꾸는 액션과는 무관하게, 이미 배정돼 있던 건이 그대로 유지된 채 내용만 바뀐 경우만 해당.
+    if (!isSelfClaim && updated.assignedDriverId) {
+      const changedLabels: string[] = [];
+      if (!prevCustomerContact && updated.customerContact) changedLabels.push('고객 연락처');
+      if (prevAdminMemo !== updated.adminMemo) changedLabels.push('관리자 메시지');
+
+      if (changedLabels.length > 0) {
+        try {
+          const driver = await this.driverRepository.findOne({ where: { id: Number(updated.assignedDriverId) } });
+          if (driver?.pushToken) {
+            await this.notificationsService.sendPush(
+              driver.pushToken,
+              '예약이 수정되었어요 📋',
+              `${updated.carNumber} · ${changedLabels.join(', ')} 확인 부탁드려요`,
+              { bookingId: updated.id },
+              PUSH_CHANNEL_BOOKING_UPDATED,
+            );
+          }
+        } catch (e) {}
+      }
     }
 
     return updated;
