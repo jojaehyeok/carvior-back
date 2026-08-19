@@ -85,8 +85,6 @@ export class Inspection {
         paintNeeded: number;
         wheelScratch: number;
         tireTread: { front: number; back: number };
-        interiorCleaning: number;
-        glassLightDamage: number;
     };
 
     // 추가: 손상 체크 데이터 (2차원 배열)

@@ -185,8 +185,6 @@ export class InspectionController {
         paintNeeded: inspection.carStatus?.paintNeeded,
         wheelScratch: inspection.carStatus?.wheelScratch,
         tireTread: inspection.carStatus?.tireTread,
-        interiorCleaning: inspection.carStatus?.interiorCleaning,
-        glassLightDamage: inspection.carStatus?.glassLightDamage,
       },
       damages: inspection.checkedDamages,
       mirror_markers: inspection.mirrorMarkers,
