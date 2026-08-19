@@ -275,6 +275,16 @@ export class BookingsService {
     return booking;
   }
 
+  // 진단사가 확정문자를 고객 또는 딜러에게 보냈을 때 호출 — "진단 시작" 게이트 해제용.
+  // 이미 보낸 적 있어도 다시 보내면 최신 시각/대상으로 갱신한다.
+  async markConfirmMessageSent(id: number, target: 'customer' | 'dealer'): Promise<Booking> {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+    booking.confirmMessageSentAt = new Date();
+    booking.confirmMessageSentTo = target;
+    return this.bookingRepository.save(booking);
+  }
+
   async markSeen(id: number, driverId?: string): Promise<Booking> {
     const booking = await this.bookingRepository.findOne({ where: { id } });
     if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');

@@ -208,6 +208,13 @@ export class BookingsController {
     return { success: true, data: updatedBooking };
   }
 
+  // PATCH: 진단사가 확정문자(방문 일정/준비사항 안내)를 고객 또는 딜러에게 보냈을 때 기록
+  @Patch(':id/confirm-message-sent')
+  async markConfirmMessageSent(@Param('id') id: number, @Body('target') target: 'customer' | 'dealer') {
+    const updatedBooking = await this.bookingsService.markConfirmMessageSent(Number(id), target);
+    return { success: true, data: updatedBooking };
+  }
+
   // PATCH: 진단사가 "상세정보(제원/시세)"에서 등급 선택/재선택(취소) — spec이 없으면 초기화
   @Patch(':id/car-spec')
   async setCarSpec(

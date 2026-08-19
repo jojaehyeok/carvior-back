@@ -241,6 +241,15 @@ export class Booking {
   customerContact: string | null;
   // ----------------------
 
+  // 진단사가 "확정문자"(방문 일정/준비사항 안내)를 고객 또는 딜러 중 한쪽에라도 보낸 시각.
+  // 진단 시작 게이트(앱에서 이 값이 있어야 "진단 시작" 버튼 활성화)로 사용 — 어느 쪽으로
+  // 보냈는지는 confirmMessageSentTo로 구분(둘 다 만족시키면 됨, 굳이 둘 다 보낼 필요는 없음).
+  @Column({ type: 'timestamp', nullable: true })
+  confirmMessageSentAt: Date | null;
+
+  @Column({ type: 'varchar', nullable: true })
+  confirmMessageSentTo: 'customer' | 'dealer' | null;
+
   // 명의이전 완료 후 발주사(대시보드)가 직접 업로드하는 "이전된 자동차등록증" 사진 —
   // 진단사가 방문 당시 찍는 등록증 사진(기존 리포트 사진)과는 별개로 보관한다.
   @Column({ type: 'varchar', nullable: true })
