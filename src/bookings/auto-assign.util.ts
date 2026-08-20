@@ -97,8 +97,11 @@ function httpsGetJson(url: string, headers: Record<string, string>): Promise<any
 }
 
 // 서버 사이드 주소 → 좌표 변환. 실패해도 예외를 던지지 않고 null 반환 —
-// 자동배정은 거리 계산이 안 되면 다른 기준(오늘 배정건수)으로 폴백하면 되므로 신청 접수 자체를 막으면 안 됨
-export async function geocodeAddress(address: string): Promise<{ lat: number; lng: number } | null> {
+// 자동배정은 거리 계산이 안 되면 다른 기준(오늘 배정건수)으로 폴백하면 되므로 신청 접수 자체를 막으면 안 됨.
+// region1/region2(시/도, 시/군/구)도 같이 반환 — regionMatchDrivers()의 지오코딩 폴백에서 사용.
+export async function geocodeAddress(
+  address: string,
+): Promise<{ lat: number; lng: number; region1?: string; region2?: string } | null> {
   if (!address) return null;
   try {
     const q = encodeURIComponent(address);
@@ -106,16 +109,48 @@ export async function geocodeAddress(address: string): Promise<{ lat: number; ln
       Authorization: `KakaoAK ${KAKAO_REST_KEY}`,
     });
     const doc = data?.documents?.[0];
-    if (doc) return { lat: parseFloat(doc.y), lng: parseFloat(doc.x) };
+    if (doc) {
+      return {
+        lat: parseFloat(doc.y),
+        lng: parseFloat(doc.x),
+        region1: doc.address?.region_1depth_name || doc.road_address?.region_1depth_name,
+        region2: doc.address?.region_2depth_name || doc.road_address?.region_2depth_name,
+      };
+    }
 
     const data2 = await httpsGetJson(`https://dapi.kakao.com/v2/local/search/keyword.json?query=${q}`, {
       Authorization: `KakaoAK ${KAKAO_REST_KEY}`,
     });
     const doc2 = data2?.documents?.[0];
-    if (doc2) return { lat: parseFloat(doc2.y), lng: parseFloat(doc2.x) };
+    if (doc2) {
+      // 키워드 검색 결과는 지역 구조화 필드(address.region_1depth_name 등)가 없어서
+      // 지번/도로명 주소 문자열의 앞 두 토큰(시/도, 시/군/구)으로 추정한다.
+      const [region1, region2] = (doc2.address_name || doc2.road_address_name || '').split(' ');
+      return { lat: parseFloat(doc2.y), lng: parseFloat(doc2.x), region1, region2 };
+    }
 
     return null;
   } catch {
     return null;
   }
+}
+
+// 진단사 담당지역(regions, "경기"/"서울" 같은 시/도 축약형)이 신청 주소 문자열에 포함되는지
+// 먼저 확인하고(빠른 경로, API 호출 없음 — 대부분의 주소는 Daum 우편번호 검색으로 등록돼
+// 이미 시/도 이름을 포함하므로 이 경로로 끝남), 아무도 안 걸리면 지오코딩된 시/도·시/군/구
+// 이름으로 한 번 더 확인한다. "검색결과 없음 → 그대로 등록하기"로 시/도 접두어 없이 저장된
+// 주소(예: "송부로33번길 3-40")에서도 자동배정이 되게 하기 위함 — geocoded가 없거나 실패해도
+// 예외 없이 빈 배열을 반환해 기존 폴백(전체 브로드캐스트) 흐름을 그대로 탄다.
+export function regionMatchDrivers<T extends { regions?: string[] | null }>(
+  drivers: T[],
+  address: string | null | undefined,
+  geocoded?: { region1?: string; region2?: string } | null,
+): T[] {
+  const raw = drivers.filter(d => (d.regions ?? []).some(r => r && address?.includes(r)));
+  if (raw.length > 0 || !geocoded) return raw;
+  return drivers.filter(d =>
+    (d.regions ?? []).some(
+      r => r && ((geocoded.region1 && geocoded.region1.includes(r)) || (geocoded.region2 && geocoded.region2.includes(r))),
+    ),
+  );
 }

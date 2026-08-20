@@ -12,7 +12,7 @@ import { User } from '../users/entities/user.entity';
 import { SmsBillingLog } from '../sms-billing-logs/sms-billing-log.entity';
 import { DriverAssignmentPenalty } from '../driver-assignment-penalties/driver-assignment-penalty.entity';
 import { ReviewsService } from '../reviews/reviews.service';
-import { distanceKm, geocodeAddress, isDriverActiveNow, isLocationFresh } from './auto-assign.util';
+import { distanceKm, geocodeAddress, isDriverActiveNow, isLocationFresh, regionMatchDrivers } from './auto-assign.util';
 
 // cavior 내에서 source 값을 고정 문자열로 보내는 B2C 신청 경로들 — 이 값들은
 // 발주사 코드가 아니라서 관리자 등록 여부 체크 대상에서 제외한다.
@@ -386,11 +386,20 @@ export class BookingsService {
     const drivers = await this.driverRepository.find({ where: { status: 'APPROVED', isActive: true } });
     // isActive(활동중지) 여부와 무관하게 "이 지역을 담당하는 평가사가 존재하는가"만 먼저 판단 —
     // 전부 활동중지 상태여도 (2)는 true로 남겨서 "서비스 미제공 지역"과 "오늘은 다 쉬는 중"을 구분한다
-    const anyDriverCoversRegion = drivers
-      .concat(await this.driverRepository.find({ where: { status: 'APPROVED', isActive: false } }))
-      .some(d => (d.regions ?? []).some(r => r && address.includes(r)));
+    const allApprovedDrivers = drivers.concat(await this.driverRepository.find({ where: { status: 'APPROVED', isActive: false } }));
 
-    const regionMatched = drivers.filter(d => (d.regions ?? []).some(r => r && address.includes(r)));
+    let regionMatched = regionMatchDrivers(drivers, address);
+    let anyDriverCoversRegion = regionMatchDrivers(allApprovedDrivers, address).length > 0;
+    // 텍스트 매칭으로 아무도 못 찾으면(시/도 없이 등록된 주소) 지오코딩 폴백으로 한 번 더 —
+    // tryAutoAssign()과 동일한 기준이어야 "미리보기엔 안 됐는데 실제 접수는 자동배정됨" 같은
+    // 불일치가 안 생긴다.
+    if (!anyDriverCoversRegion) {
+      const geocoded = await geocodeAddress(address);
+      if (geocoded) {
+        regionMatched = regionMatchDrivers(drivers, address, geocoded);
+        anyDriverCoversRegion = regionMatchDrivers(allApprovedDrivers, address, geocoded).length > 0;
+      }
+    }
     if (regionMatched.length === 0) {
       return {
         regionCovered: anyDriverCoversRegion,
@@ -521,8 +530,15 @@ export class BookingsService {
     const drivers = await this.driverRepository.find({ where: { status: 'APPROVED', isActive: true } });
     if (drivers.length === 0) return null;
 
-    // 진단사가 설정한 지역(구/시 단위) 중 하나라도 신청 주소 문자열에 포함되면 매칭으로 간주
-    const regionMatched = drivers.filter(d => (d.regions ?? []).some(r => r && booking.address?.includes(r)));
+    // 진단사가 설정한 지역(구/시 단위) 중 하나라도 신청 주소 문자열에 포함되면 매칭으로 간주.
+    // 텍스트 매칭이 아무도 못 찾으면(예: "그대로 등록하기"로 시/도 없이 저장된 주소) 지오코딩
+    // 폴백으로 한 번 더 시도 — 아래 거리 계산용 geocodeAddress 호출과 결과를 공유해 중복 호출 방지.
+    let regionMatched = regionMatchDrivers(drivers, booking.address);
+    let geocodedForRegion: Awaited<ReturnType<typeof geocodeAddress>> = null;
+    if (regionMatched.length === 0) {
+      geocodedForRegion = await geocodeAddress(booking.address);
+      if (geocodedForRegion) regionMatched = regionMatchDrivers(drivers, booking.address, geocodedForRegion);
+    }
     if (regionMatched.length === 0) return null;
 
     // 근무시간·isActive를 통과해도 최근 30분간 위치 갱신이 없으면(앱 강제종료·백그라운드
@@ -586,7 +602,7 @@ export class BookingsService {
     // "가까운 편" 진단사들끼리는 거리보다 해당 방문예정일 배정건수가 적은 사람을 우선 — 한 명한테 쏠리는 것 방지.
     // 그 반경 밖은 굳이 균등 배정 명목으로 멀리 보낼 이유가 없으니 그냥 거리순.
     const NEARBY_RADIUS_KM = 15;
-    const coords = await geocodeAddress(booking.address);
+    const coords = geocodedForRegion ?? await geocodeAddress(booking.address);
     const withLocation = slotFree.filter(d => d.lat != null && d.lng != null);
     if (coords && withLocation.length > 0) {
       const ranked = withLocation
