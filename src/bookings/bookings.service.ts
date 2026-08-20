@@ -541,11 +541,24 @@ export class BookingsService {
     }
     if (regionMatched.length === 0) return null;
 
+    // 지역은 맞는데 뒤 단계에서 조용히 걸러진 진단사 — "왜 이 사람은 후보에 없냐"는 문의가
+    // 나올 때 배정근거 로그만 보고 원인을 바로 알 수 있게 기록해둔다(candidates에는 최종
+    // 후보만 남으므로, 여긴 별도로 excluded에 담아 로그에 함께 저장).
+    const excluded: Array<{ driverId: number; driverName: string; reason: string }> = [];
+
     // 근무시간·isActive를 통과해도 최근 30분간 위치 갱신이 없으면(앱 강제종료·백그라운드
     // 스로틀링 등으로 실제로 이탈했을 가능성) 자동배정 후보에서 제외
-    const activeMatched = regionMatched
-      .filter(d => isDriverActiveNow(d, booking.preferredDateTime))
-      .filter(isLocationFresh);
+    const activeMatched = regionMatched.filter(d => {
+      if (!isDriverActiveNow(d, booking.preferredDateTime)) {
+        excluded.push({ driverId: d.id, driverName: d.name, reason: '방문예정시각이 근무 스케줄(요일/시간) 밖' });
+        return false;
+      }
+      if (!isLocationFresh(d)) {
+        excluded.push({ driverId: d.id, driverName: d.name, reason: '위치정보 갱신이 24시간 이상 오래됨' });
+        return false;
+      }
+      return true;
+    });
     if (activeMatched.length === 0) return null;
 
     // 같은 진단사가 같은 날 방문예정시각이 너무 가까운(MIN_SLOT_GAP_MINUTES 이내) 건을 동시에
@@ -556,6 +569,15 @@ export class BookingsService {
         conflict: await this.hasScheduleConflict(d.id, booking.preferredDateTime),
       })),
     );
+    conflictChecks.forEach(c => {
+      if (c.conflict) {
+        excluded.push({
+          driverId: c.driver.id,
+          driverName: c.driver.name,
+          reason: `같은 날 다른 배정건과 방문시각이 ${this.MIN_SLOT_GAP_MINUTES}분 이내로 겹침(스케줄 충돌)`,
+        });
+      }
+    });
     const slotFree = conflictChecks.filter(c => !c.conflict).map(c => c.driver);
     if (slotFree.length === 0) return null;
 
@@ -638,6 +660,7 @@ export class BookingsService {
               nearestKm: Math.round(nearestKm * 10) / 10,
               radiusKm: NEARBY_RADIUS_KM,
               candidates: candidateLog,
+              excluded,
               chosenDriverId: driver.id,
               chosenDriverName: driver.name,
               reason: '반경 내 후보 중 방문예정일 배정건수가 가장 적음(동률 시 거리순)',
@@ -655,6 +678,7 @@ export class BookingsService {
           nearestKm: Math.round(nearestKm * 10) / 10,
           radiusKm: NEARBY_RADIUS_KM,
           candidates: candidateLog,
+          excluded,
           chosenDriverId: ranked[0].driver.id,
           chosenDriverName: ranked[0].driver.name,
           reason: '반경 내 후보 전원이 해당 방문예정일 최대 배정건수 도달 — 그중 가장 가까운 사람에게 배정',
@@ -683,6 +707,7 @@ export class BookingsService {
           rawCount: count.real,
           penaltyCount: count.penalty,
         })),
+        excluded,
         chosenDriverId: picked.driver.id,
         chosenDriverName: picked.driver.name,
         reason: '주소 좌표 변환 실패 또는 위치정보 있는 후보 없음 — 방문예정일 배정건수만으로 비교',
