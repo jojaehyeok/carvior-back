@@ -849,23 +849,28 @@ export class BookingsService {
 
       const isCustomerReason = cancelReason === '판매자의 예약 취소';
       if (isCustomerReason) {
-        // "판매자의 예약 취소"는 페널티도 재배정도 없는 유일한 사유라 악용 소지가 있다 —
-        // 실제로는 본인 활성시간(스케줄)에 걸리는 시간대인데도 이 사유를 골라 페널티를 피하는
-        // 경우를 막기 위해, 취소 시점의 진단일시가 본인 활성시간 안이면(=원래 갈 수 있었으면)
-        // 페널티를 부과하고, 활성시간 밖이면(=정말 못 갔을 시간이면) 페널티 없이 다른
-        // 진단사에게 재배정한다.
+        // "판매자의 예약 취소"는 진단사 잘못이 아닌 정당한 취소가 많아서(고객 변심 등),
+        // 본인 활성시간 안이었다는 이유만으로 매번 바로 페널티를 주지 않는다 — 같은 사유로
+        // CANCEL_PENALTY_THRESHOLD회(3회) 누적됐을 때만 페널티를 부과한다(악용 방지 최소선은 유지).
+        // 활성시간 밖(=정말 못 갔을 시간)이면 누적 횟수와 무관하게 항상 페널티 없이 재배정.
         const driver = prevDriverId
           ? await this.driverRepository.findOne({ where: { id: Number(prevDriverId) } })
           : null;
         const wasWithinOwnSchedule = driver ? isDriverActiveNow(driver, booking.preferredDateTime) : false;
 
         if (wasWithinOwnSchedule && prevDriverId) {
-          await this.assignmentPenaltyRepository.save({
-            driverId: prevDriverId,
-            bookingId: booking.id,
-            reason: cancelReason || null,
-            expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          const CANCEL_PENALTY_THRESHOLD = 3;
+          const reasonCancelCount = await this.cancelLogRepository.count({
+            where: { driverId: prevDriverId, cancelReason },
           });
+          if (reasonCancelCount >= CANCEL_PENALTY_THRESHOLD) {
+            await this.assignmentPenaltyRepository.save({
+              driverId: prevDriverId,
+              bookingId: booking.id,
+              reason: `${cancelReason} (${reasonCancelCount}회 누적)`,
+              expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+            });
+          }
           // 재배정 없이 취소 종료
           booking.status = 'CANCELLED';
           booking.assignedDriverId = null;
