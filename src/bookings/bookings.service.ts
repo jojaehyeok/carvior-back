@@ -32,7 +32,7 @@ const KNOWN_B2C_SOURCES = new Set([
 // 방문일이 접수 시점보다 한참 뒤인 예약건에 적용하면 실제 방문일의 스케줄과 무관하게
 // 배정되거나 반대로 충분히 가능한 진단사가 제외될 수 있다 — 이 기간을 넘는 예약은
 // 자동배정·전체 브로드캐스트를 건너뛰고 관리자가 대시보드에서 직접 배정하게 둔다.
-const AUTO_ASSIGN_DAYS_THRESHOLD = 5;
+const AUTO_ASSIGN_DAYS_THRESHOLD = 7;
 
 // 배정 관련 알림(자동/수동/에이전트 배정)은 NotificationsService.sendPush의 기본음
 // ("배정되었습니다")을 그대로 씀. 미배정 신규요청 브로드캐스트만 예외로 다른 채널/음을 씀
