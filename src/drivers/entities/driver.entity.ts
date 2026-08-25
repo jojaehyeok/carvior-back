@@ -88,4 +88,9 @@ export class Driver {
   // 그 건의 리포트를 대신 수정할 수 있음
   @Column({ default: 'general' })
   tier: 'general' | 'certified' | 'agent';
+
+  // 발주사 자체접수(source가 "self-{company}") 건을 앱에서 볼 수 있고 처리할 수 있는
+  // 외주 담당 진단사인지 여부 — 관리자가 대시보드에서 개별 설정
+  @Column({ default: false })
+  canHandleOutsourced: boolean;
 }

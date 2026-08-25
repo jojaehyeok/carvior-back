@@ -84,6 +84,12 @@ export class DriversController {
     return this.driversService.updateTier(Number(id), tier);
   }
 
+  // 발주사 자체접수(외주) 건 처리 가능 여부 — 관리자가 부여
+  @Patch(':id/outsourced-status')
+  async setOutsourcedStatus(@Param('id') id: string, @Body('canHandleOutsourced') canHandleOutsourced: boolean) {
+    return this.driversService.setOutsourcedStatus(Number(id), canHandleOutsourced);
+  }
+
   // 진단리포트/평가사 소개용 프로필 사진 — 관리자가 대시보드 평가사 관리에서 등록/교체
   @Patch(':id/photo')
   @UseInterceptors(FileInterceptor('file', { storage: memoryStorage() }))
