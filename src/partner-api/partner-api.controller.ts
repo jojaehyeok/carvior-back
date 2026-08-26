@@ -1,9 +1,12 @@
 import { Body, Controller, Get, Post, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { JwtService } from '@nestjs/jwt';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Booking } from '../bookings/entities/booking.entity';
+import { Inspection } from '../inspection/entities/inspection.entity';
 import { PartnerOAuthGuard } from './partner-oauth.guard';
+
+const REPORT_BASE_URL = 'https://carvior.store/car-report';
 
 interface TokenRequestBody {
   grant_type?: string;
@@ -16,6 +19,8 @@ export class PartnerApiController {
   constructor(
     @InjectRepository(Booking)
     private readonly bookingRepository: Repository<Booking>,
+    @InjectRepository(Inspection)
+    private readonly inspectionRepository: Repository<Inspection>,
     private readonly jwt: JwtService,
   ) {}
 
@@ -54,22 +59,36 @@ export class PartnerApiController {
       .orderBy('booking.preferredDateTime', 'DESC')
       .getMany();
 
-    const data = bookings.map((b) => ({
-      id: b.id,
-      carNumber: b.carNumber,
-      carModel: b.carModel,
-      carOwner: b.carOwner,
-      dealerName: b.dealerName,
-      preferredDateTime: b.preferredDateTime,
-      contractWriter: b.contractWriter,
-      vehicleTransferred: b.vehicleTransferred,
-      contractConfirmed: b.contractConfirmed,
-      contractDeposit: b.contractDeposit,
-      contractBalance: b.contractBalance,
-      purchasePrice: b.purchasePrice,
-      status: b.status,
-      createdAt: b.createdAt,
-    }));
+    // 진단 리포트는 Booking이 아니라 Inspection 테이블에 있음(bookingId로 연결) —
+    // findAll()이 프론트에 carHash를 내려주는 것과 동일한 패턴(bookings.service.ts 참고)
+    const inspections = bookings.length
+      ? await this.inspectionRepository.find({
+          where: { bookingId: In(bookings.map((b) => b.id)) },
+          select: ['bookingId', 'carHash'],
+        })
+      : [];
+    const hashMap = new Map(inspections.map((i) => [i.bookingId, i.carHash]));
+
+    const data = bookings.map((b) => {
+      const carHash = hashMap.get(b.id);
+      return {
+        id: b.id,
+        carNumber: b.carNumber,
+        carModel: b.carModel,
+        carOwner: b.carOwner,
+        dealerName: b.dealerName,
+        preferredDateTime: b.preferredDateTime,
+        contractWriter: b.contractWriter,
+        vehicleTransferred: b.vehicleTransferred,
+        contractConfirmed: b.contractConfirmed,
+        contractDeposit: b.contractDeposit,
+        contractBalance: b.contractBalance,
+        purchasePrice: b.purchasePrice,
+        status: b.status,
+        createdAt: b.createdAt,
+        reportUrl: carHash ? `${REPORT_BASE_URL}/${carHash}` : null,
+      };
+    });
 
     return { data, count: data.length };
   }
