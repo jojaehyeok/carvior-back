@@ -508,7 +508,41 @@ export class InspectionService {
   async appendPhoto(bookingId: number, category: string, url: string) {
     const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
     if (!inspection) return { success: false };
+
+    // 다른 차량 사진이 이 리포트로 새어 들어오는 걸 서버에서도 막는다. S3 키는 항상
+    // "{차량번호}/{카테고리}/{timestamp}_{파일명}" 형태라 접두사로 원 차량을 알 수 있는데,
+    // 앱이 "직전에 제출한 리포트 id"로 PATCH를 보내던 버그(카테고리 수동수정 경로) 때문에
+    // 실제로 18개 리포트에 219장의 남의 차 사진이 섞여 들어갔다 — 앱을 고쳐도 구버전 앱이
+    // 계속 돌기 때문에 여기서도 막아야 한다. 차량번호가 아직 안 정해진 상태로 올라간
+    // 사진(미정/미등록)은 정상 케이스라 통과시킨다.
+    const booking = await this.bookingRepository.findOne({ where: { id: bookingId } });
+    const normalize = (v?: string | null) => (v || '').replace(/\s/g, '');
+    let keyCarNumber = '';
+    try {
+      keyCarNumber = decodeURIComponent(url.split('amazonaws.com/')[1] || '').split('/')[0] || '';
+    } catch {
+      keyCarNumber = '';
+    }
+    const PLACEHOLDERS = ['', '미정', '미등록'];
+    if (
+      booking &&
+      !PLACEHOLDERS.includes(normalize(keyCarNumber)) &&
+      normalize(keyCarNumber) !== normalize(booking.carNumber)
+    ) {
+      console.warn(
+        `[appendPhoto 거절] bookingId=${bookingId}(${booking.carNumber})에 다른 차량(${keyCarNumber}) 사진 추가 시도 | ${url}`,
+      );
+      return { success: false, reason: 'car-number-mismatch' };
+    }
+
+    // 같은 URL이 다른 카테고리에 남아있으면 사진이 두 번 보이므로, 먼저 전부 걷어내고
+    // 대상 카테고리에만 넣는다 — 앱의 "카테고리 수동 수정"이 추가가 아니라 이동이 되게 한다.
     const photos = { ...(inspection.photos || {}) };
+    for (const key of Object.keys(photos)) {
+      if (Array.isArray(photos[key])) {
+        photos[key] = (photos[key] as string[]).filter((u) => u !== url);
+      }
+    }
     photos[category] = [...(photos[category] || []), url];
     inspection.photos = photos;
     await this.inspectionRepository.save(inspection);

@@ -278,6 +278,15 @@ export class BookingsController {
     return await this.bookingsService.getDriverCancelStats(driverId);
   }
 
+  // GET: 진단사 앱 "예약 요청" 탭 실시간 갱신용 초경량 폴링 엔드포인트.
+  // 목록 전체(/list)는 수백 KB라 10초마다 받으면 현장 모바일 데이터가 감당이 안 된다 —
+  // 대기건의 "지문"(개수/최대 id/최근 수정시각)만 내려주고, 값이 바뀐 순간에만 앱이
+  // 실제 목록을 다시 부르게 한다. 반드시 아래 ":id" 라우트보다 위에 있어야 한다.
+  @Get('request-pulse')
+  async getRequestPulse() {
+    return await this.bookingsService.getRequestPulse();
+  }
+
   // GET: 전체 리스트 확인 (source 필터 옵션)
   // 예: /api/v1/external/request/list?source=anyone-motors
   // source 없이 조회 시 자체 신청(self-) 건은 기본 제외됨 — includeSelf=true로 명시하면 포함

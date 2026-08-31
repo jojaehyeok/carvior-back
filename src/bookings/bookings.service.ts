@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Like, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { Booking } from './entities/booking.entity';
@@ -785,6 +785,27 @@ export class BookingsService {
     });
   }
 
+  // 진단사 앱이 "예약 요청" 탭을 열어둔 동안 짧은 주기로 부르는 초경량 폴링용 —
+  // 대기건 목록의 지문(개수·최대 id·최근 수정시각)만 돌려준다. 앱은 이 값이 직전과
+  // 달라졌을 때만 무거운 /list를 다시 부르므로, 새 접수가 뜨는 데 새로고침이 필요 없으면서도
+  // 데이터 사용량은 거의 늘지 않는다. 라운딩 요청 건도 같은 탭에 뜨므로 함께 센다.
+  async getRequestPulse(): Promise<{ count: number; maxId: number; maxUpdatedAt: string | null }> {
+    const raw = await this.bookingRepository
+      .createQueryBuilder('b')
+      .select('COUNT(b.id)', 'cnt')
+      .addSelect('MAX(b.id)', 'maxId')
+      .addSelect('MAX(b.updatedAt)', 'maxUpdatedAt')
+      .where('b.status = :pending', { pending: 'PENDING' })
+      .orWhere('b.roundingRequested = :yes', { yes: true })
+      .getRawOne<{ cnt: string; maxId: string | null; maxUpdatedAt: Date | string | null }>();
+
+    return {
+      count: Number(raw?.cnt ?? 0),
+      maxId: Number(raw?.maxId ?? 0),
+      maxUpdatedAt: raw?.maxUpdatedAt ? new Date(raw.maxUpdatedAt).toISOString() : null,
+    };
+  }
+
   // includeSelf 없이 source 미지정으로 조회하면(ChavatarApp의 전체 목록 조회가 바로 이 경우)
   // 자체 신청(self-{company}) 건은 기본적으로 제외됨 — 진단사가 방문할 필요 없는 건이
   // 앱 어느 화면에도 노출되지 않게 하기 위함(구버전 앱도 소급 적용됨). source를 명시하면
@@ -923,9 +944,68 @@ export class BookingsService {
       return savedUnassign;
     }
 
-    // 진단사가 앱 "예약 요청" 탭에서 "내 담당으로 확정하기"를 눌러 셀프클레임한 경우 —
-    // handleClaim()이 보내는 시그니처(PENDING → status:CONFIRMED + assignedDriverId)만 여기 해당
-    const isSelfClaim = booking.status === 'PENDING' && updateData.status === 'CONFIRMED' && !!updateData.assignedDriverId;
+    // ── 진단사 앱 "예약 요청" 탭 "내 담당으로 확정하기"(셀프클레임) ──
+    // handleClaim()이 보내는 시그니처(PENDING → status:CONFIRMED + assignedDriverId)만 여기 해당.
+    // 반드시 원자적 UPDATE로 처리해야 함 — 예전엔 위 823행에서 findOneBy로 읽은 뒤 메모리에서
+    // 상태를 바꿔 save()하는 read-then-write였는데, 두 진단사가 거의 동시에 눌렀을 때 두 요청
+    // 모두 "아직 미배정"으로 읽어버리고 나중에 커밋되는 쪽이 이기는(last-write-wins) 레이스
+    // 컨디션이 있었다(실제 발생: 먼저 누른 진단사 배정이 나중에 누른 진단사로 뒤바뀜). 선착순이
+    // 진단사 책임(현장 방문 의무) 소재를 가르는 구조라 이 순서는 정확해야 한다 — WHERE절에
+    // "아직 미배정" 조건을 걸어서 DB 행 잠금으로 동시성을 보장한다(둘 중 먼저 커밋된 UPDATE만
+    // affected=1, 나머지는 0으로 자동 실패).
+    if (updateData.status === 'CONFIRMED' && updateData.assignedDriverId) {
+      const claimResult = await this.bookingRepository
+        .createQueryBuilder()
+        .update(Booking)
+        .set({
+          status: 'ASSIGNED',
+          assignedDriverId: updateData.assignedDriverId,
+          assignedDriverName: updateData.assignedDriverName,
+          assignSource: 'self',
+          assignedAt: new Date(),
+          cancelledByDriverAt: null,
+        })
+        .where('id = :id', { id })
+        .andWhere('status = :pending', { pending: 'PENDING' })
+        .andWhere('assignedDriverId IS NULL')
+        .execute();
+
+      if (claimResult.affected === 0) {
+        // 진 쪽에게는 "누가 먼저 가져갔는지"까지 알려줘야 앱에서 그냥 실패로 보이지 않고
+        // 책임 소재(선착순)가 납득이 된다 — 실패 원인을 다시 읽어서 문구를 만든다.
+        const current = await this.bookingRepository.findOneBy({ id });
+        if (!current) throw new NotFoundException(`ID ${id}번에 해당하는 내역을 찾을 수 없습니다.`);
+        if (String(current.assignedDriverId) === String(updateData.assignedDriverId)) {
+          // 같은 진단사가 두 번 눌렀거나(더블탭) 응답이 늦어 재시도한 경우 — 실패가 아니다
+          return current;
+        }
+        const owner = current.assignedDriverName || '다른 진단사';
+        console.warn(
+          `⚔️ [셀프클레임 경합] #${id} ${current.carNumber} — 요청자 ${updateData.assignedDriverName}(${updateData.assignedDriverId}) 실패, 선점자 ${owner}(${current.assignedDriverId}) status=${current.status}`,
+        );
+        throw new ConflictException(
+          current.assignedDriverId
+            ? `이미 ${owner} 평가사님이 먼저 확정한 건입니다.`
+            : '지금은 확정할 수 없는 상태의 예약입니다. 목록을 새로고침해주세요.',
+        );
+      }
+
+      const claimed = await this.bookingRepository.findOneBy({ id });
+      if (!claimed) throw new NotFoundException(`ID ${id}번에 해당하는 내역을 찾을 수 없습니다.`);
+      await this.refreshDistanceFlags(claimed);
+      try {
+        const driver = await this.driverRepository.findOne({ where: { id: Number(updateData.assignedDriverId) } });
+        if (driver?.pushToken) {
+          await this.notificationsService.sendPush(
+            driver.pushToken,
+            '(수동배정) 진단건이 확정되었습니다.',
+            `${claimed.carOwner}님 · ${claimed.carNumber} · ${claimed.preferredDateTime}`,
+            { bookingId: claimed.id },
+          );
+        }
+      } catch (e) {}
+      return claimed;
+    }
 
     // 매입가는 계약금+잔금 합계로 자동 계산 — 둘 중 하나라도 들어오면 매입가를 다시 계산한다
     if ('contractDeposit' in updateData || 'contractBalance' in updateData) {
@@ -952,41 +1032,12 @@ export class BookingsService {
     const prevAdminMemo = booking.adminMemo;
 
     Object.assign(booking, updateData);
-    if (isSelfClaim) {
-      // ChavatarApp의 handleClaim()이 status:'CONFIRMED'로 보내는데, 이 값은 시스템 상태값
-      // (PENDING→ASSIGNED→COMPLETED)에 없는 값이라 대시보드의 "✅ 확인" 배지 조건
-      // (status==='ASSIGNED')을 못 타서 계속 미확인으로 보이던 버그 — assign()과 동일하게
-      // ASSIGNED로 정규화한다.
-      booking.status = 'ASSIGNED';
-      booking.assignSource = 'self';
-      booking.assignedAt = new Date();
-      // 취소로 "재대기중" 상태였던 건을 셀프클레임하는 경우 — assign()과 동일하게
-      // 재대기 플래그를 초기화해야 새로 배정된 뒤에도 계속 "재대기중" 뱃지가 남지 않는다.
-      booking.cancelledByDriverAt = null;
-    }
     const updated = await this.bookingRepository.save(booking);
-    if (isSelfClaim) {
-      await this.refreshDistanceFlags(updated);
-    }
-
-    if (isSelfClaim) {
-      try {
-        const driver = await this.driverRepository.findOne({ where: { id: Number(updateData.assignedDriverId) } });
-        if (driver?.pushToken) {
-          await this.notificationsService.sendPush(
-            driver.pushToken,
-            '(수동배정) 진단건이 확정되었습니다.',
-            `${updated.carOwner}님 · ${updated.carNumber} · ${updated.preferredDateTime}`,
-            { bookingId: updated.id },
-          );
-        }
-      } catch (e) {}
-    }
 
     // 이미 배정된 건을 관리자가 나중에 수정한 경우, 담당 진단사에게 "확인해주세요" 알림.
     // 대상: (1) 없던 고객번호가 새로 채워짐, (2) 관리자메모가 바뀜. 셀프클레임 등 배정 자체를
     // 바꾸는 액션과는 무관하게, 이미 배정돼 있던 건이 그대로 유지된 채 내용만 바뀐 경우만 해당.
-    if (!isSelfClaim && updated.assignedDriverId) {
+    if (updated.assignedDriverId) {
       const changedLabels: string[] = [];
       if (!prevCustomerContact && updated.customerContact) changedLabels.push('고객 연락처');
       if (prevAdminMemo !== updated.adminMemo) changedLabels.push('관리자 메시지');
