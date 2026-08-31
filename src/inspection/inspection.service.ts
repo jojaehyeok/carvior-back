@@ -19,6 +19,14 @@ import { TranslateService } from 'src/translate/translate.service';
 import { BookingsService } from 'src/bookings/bookings.service';
 import { VehiclesService } from 'src/vehicles/vehicles.service';
 
+// 진단 완료 → 발주사 대표님 알림톡 발송까지의 기본 대기시간. 매니저/평가사가 리포트를
+// 한 번 검토하고 고칠 여유를 주려고 둔 값이다(리포트 수정 가능 시간은 완료 후 4시간).
+const PARTNER_COMPLETION_DELAY_MS = 60 * 60 * 1000; // 1시간
+
+// 위 대기 없이 완료 즉시 알림톡을 받기로 한 발주사 코드(bookings.source / users.company).
+// 발주사가 요청하면 여기에 코드만 추가하면 된다.
+const IMMEDIATE_PARTNER_COMPANIES = new Set(['anyone-motors']);
+
 
 @Injectable()
 export class InspectionService {
@@ -371,10 +379,12 @@ export class InspectionService {
             .catch((e) => console.error('[파트너패널] 10회 안내 SMS 실패', e));
         }
 
-        // 협업 파트너사 대표님께도 완료 즉시 발송한다. 원래는 매니저/평가사 검토 시간을
-        // 확보하려고 1시간 뒤에 보내도록 DB 예약(크론 5분 주기)을 걸었는데, 발주사 쪽에서
-        // 완료를 바로 알아야 해서 즉시 발송으로 변경(요청). 지연을 delayMs: 0으로만 바꾸면
-        // 크론 주기 때문에 최대 5분이 밀리므로, 고객 알림톡과 동일하게 직접 발송한다.
+        // 협업 파트너사 대표님 완료 알림 — 발송 시점이 발주사별로 다르다.
+        // 기본은 1시간 뒤 DB 예약(매니저/평가사 검토 시간 확보 목적)이고,
+        // IMMEDIATE_PARTNER_COMPANIES에 있는 발주사만 완료 즉시 발송한다(해당 발주사 요청).
+        // 지연을 delayMs: 0으로 두는 방식은 안 됨 — 예약 처리 크론이 5분 주기라 최대 5분이
+        // 밀리므로, 즉시 발송 대상은 고객 알림톡과 동일하게 solapi로 직접 쏜다.
+        // setTimeout이 아니라 DB 예약이라 그 사이 서버가 재배포돼도 유실되지 않는다.
         // 수신번호는 "관리자 계정 관리"에 등록된 그 발주사 관리자 계정의 연락처를 그대로 씀 —
         // 대시보드에서 번호를 바꾸면(업무폰 변경 등) 코드 수정 없이 알림도 그쪽으로 바로 감.
         // 같은 회사코드로 관리자 계정이 여러 개(예: 사무장 계정 추가)여도 항상 가장 먼저
@@ -385,10 +395,23 @@ export class InspectionService {
           : null;
         const partnerPhone = partnerAdmin?.phone;
         if (partnerPhone) {
-          this.solapiService
-            .sendCompletionAlimTalkTo(partnerPhone, completionVariables)
-            .then(() => console.log(`✅ [완료 알림톡] 발주사 대표(${partnerPhone}) 즉시 발송 — ${inspection.carNumber}`))
-            .catch((e) => console.error('[알림톡] 발주사 대표 발송 실패', e));
+          if (IMMEDIATE_PARTNER_COMPANIES.has(booking?.source ?? '')) {
+            this.solapiService
+              .sendCompletionAlimTalkTo(partnerPhone, completionVariables)
+              .then(() =>
+                console.log(`✅ [완료 알림톡] ${booking?.source} 대표(${partnerPhone}) 즉시 발송 — ${inspection.carNumber}`),
+              )
+              .catch((e) => console.error('[알림톡] 발주사 대표 즉시 발송 실패', e));
+          } else {
+            this.scheduledNotificationsService
+              .schedule({
+                type: 'completion_partner',
+                recipientPhone: partnerPhone,
+                variables: completionVariables,
+                delayMs: PARTNER_COMPLETION_DELAY_MS,
+              })
+              .catch((e) => console.error('[예약알림] 등록 실패', e));
+          }
         }
       } else {
         console.log(`[알림톡] 재제출(수정) 감지 - bId=${bId}, 알림 재발송 안 함`);
