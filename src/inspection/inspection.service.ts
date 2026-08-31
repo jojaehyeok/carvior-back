@@ -6,7 +6,7 @@ import sharp from 'sharp';
 import archiver from 'archiver';
 import type { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Booking } from 'src/bookings/entities/booking.entity';
 import { Inspection } from './entities/inspection.entity';
 import { User } from 'src/users/entities/user.entity';
@@ -547,6 +547,77 @@ export class InspectionService {
     inspection.photos = photos;
     await this.inspectionRepository.save(inspection);
     return { success: true };
+  }
+
+  /**
+   * 4-b. 다른 차량 사진이 섞여 들어간 리포트 일괄 정리 (내부 관리용)
+   *
+   * 판정 기준은 appendPhoto의 거절 규칙과 같다 — S3 키 접두사(차량번호)가 이 리포트 차량과
+   * 다르면 남의 차 사진이다. 다만 여기서는 한 단계 더 보수적으로, 그 접두사가 "실제 다른
+   * 예약의 차량번호"와 일치할 때만 지운다. 차량번호가 나중에 입력돼 접두사가 모델명이나
+   * 메모처럼 남은 정상 케이스(예: "QM3/", "올란도/")를 건드리지 않기 위함이다.
+   *
+   * S3 원본 파일은 지우지 않는다 — 원래 주인 리포트가 같은 파일을 쓰고 있기 때문에
+   * 여기서는 이 리포트의 참조만 끊는다.
+   */
+  async purgeForeignPhotos(dryRun = true, bookingIds?: number[]) {
+    const normalize = (v?: string | null) => (v || '').replace(/\s/g, '');
+    const PLACEHOLDERS = new Set(['', '미정', '미등록']);
+    const carOf = (url: string) => {
+      try {
+        return decodeURIComponent(String(url).split('amazonaws.com/')[1] || '').split('/')[0] || '';
+      } catch {
+        return '';
+      }
+    };
+
+    const bookings = await this.bookingRepository.find({ select: ['id', 'carNumber'] });
+    const realCarNumbers = new Set(
+      bookings.map((b) => normalize(b.carNumber)).filter((c) => !PLACEHOLDERS.has(c)),
+    );
+    const carNumberByBookingId = new Map(bookings.map((b) => [b.id, normalize(b.carNumber)]));
+
+    const inspections = await this.inspectionRepository.find(
+      bookingIds?.length ? { where: { bookingId: In(bookingIds) } } : {},
+    );
+
+    const results: { bookingId: number; carNumber: string; removed: { category: string; car: string; url: string }[] }[] = [];
+
+    for (const inspection of inspections) {
+      const own = carNumberByBookingId.get(inspection.bookingId) || normalize(inspection.carNumber);
+      if (PLACEHOLDERS.has(own)) continue; // 차량번호를 모르면 판정 자체가 불가
+
+      const photos = { ...(inspection.photos || {}) };
+      const removed: { category: string; car: string; url: string }[] = [];
+
+      for (const category of Object.keys(photos)) {
+        if (!Array.isArray(photos[category])) continue;
+        photos[category] = (photos[category] as string[]).filter((url) => {
+          const car = normalize(carOf(url));
+          const foreign = !PLACEHOLDERS.has(car) && car !== own && realCarNumbers.has(car);
+          if (foreign) removed.push({ category, car, url });
+          return !foreign;
+        });
+      }
+
+      if (removed.length === 0) continue;
+      results.push({ bookingId: inspection.bookingId, carNumber: own, removed });
+
+      if (!dryRun) {
+        inspection.photos = photos;
+        await this.inspectionRepository.save(inspection);
+        console.log(
+          `🧹 [남의차 사진 제거] bookingId=${inspection.bookingId}(${own}) ${removed.length}장 → ${[...new Set(removed.map((r) => r.car))].join(',')}`,
+        );
+      }
+    }
+
+    return {
+      dryRun,
+      reportCount: results.length,
+      photoCount: results.reduce((sum, r) => sum + r.removed.length, 0),
+      results,
+    };
   }
 
   /**

@@ -91,6 +91,17 @@ export class InspectionController {
     return this.formatReport(localized);
   }
 
+  // 5-b-2. 다른 차량 사진이 섞여 들어간 리포트 일괄 정리 (내부 관리용).
+  // 앱이 "직전에 제출한 리포트 id"로 사진 추가 PATCH를 보내던 버그로 18개 리포트에 219장이
+  // 섞였는데, report-fields는 "완료 후 4시간" 제한이 있어 과거 건을 못 고친다. 그 제한은
+  // 진단사/매니저의 사후 수정용이라 그대로 두고, 잘못 들어온 사진을 걷어내는 이 정리만
+  // 내부키로 따로 연다. 구버전 앱이 남아있는 동안 재발분도 이걸로 정리할 수 있다.
+  @Post('purge-foreign-photos')
+  @UseGuards(InternalKeyGuard)
+  purgeForeignPhotos(@Body() body: { dryRun?: boolean; bookingIds?: number[] }) {
+    return this.inspectionService.purgeForeignPhotos(body?.dryRun !== false, body?.bookingIds);
+  }
+
   // 5-c. 관리자 → 진단사 재촬영/수정 요청 (SMS)
   @Post(':bookingId/request-update')
   @UseGuards(InternalKeyGuard)
