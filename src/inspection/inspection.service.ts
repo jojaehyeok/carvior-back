@@ -19,7 +19,6 @@ import { TranslateService } from 'src/translate/translate.service';
 import { BookingsService } from 'src/bookings/bookings.service';
 import { VehiclesService } from 'src/vehicles/vehicles.service';
 
-const PARTNER_COMPLETION_DELAY_MS = 60 * 60 * 1000; // 1시간
 
 @Injectable()
 export class InspectionService {
@@ -372,8 +371,10 @@ export class InspectionService {
             .catch((e) => console.error('[파트너패널] 10회 안내 SMS 실패', e));
         }
 
-        // 협업 파트너사 대표님은 1시간 뒤 발송 — 매니저/평가사 검토 시간 확보 목적.
-        // setTimeout이 아니라 DB 예약이라 그 사이 서버가 재배포돼도 유실되지 않는다.
+        // 협업 파트너사 대표님께도 완료 즉시 발송한다. 원래는 매니저/평가사 검토 시간을
+        // 확보하려고 1시간 뒤에 보내도록 DB 예약(크론 5분 주기)을 걸었는데, 발주사 쪽에서
+        // 완료를 바로 알아야 해서 즉시 발송으로 변경(요청). 지연을 delayMs: 0으로만 바꾸면
+        // 크론 주기 때문에 최대 5분이 밀리므로, 고객 알림톡과 동일하게 직접 발송한다.
         // 수신번호는 "관리자 계정 관리"에 등록된 그 발주사 관리자 계정의 연락처를 그대로 씀 —
         // 대시보드에서 번호를 바꾸면(업무폰 변경 등) 코드 수정 없이 알림도 그쪽으로 바로 감.
         // 같은 회사코드로 관리자 계정이 여러 개(예: 사무장 계정 추가)여도 항상 가장 먼저
@@ -384,14 +385,10 @@ export class InspectionService {
           : null;
         const partnerPhone = partnerAdmin?.phone;
         if (partnerPhone) {
-          this.scheduledNotificationsService
-            .schedule({
-              type: 'completion_partner',
-              recipientPhone: partnerPhone,
-              variables: completionVariables,
-              delayMs: PARTNER_COMPLETION_DELAY_MS,
-            })
-            .catch((e) => console.error('[예약알림] 등록 실패', e));
+          this.solapiService
+            .sendCompletionAlimTalkTo(partnerPhone, completionVariables)
+            .then(() => console.log(`✅ [완료 알림톡] 발주사 대표(${partnerPhone}) 즉시 발송 — ${inspection.carNumber}`))
+            .catch((e) => console.error('[알림톡] 발주사 대표 발송 실패', e));
         }
       } else {
         console.log(`[알림톡] 재제출(수정) 감지 - bId=${bId}, 알림 재발송 안 함`);
