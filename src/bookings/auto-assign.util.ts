@@ -141,16 +141,54 @@ export async function geocodeAddress(
 // 이름으로 한 번 더 확인한다. "검색결과 없음 → 그대로 등록하기"로 시/도 접두어 없이 저장된
 // 주소(예: "송부로33번길 3-40")에서도 자동배정이 되게 하기 위함 — geocoded가 없거나 실패해도
 // 예외 없이 빈 배열을 반환해 기존 폴백(전체 브로드캐스트) 흐름을 그대로 탄다.
+// 담당지역 라벨에는 동명 자치구를 구분하려고 시/도를 괄호로 덧붙인 것들이 있다
+// ("강서구(서울)", "서구(인천)", "북구(부산)" 등 14종). 그런데 신청 주소는 "서울 강서구 공항대로…"
+// 처럼 괄호 없이 들어오므로, 라벨을 그대로 문자열 포함 검사하면 **절대** 매칭되지 않는다 —
+// 실제로 서울 강서구 건이 유일한 담당자(서영수)에게 자동배정되지 못하고 전체 브로드캐스트로
+// 빠졌고, 부산·대구·인천의 구 단위 담당도 같은 이유로 전부 자동배정에서 누락돼 있었다.
+// 괄호 안 시/도는 "구 이름이 겹칠 때 어느 지역이냐"를 가르는 한정자이므로, 구 이름으로 매칭하되
+// 한정자가 있으면 시/도까지 함께 확인한다(부산 강서구 건이 서울 강서구 담당에게 가면 안 되므로).
+function parseRegionLabel(label: string): { base: string; qualifier: string | null } {
+  const m = label.match(/^\s*(.+?)\s*\(([^)]+)\)\s*$/);
+  return m ? { base: m[1], qualifier: m[2] } : { base: label.trim(), qualifier: null };
+}
+
+// 주소 표기가 "서울"/"서울특별시", "충북"/"충청북도"처럼 갈리므로 한정자는 별칭까지 본다.
+const SIDO_ALIASES: Record<string, string[]> = {
+  서울: ['서울'], 부산: ['부산'], 대구: ['대구'], 인천: ['인천'], 광주: ['광주'],
+  대전: ['대전'], 울산: ['울산'], 세종: ['세종'], 경기: ['경기'], 강원: ['강원'],
+  충북: ['충북', '충청북도'], 충남: ['충남', '충청남도'],
+  전북: ['전북', '전라북도'], 전남: ['전남', '전라남도'],
+  경북: ['경북', '경상북도'], 경남: ['경남', '경상남도'], 제주: ['제주'],
+};
+
+function qualifierMatches(qualifier: string, ...haystacks: (string | null | undefined)[]): boolean {
+  const aliases = SIDO_ALIASES[qualifier] ?? [qualifier];
+  return haystacks.some(h => !!h && aliases.some(a => h.includes(a)));
+}
+
 export function regionMatchDrivers<T extends { regions?: string[] | null }>(
   drivers: T[],
   address: string | null | undefined,
   geocoded?: { region1?: string; region2?: string } | null,
 ): T[] {
-  const raw = drivers.filter(d => (d.regions ?? []).some(r => r && address?.includes(r)));
+  const raw = drivers.filter(d =>
+    (d.regions ?? []).some(r => {
+      if (!r) return false;
+      const { base, qualifier } = parseRegionLabel(r);
+      if (!address?.includes(base)) return false;
+      return !qualifier || qualifierMatches(qualifier, address);
+    }),
+  );
   if (raw.length > 0 || !geocoded) return raw;
   return drivers.filter(d =>
-    (d.regions ?? []).some(
-      r => r && ((geocoded.region1 && geocoded.region1.includes(r)) || (geocoded.region2 && geocoded.region2.includes(r))),
-    ),
+    (d.regions ?? []).some(r => {
+      if (!r) return false;
+      const { base, qualifier } = parseRegionLabel(r);
+      const baseHit =
+        (geocoded.region1 && geocoded.region1.includes(base)) || (geocoded.region2 && geocoded.region2.includes(base));
+      if (!baseHit) return false;
+      return !qualifier || qualifierMatches(qualifier, geocoded.region1, geocoded.region2, address);
+    }),
   );
 }

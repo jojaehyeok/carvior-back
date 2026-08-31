@@ -183,8 +183,8 @@ export class BookingsService {
     let assignLog: Record<string, unknown> | null = null;
     try {
       const result = await this.tryAutoAssign(saved);
-      assignedDriver = result?.driver ?? null;
-      assignLog = result?.log ?? null;
+      assignedDriver = result.driver;
+      assignLog = result.log;
       if (!assignedDriver) {
         console.log(`ℹ️ [자동배정 대상 없음] ${saved.carNumber} (${saved.address}) — 전체 브로드캐스트로 폴백`);
       }
@@ -192,14 +192,19 @@ export class BookingsService {
       // 자동배정 실패는 접수 자체를 막으면 안 됨 — 아래 폴백(전체 브로드캐스트)으로 처리하되,
       // 원인 파악 가능하도록 에러는 반드시 로그로 남긴다(예전엔 조용히 삼켜서 디버깅이 불가능했음)
       console.error(`❌ [자동배정 실패] ${saved.carNumber}`, (e as Error).message);
+      assignLog = { stage: 'error', reason: `자동배정 중 오류: ${(e as Error).message}`, at: new Date().toISOString() };
+    }
+
+    // 배정근거 로그는 성공했을 때만 저장했었는데, 정작 "왜 이 사람한테 자동배정이 안 됐냐"는
+    // 질문은 실패했을 때 나온다 — 실패 사유도 똑같이 남겨야 나중에 원인을 볼 수 있다.
+    if (assignLog) {
+      await this.bookingRepository.update(saved.id, { autoAssignLog: assignLog } as any);
+      saved.autoAssignLog = assignLog;
     }
 
     if (assignedDriver) {
       saved = await this.assign(saved.id, { id: String(assignedDriver.id), name: assignedDriver.name }, 'auto');
-      if (assignLog) {
-        await this.bookingRepository.update(saved.id, { autoAssignLog: assignLog } as any);
-        saved.autoAssignLog = assignLog;
-      }
+      if (assignLog) saved.autoAssignLog = assignLog;
       console.log(`🤖 [자동배정] ${saved.carNumber} → ${assignedDriver.name}(${assignedDriver.id})`);
     } else {
       // 자동배정 대상이 없으면 승인된 진단사 전원에게 새 접수 푸시 발송(기존 동작) —
@@ -524,11 +529,13 @@ export class BookingsService {
   // 신청 주소·가용시간에 맞는 활성 진단사를 찾아 자동배정 대상을 고른다.
   // 지역이 맞는 진단사가 아무도 없으면 null을 반환해 기존 수동배정(전체 브로드캐스트) 흐름으로 넘긴다 —
   // 엉뚱한 지역 진단사에게 억지로 배정하는 것보다 관리자가 판단하게 두는 게 안전하기 때문.
-  private async tryAutoAssign(booking: Booking): Promise<{ driver: Driver; log: Record<string, unknown> } | null> {
+  private async tryAutoAssign(booking: Booking): Promise<{ driver: Driver | null; log: Record<string, unknown> }> {
     // isActive: false — 진단사 본인이 앱에서 "활동중지"로 꺼둔 경우(원거리 이동 중 등)
     // 근무시간(스케줄)에 걸려도 자동배정 대상에서 아예 제외
     const drivers = await this.driverRepository.find({ where: { status: 'APPROVED', isActive: true } });
-    if (drivers.length === 0) return null;
+    if (drivers.length === 0) {
+      return { driver: null, log: { stage: 'no-active-driver', reason: '승인+활동중 상태인 진단사가 한 명도 없음', at: new Date().toISOString() } };
+    }
 
     // 진단사가 설정한 지역(구/시 단위) 중 하나라도 신청 주소 문자열에 포함되면 매칭으로 간주.
     // 텍스트 매칭이 아무도 못 찾으면(예: "그대로 등록하기"로 시/도 없이 저장된 주소) 지오코딩
@@ -539,7 +546,19 @@ export class BookingsService {
       geocodedForRegion = await geocodeAddress(booking.address);
       if (geocodedForRegion) regionMatched = regionMatchDrivers(drivers, booking.address, geocodedForRegion);
     }
-    if (regionMatched.length === 0) return null;
+    if (regionMatched.length === 0) {
+      return {
+        driver: null,
+        log: {
+          stage: 'no-region-match',
+          reason: '담당지역이 신청 주소와 맞는 진단사가 없음',
+          bookingAddress: booking.address,
+          geocoded: geocodedForRegion ? { region1: geocodedForRegion.region1, region2: geocodedForRegion.region2 } : null,
+          activeDriverRegions: drivers.map(d => ({ driverId: d.id, driverName: d.name, regions: d.regions ?? [] })),
+          at: new Date().toISOString(),
+        },
+      };
+    }
 
     // 지역은 맞는데 뒤 단계에서 조용히 걸러진 진단사 — "왜 이 사람은 후보에 없냐"는 문의가
     // 나올 때 배정근거 로그만 보고 원인을 바로 알 수 있게 기록해둔다(candidates에는 최종
@@ -559,7 +578,18 @@ export class BookingsService {
       }
       return true;
     });
-    if (activeMatched.length === 0) return null;
+    if (activeMatched.length === 0) {
+      return {
+        driver: null,
+        log: {
+          stage: 'no-active-in-schedule',
+          reason: '담당지역은 맞지만 방문예정시각에 근무 중인 진단사가 없음',
+          bookingAddress: booking.address,
+          excluded,
+          at: new Date().toISOString(),
+        },
+      };
+    }
 
     // 같은 진단사가 같은 날 방문예정시각이 너무 가까운(MIN_SLOT_GAP_MINUTES 이내) 건을 동시에
     // 뛸 수 없으므로, 이미 그 시간대 근처에 배정된 건이 있는 진단사는 이 슬롯 후보에서 제외
@@ -579,7 +609,18 @@ export class BookingsService {
       }
     });
     const slotFree = conflictChecks.filter(c => !c.conflict).map(c => c.driver);
-    if (slotFree.length === 0) return null;
+    if (slotFree.length === 0) {
+      return {
+        driver: null,
+        log: {
+          stage: 'all-slot-conflict',
+          reason: '후보 전원이 같은 날 다른 배정건과 방문시각이 겹침',
+          bookingAddress: booking.address,
+          excluded,
+          at: new Date().toISOString(),
+        },
+      };
+    }
 
     // 로드밸런싱 기준 배정건수는 "접수(생성)된 날짜"가 아니라 "방문예정일" 기준으로 셈 —
     // 접수일 기준이면 오늘 접수됐지만 방문일이 제각각인 예약들이 뒤섞여서, 실제로 그 방문일에
@@ -693,7 +734,12 @@ export class BookingsService {
     );
     counts.sort((a, b) => a.count.total - b.count.total);
     const picked = counts[0];
-    if (!picked) return null;
+    if (!picked) {
+      return {
+        driver: null,
+        log: { stage: 'no-candidate', reason: '최종 후보 계산 결과가 비어 있음', bookingAddress: booking.address, excluded, at: new Date().toISOString() },
+      };
+    }
     return {
       driver: picked.driver,
       log: {
