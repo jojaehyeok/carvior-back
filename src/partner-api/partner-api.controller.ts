@@ -61,16 +61,25 @@ export class PartnerApiController {
 
     // 진단 리포트는 Booking이 아니라 Inspection 테이블에 있음(bookingId로 연결) —
     // findAll()이 프론트에 carHash를 내려주는 것과 동일한 패턴(bookings.service.ts 참고)
+    // 주행거리·차키갯수도 Booking에는 없고 진단 리포트에만 있는 값이라 같이 뽑는다.
     const inspections = bookings.length
       ? await this.inspectionRepository.find({
           where: { bookingId: In(bookings.map((b) => b.id)) },
-          select: ['bookingId', 'carHash'],
+          select: ['bookingId', 'carHash', 'mileage', 'carStatus'],
         })
       : [];
-    const hashMap = new Map(inspections.map((i) => [i.bookingId, i.carHash]));
+    const inspectionMap = new Map(inspections.map((i) => [i.bookingId, i]));
+
+    // 차키는 스마트/일반/폴딩/특수로 나눠 저장돼 있어서 총 개수는 합산해야 한다
+    // (대시보드 매입 상세의 "차키갯수 2개"와 같은 기준).
+    const countKeys = (keys?: { smart?: number; general?: number; folding?: number; special?: number }) => {
+      if (!keys) return null;
+      return (keys.smart || 0) + (keys.general || 0) + (keys.folding || 0) + (keys.special || 0);
+    };
 
     const data = bookings.map((b) => {
-      const carHash = hashMap.get(b.id);
+      const inspection = inspectionMap.get(b.id);
+      const carHash = inspection?.carHash;
       return {
         id: b.id,
         carNumber: b.carNumber,
@@ -85,6 +94,10 @@ export class PartnerApiController {
         contractBalance: b.contractBalance,
         purchasePrice: b.purchasePrice,
         status: b.status,
+        // 진단 리포트 기준 주행거리(km)와 차키 총 개수. 진단이 아직 없거나 그 항목을
+        // 입력하지 않은 건은 null이므로 수신 측에서 null 처리가 필요하다.
+        mileage: inspection?.mileage ?? null,
+        keyCount: countKeys(inspection?.carStatus?.keys),
         createdAt: b.createdAt,
         reportUrl: carHash ? `${REPORT_BASE_URL}/${carHash}` : null,
       };
