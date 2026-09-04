@@ -93,6 +93,9 @@ export class PartnerApiController {
         contractDeposit: b.contractDeposit,
         contractBalance: b.contractBalance,
         purchasePrice: b.purchasePrice,
+        // 구전 금액. 위 금액 필드들과 동일하게 "만원" 단위다(20 = 200,000원) —
+        // 미입력 건은 null.
+        oldDealerFee: b.oldDealerFee,
         status: b.status,
         // 진단 리포트 기준 주행거리(km)와 차키 총 개수. 진단이 아직 없거나 그 항목을
         // 입력하지 않은 건은 null이므로 수신 측에서 null 처리가 필요하다.
