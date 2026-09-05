@@ -1116,10 +1116,10 @@ export class BookingsService {
   // 대시보드 매입팀 화면의 [매입완료] 버튼이 부르는 진입점.
   // 알림 시점을 값 저장이 아니라 "사람이 완료를 누른 순간"으로 둔 이유: 매입가는 협의 중에
   // 여러 번 고쳐지는데 그때마다 대표·사무장에게 알림이 가면 소음이 된다.
-  async markPurchaseComplete(id: number) {
+  async markPurchaseComplete(id: number, updatedByUserId?: number) {
     const booking = await this.bookingRepository.findOneBy({ id });
     if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
-    await this.notifyPurchaseConfirmed(booking);
+    await this.notifyPurchaseConfirmed(booking, updatedByUserId);
     return { success: true, carNumber: booking.carNumber };
   }
 
@@ -1131,9 +1131,17 @@ export class BookingsService {
     const admins = await this.userRepository.find({
       where: { role: 'admin', company: booking.source },
     });
-    const targets = admins.filter(
-      u => u.webPushToken && (!updatedByUserId || u.id !== updatedByUserId),
-    );
+    // FCM 웹 토큰은 계정이 아니라 "브라우저" 단위로 발급된다 — 한 PC에서 여러 계정으로
+    // 알림을 켜면 계정은 달라도 토큰이 같아져서, 그대로 보내면 그 브라우저에 같은 알림이
+    // 여러 번 뜬다(실제로 대표·매입팀 토큰이 동일해 2번씩 감). 토큰 기준으로 한 번만 보낸다.
+    const seenTokens = new Set<string>();
+    const targets = admins.filter(u => {
+      if (!u.webPushToken) return false;
+      if (updatedByUserId && u.id === updatedByUserId) return false; // 누른 본인은 제외
+      if (seenTokens.has(u.webPushToken)) return false;
+      seenTokens.add(u.webPushToken);
+      return true;
+    });
     if (targets.length === 0) return;
 
     const price = booking.purchasePrice != null ? `${booking.purchasePrice.toLocaleString()}만원` : '미입력';

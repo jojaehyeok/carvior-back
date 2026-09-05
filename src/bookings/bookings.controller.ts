@@ -185,8 +185,9 @@ export class BookingsController {
 
   // PATCH: 매입팀이 [매입완료]를 눌렀을 때 — 같은 발주사 관리자(대표·사무장)에게 브라우저 알림
   @Patch(':id/purchase-complete')
-  async markPurchaseComplete(@Param('id') id: string) {
-    return await this.bookingsService.markPurchaseComplete(Number(id));
+  async markPurchaseComplete(@Param('id') id: string, @Body('userId') userId?: string) {
+    // userId는 버튼을 누른 관리자 — 본인에게는 알림을 보내지 않기 위해 받는다.
+    return await this.bookingsService.markPurchaseComplete(Number(id), userId ? Number(userId) : undefined);
   }
 
   // PATCH: 관리자가 계좌이체 신청 건의 입금을 확인 — 그제서야 자동배정/브로드캐스트 진행
