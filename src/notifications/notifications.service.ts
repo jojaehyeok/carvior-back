@@ -49,6 +49,9 @@ export class NotificationsService implements OnModuleInit {
             icon: '/admin/android-chrome-192x192.png',
             badge: '/admin/favicon-32x32.png',
             requireInteraction: true, // 사용자가 닫기 전까지 알림이 유지됨(놓치지 않게)
+            // 알림에서 바로 "확인" 처리할 수 있게 버튼을 단다 — 대시보드를 열지 않아도
+            // 목록의 빨간색(안 봄) 표시가 파란색(확인함)으로 바뀐다.
+            actions: [{ action: 'confirm', title: '확인' }],
           },
           fcmOptions: link ? { link } : undefined,
         },

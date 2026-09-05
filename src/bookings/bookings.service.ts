@@ -1139,14 +1139,19 @@ export class BookingsService {
 
     const price = booking.purchasePrice != null ? `${booking.purchasePrice.toLocaleString()}만원` : '미입력';
     const fee = booking.oldDealerFee != null ? `${booking.oldDealerFee.toLocaleString()}만원` : '없음';
+    // 알림을 누르면 목록 전체가 아니라 "그 차량만" 검색된 상태로 열리게 한다 —
+    // BookingSearch가 URL 쿼리(searchType/searchText)를 그대로 필터로 읽는다.
+    const link =
+      `${DASHBOARD_BASE_URL}/diagnosis/${booking.source}` +
+      `?searchType=carNumber&searchText=${encodeURIComponent(booking.carNumber)}`;
     await Promise.all(
       targets.map(u =>
         this.notificationsService.sendWebPush(
           u.webPushToken!,
           `매입 확정 · ${booking.carNumber}`,
           `${booking.carModel || '차량'} · 매입가 ${price} · 구전 ${fee}`,
-          `${DASHBOARD_BASE_URL}/diagnosis/${booking.source}`,
-          { bookingId: booking.id, type: 'purchase-confirmed' },
+          link,
+          { bookingId: booking.id, type: 'purchase-confirmed', link },
         ),
       ),
     );
