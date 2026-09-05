@@ -16,6 +16,14 @@ import { distanceKm, geocodeAddress, isDriverActiveNow, isLocationFresh, regionM
 
 // cavior 내에서 source 값을 고정 문자열로 보내는 B2C 신청 경로들 — 이 값들은
 // 발주사 코드가 아니라서 관리자 등록 여부 체크 대상에서 제외한다.
+// 판매자 노쇼 증빙 판정 기준.
+// 노쇼는 보통 "기다리다가" 확정되므로 촬영이 예약시각보다 한참 뒤일 수 있다 — 예약 직전
+// 15분부터 이후 90분까지를 정상으로 본다. 거리는 GPS 오차(건물 안·지하에서 수백 m)를
+// 감안해 넉넉히 5km.
+const NOSHOW_PROOF_MIN_MINUTES = -15;
+const NOSHOW_PROOF_MAX_MINUTES = 90;
+const NOSHOW_PROOF_MAX_KM = 5;
+
 // 매입확정 알림을 클릭했을 때 열 대시보드 주소
 const DASHBOARD_BASE_URL = 'https://carvior.store/admin';
 
@@ -904,6 +912,8 @@ export class BookingsService {
       cancelledByDriver?: boolean;
       // 앱 취소 화면에서 "판매자가 요청한 시간"을 고른 경우에만 들어온다.
       requestedDateTime?: string;
+      // 판매자 노쇼일 때 앱이 즉석 촬영한 증빙 사진(URL + 촬영 시각·좌표).
+      noshowProof?: { url: string; takenAt: string; lat?: number | null; lng?: number | null }[];
     },
   ): Promise<Booking> {
     const booking = await this.bookingRepository.findOneBy({ id });
@@ -921,8 +931,17 @@ export class BookingsService {
       const prevDriverName = booking.assignedDriverName;
       const cancelReason = updateData.cancelReason || '';
 
-      // 취소 로그 저장
+      // 취소 로그 저장 — 노쇼 증빙이 함께 왔으면 예약 시각·주소와 대조한 결과도 같이 남긴다.
+      // 판정은 관리자가 헛걸음 보상을 결정할 때 보는 참고자료이고, 여기서 보상을 막지는 않는다.
       if (prevDriverId) {
+        const proof = updateData.noshowProof?.length ? updateData.noshowProof : null;
+        const judged = proof ? await this.judgeNoshowProof(booking, proof) : null;
+        if (judged) {
+          console.log(
+            `📷 [노쇼 증빙] ${booking.carNumber} ${prevDriverName} → ${judged.verdict} ` +
+              `(예약시각 ${judged.minutesDiff ?? '?'}분, 방문지 ${judged.distanceKm ?? '?'}km)`,
+          );
+        }
         await this.cancelLogRepository.save({
           driverId: prevDriverId,
           driverName: prevDriverName || '',
@@ -930,6 +949,10 @@ export class BookingsService {
           carNumber: booking.carNumber,
           carOwner: booking.carOwner,
           cancelReason,
+          noshowProof: proof,
+          proofVerdict: judged?.verdict ?? null,
+          proofMinutesDiff: judged?.minutesDiff ?? null,
+          proofDistanceKm: judged?.distanceKm ?? null,
         });
       }
 
@@ -1159,6 +1182,62 @@ export class BookingsService {
     }
 
     return updated;
+  }
+
+  // 노쇼 증빙 사진들을 예약 시각·방문 주소와 대조한다.
+  // 자동으로 보상을 막지 않는다 — 결과만 남기고 판단은 관리자가 한다.
+  private async judgeNoshowProof(
+    booking: Booking,
+    proof: { url: string; takenAt: string; lat?: number | null; lng?: number | null }[],
+  ): Promise<{
+    verdict: 'verified' | 'suspect' | 'unknown';
+    minutesDiff: number | null;
+    distanceKm: number | null;
+  }> {
+    const scheduled = this.parsePreferredDateTime(booking.preferredDateTime);
+    const coords = await geocodeAddress(booking.address);
+
+    let worstMinutes: number | null = null;
+    let worstKm: number | null = null;
+    let unknown = false;
+
+    for (const shot of proof) {
+      // 시각 — 예약시각을 못 읽거나 촬영시각이 없으면 판정 불가
+      const takenAt = shot.takenAt ? new Date(shot.takenAt) : null;
+      if (!scheduled || !takenAt || Number.isNaN(takenAt.getTime())) {
+        unknown = true;
+      } else {
+        const diff = Math.round((takenAt.getTime() - scheduled.getTime()) / 60000);
+        if (worstMinutes === null || Math.abs(diff) > Math.abs(worstMinutes)) worstMinutes = diff;
+      }
+
+      // 위치 — 지하주차장 등에서 GPS를 못 잡으면 좌표가 없다. 그래도 사진은 남긴다.
+      if (shot.lat == null || shot.lng == null || !coords) {
+        unknown = true;
+      } else {
+        const km = distanceKm(coords.lat, coords.lng, shot.lat, shot.lng);
+        if (worstKm === null || km > worstKm) worstKm = Math.round(km * 10) / 10;
+      }
+    }
+
+    const timeOk =
+      worstMinutes !== null &&
+      worstMinutes >= NOSHOW_PROOF_MIN_MINUTES &&
+      worstMinutes <= NOSHOW_PROOF_MAX_MINUTES;
+    const placeOk = worstKm !== null && worstKm <= NOSHOW_PROOF_MAX_KM;
+
+    // 판정 불가가 섞여 있어도 확실히 기준 밖인 값이 있으면 suspect로 본다
+    const clearlyOut =
+      (worstMinutes !== null && !timeOk) || (worstKm !== null && !placeOk);
+    const verdict: 'verified' | 'suspect' | 'unknown' = clearlyOut
+      ? 'suspect'
+      : unknown
+        ? 'unknown'
+        : timeOk && placeOk
+          ? 'verified'
+          : 'suspect';
+
+    return { verdict, minutesDiff: worstMinutes, distanceKm: worstKm };
   }
 
   // 진단사 취소로 담당자가 없어져 다시 배정해야 하는 건 — 관리자가 바로 손써야 하는 상황이라
