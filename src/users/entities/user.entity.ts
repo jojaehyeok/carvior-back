@@ -49,6 +49,11 @@ export class User {
   @Column({ default: false })
   canConfirmBilling: boolean;
 
+  // 매입팀 전용 계정 — 대시보드 진단 목록에서 매입 판단에 필요한 컬럼만 남기고 나머지를 숨긴다.
+  // (배정/계약서/등록증 같은 운영 컬럼은 매입팀 업무와 무관해서 화면만 복잡해짐)
+  @Column({ default: false })
+  isPurchaseTeam: boolean;
+
   // 딜러 전용 서류
   @Column({ nullable: true })
   dealerLicenseUrl: string; // 자동차 매매종사원증
