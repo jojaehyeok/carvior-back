@@ -1119,15 +1119,17 @@ export class BookingsService {
   async markPurchaseComplete(id: number, updatedByUserId?: number) {
     const booking = await this.bookingRepository.findOneBy({ id });
     if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
-    await this.notifyPurchaseConfirmed(booking, updatedByUserId);
-    return { success: true, carNumber: booking.carNumber };
+    // sentTo를 돌려줘서 알림이 여러 번 뜰 때 "서버가 여러 번 보낸 건지, 브라우저가 여러 번
+    // 그린 건지"를 바로 구분할 수 있게 한다(디버깅용이지만 화면에도 그대로 쓸 수 있다).
+    const sentTo = await this.notifyPurchaseConfirmed(booking, updatedByUserId);
+    return { success: true, carNumber: booking.carNumber, sentTo };
   }
 
   // 매입가·구전이 확정되면 같은 발주사 관리자들에게 브라우저 푸시.
   // 수신 대상은 "웹 알림 토큰을 등록해둔 같은 회사 관리자 전원"이며, 방금 값을 적은 매입팀 계정은
   // 본인이 한 일이라 알림이 의미 없어서 제외한다(updatedByUserId로 구분 — 안 넘어오면 전원 발송).
-  private async notifyPurchaseConfirmed(booking: Booking, updatedByUserId?: number) {
-    if (!booking.source) return;
+  private async notifyPurchaseConfirmed(booking: Booking, updatedByUserId?: number): Promise<number> {
+    if (!booking.source) return 0;
     const admins = await this.userRepository.find({
       where: { role: 'admin', company: booking.source },
     });
@@ -1142,7 +1144,7 @@ export class BookingsService {
       seenTokens.add(u.webPushToken);
       return true;
     });
-    if (targets.length === 0) return;
+    if (targets.length === 0) return 0;
 
     const price = booking.purchasePrice != null ? `${booking.purchasePrice.toLocaleString()}만원` : '미입력';
     const fee = booking.oldDealerFee != null ? `${booking.oldDealerFee.toLocaleString()}만원` : '없음';
@@ -1163,6 +1165,7 @@ export class BookingsService {
       ),
     );
     console.log(`🔔 [매입확정 웹알림] ${booking.carNumber} → ${targets.map(t => t.email).join(', ')}`);
+    return targets.length;
   }
 
   // source: 'auto'는 create()의 자동배정 성공 시에만 내부적으로 넘김 — 그 외(대시보드/지도에서
