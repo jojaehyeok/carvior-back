@@ -48,6 +48,12 @@ export class NotificationsService implements OnModuleInit {
             body,
             icon: '/admin/android-chrome-192x192.png',
             badge: '/admin/favicon-32x32.png',
+            // tag가 같으면 브라우저는 기존 알림을 '조용히' 갈아치운다 — 배너도 소리도 없이
+            // 알림 센터의 항목만 바뀐다. requireInteraction으로 이전 알림이 안 사라지니 그 자리가
+            // 계속 점유돼서, 두 번째부터는 아무것도 안 뜨는 것처럼 보였다(실제 발생).
+            // renotify를 켜면 교체할 때도 매번 다시 알린다.
+            tag: 'cavior-purchase',
+            renotify: true,
             requireInteraction: true, // 사용자가 닫기 전까지 알림이 유지됨(놓치지 않게)
             // 알림에서 바로 "확인" 처리할 수 있게 버튼을 단다 — 대시보드를 열지 않아도
             // 목록의 빨간색(안 봄) 표시가 파란색(확인함)으로 바뀐다.
