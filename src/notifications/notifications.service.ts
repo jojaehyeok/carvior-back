@@ -39,25 +39,24 @@ export class NotificationsService implements OnModuleInit {
   ) {
     if (!webPushToken || !this.fcmReady) return;
     try {
+      // notification 필드를 넣으면 알림을 "브라우저/Firebase SDK가 알아서" 그린다. 그런데 그
+      // 자동 표시는 우리가 통제할 수 없는 조건에 좌우된다 — 같은 도메인 탭이 하나라도 떠 있으면
+      // 아예 안 그리고, 옵션 조합(tag/actions 등)에 따라서도 조용히 안 뜬다. 실제로 이 때문에
+      // "서비스워커는 메시지를 받는데 화면엔 안 뜬다"를 오래 헤맸다.
+      //
+      // 그래서 data-only로 보낸다. 자동 표시가 아예 일어나지 않고, 서비스워커의
+      // onBackgroundMessage(우리 코드)가 항상 호출돼서 우리가 직접 그린다.
       await admin.messaging().send({
         token: webPushToken,
-        notification: { title, body },
-        webpush: {
-          notification: {
-            title,
-            body,
-            icon: '/admin/android-chrome-192x192.png',
-            badge: '/admin/favicon-32x32.png',
-            // 여기에 tag / requireInteraction / actions를 얹었다가 배너가 아예 안 뜨는 사고가
-            // 났다. 서비스워커는 메시지를 받고 showNotification도 예외 없이 통과하는데 화면에만
-            // 안 나타나서 원인 찾기가 오래 걸렸다(같은 tag는 배너 없이 조용히 교체되고,
-            // requireInteraction으로 이전 알림이 안 사라져 그 자리를 계속 점유했다).
-            // 알림이 뜨는 게 먼저다 — 옵션은 전부 빼고 제목·본문·아이콘만 보낸다.
-            // 다시 붙일 땐 한 번에 하나씩만 넣고 실기기에서 확인할 것.
-          },
-          fcmOptions: link ? { link } : undefined,
+        data: {
+          title,
+          body,
+          link: link ?? '',
+          ...(data ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) : {}),
         },
-        data: data ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) : {},
+        webpush: {
+          headers: { Urgency: 'high' }, // 브라우저가 절전 중에도 바로 깨우도록
+        },
       });
       this.logger.log(`[FCM-Web] 발송 성공 → ${webPushToken.slice(0, 20)}...`);
     } catch (e) {
