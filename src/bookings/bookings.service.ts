@@ -1057,7 +1057,10 @@ export class BookingsService {
     }
 
     // 매입가는 계약금+잔금 합계로 자동 계산 — 둘 중 하나라도 들어오면 매입가를 다시 계산한다
-    if ('contractDeposit' in updateData || 'contractBalance' in updateData) {
+    // 매입가를 명시적으로 같이 보내면 그 값을 존중한다 — 매입팀 화면에서 계약금만 인라인으로
+    // 고칠 때 직접 입력해둔 매입가가 계약금+잔금으로 덮어써지는 걸 막기 위함.
+    // (수정 모달은 계약금+잔금 합계를 purchasePrice로 같이 보내므로 기존 동작과 동일)
+    if (('contractDeposit' in updateData || 'contractBalance' in updateData) && !('purchasePrice' in updateData)) {
       const deposit = 'contractDeposit' in updateData ? updateData.contractDeposit : booking.contractDeposit;
       const balance = 'contractBalance' in updateData ? updateData.contractBalance : booking.contractBalance;
       updateData.purchasePrice = (deposit || 0) + (balance || 0);
