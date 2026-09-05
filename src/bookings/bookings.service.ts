@@ -1256,6 +1256,30 @@ export class BookingsService {
     // 바꿔달라고 한 경우라, 그걸 귀책으로 보고 자동배정에서 불이익을 주면 안 된다.
     // 진짜 문제가 있는 건은 슈퍼관리자가 "진단사 페널티"로 직접 부여한다(createDriverPenalty).
 
+    // 자동배정은 "아직 아무도 안 가져간 건"에만 붙어야 한다.
+    // create()는 예약을 먼저 저장한 뒤(그 순간부터 앱·대시보드에 PENDING으로 보인다) 지오코딩
+    // 등으로 수 초가 걸리는 자동배정 계산을 돌린다. 그 사이에 진단사가 셀프클레임하거나
+    // 관리자가 수동배정하면, 뒤늦게 끝난 자동배정이 그걸 덮어써서 먼저 잡은 사람을 밀어냈다
+    // (셀프클레임은 원자적으로 막아뒀는데 이 경로로 무력화됐다).
+    // WHERE에 "아직 미배정" 조건을 걸어 DB가 판정하게 하고, 이미 주인이 있으면 조용히 포기한다.
+    if (source === 'auto') {
+      const claim = await this.bookingRepository
+        .createQueryBuilder()
+        .update(Booking)
+        .set({ assignedDriverId: driverInfo.id })
+        .where('id = :id', { id })
+        .andWhere('assignedDriverId IS NULL')
+        .andWhere('status = :pending', { pending: 'PENDING' })
+        .execute();
+      if (claim.affected === 0) {
+        const current = await this.bookingRepository.findOneBy({ id });
+        console.log(
+          `⏭️ [자동배정 취소] ${current?.carNumber} — 계산하는 사이 이미 ${current?.assignedDriverName ?? '다른 경로'}에게 배정됨`,
+        );
+        return current ?? booking;
+      }
+    }
+
     booking.assignedDriverId = driverInfo.id;
     booking.assignedDriverName = driverInfo.name;
     booking.status = 'ASSIGNED';
