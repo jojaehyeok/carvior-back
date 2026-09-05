@@ -897,7 +897,15 @@ export class BookingsService {
     })));
   }
 
-  async update(id: number, updateData: Partial<Booking> & { cancelReason?: string; cancelledByDriver?: boolean }): Promise<Booking> {
+  async update(
+    id: number,
+    updateData: Partial<Booking> & {
+      cancelReason?: string;
+      cancelledByDriver?: boolean;
+      // 앱 취소 화면에서 "판매자가 요청한 시간"을 고른 경우에만 들어온다.
+      requestedDateTime?: string;
+    },
+  ): Promise<Booking> {
     const booking = await this.bookingRepository.findOneBy({ id });
 
     if (!booking) {
@@ -934,7 +942,14 @@ export class BookingsService {
         const driver = prevDriverId
           ? await this.driverRepository.findOne({ where: { id: Number(prevDriverId) } })
           : null;
-        const wasWithinOwnSchedule = driver ? isDriverActiveNow(driver, booking.preferredDateTime) : false;
+        // 판매자가 새 시간을 요청했다면 그 시간 기준으로 판정한다.
+        // 원래 예약시간으로 판정하면 의미가 없다 — 자동배정은 애초에 진단사 활동시간 안인
+        // 건만 배정하므로 항상 "갈 수 있었다"가 나와서, 면제 조항이 발동할 수가 없었다.
+        const judgeDateTime = updateData.requestedDateTime || booking.preferredDateTime;
+        const wasWithinOwnSchedule = driver ? isDriverActiveNow(driver, judgeDateTime) : false;
+        // 요청 시간이 있으면 예약도 그 시간으로 옮긴다 — 재배정될 때 다음 진단사가
+        // 판매자가 원하는 시간으로 보게 된다.
+        if (updateData.requestedDateTime) booking.preferredDateTime = updateData.requestedDateTime;
 
         if (wasWithinOwnSchedule && prevDriverId) {
           const CANCEL_PENALTY_THRESHOLD = 3;
