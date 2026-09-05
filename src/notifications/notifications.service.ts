@@ -36,6 +36,9 @@ export class NotificationsService implements OnModuleInit {
     body: string,
     link?: string,
     data?: Record<string, unknown>,
+    // 알림에 띄울 아이콘(절대 URL). 안 넘기면 서비스워커가 카비어 기본 로고를 쓴다 —
+    // 발주사 관리자에겐 자기 회사 로고가 뜨는 편이 한눈에 알아보기 좋다.
+    icon?: string,
   ) {
     if (!webPushToken || !this.fcmReady) return;
     try {
@@ -52,6 +55,7 @@ export class NotificationsService implements OnModuleInit {
           title,
           body,
           link: link ?? '',
+          icon: icon ?? '',
           ...(data ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) : {}),
         },
         webpush: {

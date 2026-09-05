@@ -1161,6 +1161,8 @@ export class BookingsService {
           `${booking.carModel || '차량'} · 매입가 ${price} · 구전 ${fee}`,
           link,
           { bookingId: booking.id, type: 'purchase-confirmed', link },
+          // 받는 관리자 본인 계정에 등록된 회사 로고를 알림 아이콘으로 쓴다(없으면 기본 로고)
+          u.logoUrl ?? u.profileImage ?? undefined,
         ),
       ),
     );
