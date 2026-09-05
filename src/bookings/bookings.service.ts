@@ -1251,21 +1251,10 @@ export class BookingsService {
     const booking = await this.bookingRepository.findOne({ where: { id } });
     if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
 
-    // 자동배정으로 받은 건을 관리자가 다른 진단사에게 수동으로 넘긴 경우, 원래 받았던
-    // 진단사에게 7일간 자동배정 로드밸런싱 +1 페널티 — 에이전트가 직접 확보한 물건(자동배정이
-    // 아니었던 건)을 넘기는 경우는 해당 없음(공지 참고).
-    if (
-      source === 'manual' &&
-      booking.assignSource === 'auto' &&
-      booking.assignedDriverId &&
-      String(booking.assignedDriverId) !== String(driverInfo.id)
-    ) {
-      await this.assignmentPenaltyRepository.save({
-        driverId: String(booking.assignedDriverId),
-        bookingId: booking.id,
-        expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-      });
-    }
+    // 예전엔 "자동배정으로 받은 건을 관리자가 다른 진단사에게 넘기면 원래 받았던 진단사에게
+    // 7일 페널티"가 있었는데 없앴다 — 관리자가 손으로 바꾸는 건은 대부분 평가사와 협의해서
+    // 바꿔달라고 한 경우라, 그걸 귀책으로 보고 자동배정에서 불이익을 주면 안 된다.
+    // 진짜 문제가 있는 건은 슈퍼관리자가 "진단사 페널티"로 직접 부여한다(createDriverPenalty).
 
     booking.assignedDriverId = driverInfo.id;
     booking.assignedDriverName = driverInfo.name;
