@@ -102,6 +102,14 @@ export class UsersController {
     return { success: true };
   }
 
+  // 관리자 대시보드에서 브라우저 알림 권한을 허용하면 받은 FCM 토큰을 여기로 저장한다.
+  // 로그인한 본인 계정에만 저장하므로 별도 권한 가드는 두지 않는다(기존 push-token과 동일).
+  @Patch(':id/web-push-token')
+  async saveWebPushToken(@Param('id') id: string, @Body('webPushToken') webPushToken: string) {
+    await this.svc.updateWebPushToken(Number(id), webPushToken);
+    return { success: true };
+  }
+
   @Patch(':id/marketing-consent')
   updateMarketingConsent(@Param('id') id: string, @Body() body: { marketingConsent: boolean }) {
     return this.svc.updateMarketingConsent(Number(id), !!body.marketingConsent);

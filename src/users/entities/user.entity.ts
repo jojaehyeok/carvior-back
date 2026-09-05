@@ -73,6 +73,13 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   pushToken: string | null;
 
+  // 관리자 대시보드(웹 브라우저) 푸시용 FCM 토큰. 위 pushToken(앱)과는 발송 규격이 달라서
+  // (앱은 android 채널/소리, 웹은 webpush 아이콘/클릭 링크) 컬럼을 분리한다.
+  // 브라우저·기기마다 토큰이 달라서 마지막에 권한을 허용한 곳 하나만 유지된다 —
+  // 여러 기기에서 동시에 받아야 하면 별도 테이블로 빼야 한다.
+  @Column({ type: 'varchar', length: 512, nullable: true })
+  webPushToken: string | null;
+
   @CreateDateColumn()
   createdAt: Date;
 

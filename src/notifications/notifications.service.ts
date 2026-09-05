@@ -27,6 +27,41 @@ export class NotificationsService implements OnModuleInit {
     }
   }
 
+  // 관리자 대시보드(웹 브라우저)용 발송. 앱 푸시(sendPush)와 달리 android 채널/소리 대신
+  // webpush 설정을 쓴다 — link를 넣어야 알림을 클릭했을 때 해당 화면으로 이동한다.
+  // 브라우저가 완전히 종료돼 있으면 서비스워커도 안 살아 있어서 알림이 도착하지 않는다(브라우저 제약).
+  async sendWebPush(
+    webPushToken: string,
+    title: string,
+    body: string,
+    link?: string,
+    data?: Record<string, unknown>,
+  ) {
+    if (!webPushToken || !this.fcmReady) return;
+    try {
+      await admin.messaging().send({
+        token: webPushToken,
+        notification: { title, body },
+        webpush: {
+          notification: {
+            title,
+            body,
+            icon: '/admin/android-chrome-192x192.png',
+            badge: '/admin/favicon-32x32.png',
+            requireInteraction: true, // 사용자가 닫기 전까지 알림이 유지됨(놓치지 않게)
+          },
+          fcmOptions: link ? { link } : undefined,
+        },
+        data: data ? Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])) : {},
+      });
+      this.logger.log(`[FCM-Web] 발송 성공 → ${webPushToken.slice(0, 20)}...`);
+    } catch (e) {
+      // 토큰이 만료·폐기되면(브라우저 데이터 삭제 등) 실패한다 — 발송 실패가 본 작업(매입가 저장)을
+      // 막으면 안 되므로 로그만 남긴다.
+      this.logger.error(`[FCM-Web] 발송 실패: ${e.message}`);
+    }
+  }
+
   async sendPush(
     pushToken: string,
     title: string,

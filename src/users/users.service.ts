@@ -169,6 +169,10 @@ export class UsersService {
     return this.repo.save(user);
   }
 
+  async updateWebPushToken(id: number, webPushToken: string): Promise<void> {
+    await this.repo.update(id, { webPushToken });
+  }
+
   async updatePushToken(id: number, pushToken: string): Promise<void> {
     await this.repo.update(id, { pushToken });
   }

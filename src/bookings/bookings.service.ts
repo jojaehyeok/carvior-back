@@ -16,6 +16,9 @@ import { distanceKm, geocodeAddress, isDriverActiveNow, isLocationFresh, regionM
 
 // cavior 내에서 source 값을 고정 문자열로 보내는 B2C 신청 경로들 — 이 값들은
 // 발주사 코드가 아니라서 관리자 등록 여부 체크 대상에서 제외한다.
+// 매입확정 알림을 클릭했을 때 열 대시보드 주소
+const DASHBOARD_BASE_URL = 'https://carvior.store/admin';
+
 const KNOWN_B2C_SOURCES = new Set([
   'SNS_PROMOTION',
   'EXPORT_SCRAP_QUOTE',
@@ -1073,12 +1076,26 @@ export class BookingsService {
       booking.oldDealerFeeSeen = false;
     }
 
+    // 매입팀이 매입가·구전을 새로 적거나 고친 순간을 "매입 확정"으로 보고, 같은 발주사의
+    // 다른 관리자(대표·사무장)에게 브라우저 알림을 보낸다 — 확정한 본인은 이미 아는 내용이라 제외.
+    // 값이 실제로 달라졌을 때만(같은 값 재저장은 무시) 한 번 보낸다.
+    const purchaseChanged =
+      ('purchasePrice' in updateData && updateData.purchasePrice !== booking.purchasePrice) ||
+      ('oldDealerFee' in updateData && updateData.oldDealerFee !== booking.oldDealerFee);
+
     // 담당 진단사에게 "예약 정보가 바뀌었어요" 알림을 보내기 위해, 덮어쓰기 전 값을 남겨둔다.
     const prevCustomerContact = booking.customerContact;
     const prevAdminMemo = booking.adminMemo;
 
     Object.assign(booking, updateData);
     const updated = await this.bookingRepository.save(booking);
+
+    if (purchaseChanged) {
+      // 발송 실패가 매입가 저장 자체를 막으면 안 되므로 await 하지 않고 에러도 삼킨다.
+      this.notifyPurchaseConfirmed(updated).catch(e =>
+        console.error('[매입확정 웹알림] 발송 실패', e instanceof Error ? e.message : e),
+      );
+    }
 
     // 이미 배정된 건을 관리자가 나중에 수정한 경우, 담당 진단사에게 "확인해주세요" 알림.
     // 대상: (1) 없던 고객번호가 새로 채워짐, (2) 관리자메모가 바뀜. 셀프클레임 등 배정 자체를
@@ -1105,6 +1122,35 @@ export class BookingsService {
     }
 
     return updated;
+  }
+
+  // 매입가·구전이 확정되면 같은 발주사 관리자들에게 브라우저 푸시.
+  // 수신 대상은 "웹 알림 토큰을 등록해둔 같은 회사 관리자 전원"이며, 방금 값을 적은 매입팀 계정은
+  // 본인이 한 일이라 알림이 의미 없어서 제외한다(updatedByUserId로 구분 — 안 넘어오면 전원 발송).
+  private async notifyPurchaseConfirmed(booking: Booking, updatedByUserId?: number) {
+    if (!booking.source) return;
+    const admins = await this.userRepository.find({
+      where: { role: 'admin', company: booking.source },
+    });
+    const targets = admins.filter(
+      u => u.webPushToken && (!updatedByUserId || u.id !== updatedByUserId),
+    );
+    if (targets.length === 0) return;
+
+    const price = booking.purchasePrice != null ? `${booking.purchasePrice.toLocaleString()}만원` : '미입력';
+    const fee = booking.oldDealerFee != null ? `${booking.oldDealerFee.toLocaleString()}만원` : '없음';
+    await Promise.all(
+      targets.map(u =>
+        this.notificationsService.sendWebPush(
+          u.webPushToken!,
+          `매입 확정 · ${booking.carNumber}`,
+          `${booking.carModel || '차량'} · 매입가 ${price} · 구전 ${fee}`,
+          `${DASHBOARD_BASE_URL}/diagnosis/${booking.source}`,
+          { bookingId: booking.id, type: 'purchase-confirmed' },
+        ),
+      ),
+    );
+    console.log(`🔔 [매입확정 웹알림] ${booking.carNumber} → ${targets.map(t => t.email).join(', ')}`);
   }
 
   // source: 'auto'는 create()의 자동배정 성공 시에만 내부적으로 넘김 — 그 외(대시보드/지도에서
