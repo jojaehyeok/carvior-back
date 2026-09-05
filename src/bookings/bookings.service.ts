@@ -1076,26 +1076,12 @@ export class BookingsService {
       booking.oldDealerFeeSeen = false;
     }
 
-    // 매입팀이 매입가·구전을 새로 적거나 고친 순간을 "매입 확정"으로 보고, 같은 발주사의
-    // 다른 관리자(대표·사무장)에게 브라우저 알림을 보낸다 — 확정한 본인은 이미 아는 내용이라 제외.
-    // 값이 실제로 달라졌을 때만(같은 값 재저장은 무시) 한 번 보낸다.
-    const purchaseChanged =
-      ('purchasePrice' in updateData && updateData.purchasePrice !== booking.purchasePrice) ||
-      ('oldDealerFee' in updateData && updateData.oldDealerFee !== booking.oldDealerFee);
-
     // 담당 진단사에게 "예약 정보가 바뀌었어요" 알림을 보내기 위해, 덮어쓰기 전 값을 남겨둔다.
     const prevCustomerContact = booking.customerContact;
     const prevAdminMemo = booking.adminMemo;
 
     Object.assign(booking, updateData);
     const updated = await this.bookingRepository.save(booking);
-
-    if (purchaseChanged) {
-      // 발송 실패가 매입가 저장 자체를 막으면 안 되므로 await 하지 않고 에러도 삼킨다.
-      this.notifyPurchaseConfirmed(updated).catch(e =>
-        console.error('[매입확정 웹알림] 발송 실패', e instanceof Error ? e.message : e),
-      );
-    }
 
     // 이미 배정된 건을 관리자가 나중에 수정한 경우, 담당 진단사에게 "확인해주세요" 알림.
     // 대상: (1) 없던 고객번호가 새로 채워짐, (2) 관리자메모가 바뀜. 셀프클레임 등 배정 자체를
@@ -1122,6 +1108,16 @@ export class BookingsService {
     }
 
     return updated;
+  }
+
+  // 대시보드 매입팀 화면의 [매입완료] 버튼이 부르는 진입점.
+  // 알림 시점을 값 저장이 아니라 "사람이 완료를 누른 순간"으로 둔 이유: 매입가는 협의 중에
+  // 여러 번 고쳐지는데 그때마다 대표·사무장에게 알림이 가면 소음이 된다.
+  async markPurchaseComplete(id: number) {
+    const booking = await this.bookingRepository.findOneBy({ id });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+    await this.notifyPurchaseConfirmed(booking);
+    return { success: true, carNumber: booking.carNumber };
   }
 
   // 매입가·구전이 확정되면 같은 발주사 관리자들에게 브라우저 푸시.
