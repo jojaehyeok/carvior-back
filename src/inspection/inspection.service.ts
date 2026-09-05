@@ -361,6 +361,20 @@ export class InspectionService {
           }
         }
 
+        // 슈퍼관리자 브라우저 알림 — 리포트가 올라온 순간. 최초 제출에만 보낸다(재제출은 제외).
+        // 아이콘은 진단한 평가사 프로필 사진 — 누가 올린 건지 알림만 봐도 알 수 있게.
+        void (async () => {
+          const driver = booking?.assignedDriverId
+            ? await this.driversService.findById(Number(booking.assignedDriverId)).catch(() => null)
+            : null;
+          await this.bookingsService.notifySuperAdmins(
+            `진단 리포트 도착 · ${inspection.carNumber}`,
+            `${booking?.carModel || '차량'} · 진단 ${booking?.assignedDriverName || '평가사'} · ${completedAt}`,
+            `https://carvior.store/report/${savedResult.carHash}`,
+            driver?.photoUrl ?? null,
+          );
+        })().catch(e => console.error('[슈퍼관리자 알림] 리포트도착 실패', e instanceof Error ? e.message : e));
+
         // 파트너패널(발주사 전용 관리페이지) 제안 — 개별(B2C) 검차를 정확히 10회
         // 채운 순간에만 안내 SMS 발송(11회차부턴 이미 안내했으니 다시 안 보냄).
         // countIndividualCompletedByPhone 자체가 KNOWN_B2C_SOURCES로 이미 필터링하므로

@@ -155,6 +155,14 @@ export class BookingsService {
       console.log(`🔕 [관리자 알림톡 생략] 미등록 발주사(source=${saved.source}) — 대시보드에서 확인 필요 (건: ${saved.carNumber})`);
       return { ...saved, restricted: true };
     }
+    // 슈퍼관리자 브라우저 알림 — 알림톡과 같은 시점(정상 접수 건만). 발송 실패가 접수를
+    // 막으면 안 되므로 await 하지 않는다.
+    this.notifySuperAdmins(
+      `신규 접수 · ${saved.carNumber}`,
+      `${saved.carModel || '차량'} · ${saved.preferredDateTime || '일시 미정'} · ${saved.address || ''}`,
+      `${DASHBOARD_BASE_URL}/diagnosis/bookings?searchType=carNumber&searchText=${encodeURIComponent(saved.carNumber)}`,
+    ).catch(e => console.error('[슈퍼관리자 알림] 신규접수 실패', e instanceof Error ? e.message : e));
+
     try {
       const now = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
       await this.solapiService.sendReservationAlimTalk('01022856017', {
@@ -946,7 +954,9 @@ export class BookingsService {
           booking.assignedDriverId = null;
           booking.assignedDriverName = null;
           booking.cancelledByDriverAt = new Date();
-          return await this.bookingRepository.save(booking);
+          const savedCancelled = await this.bookingRepository.save(booking);
+          this.notifyBookingCancelled(savedCancelled, prevDriverName, cancelReason);
+          return savedCancelled;
         }
 
         // 본인 활성시간 밖이라 정말 못 가는 경우 — 페널티 없이 재배정 대상(PENDING)으로만 돌리고,
@@ -957,6 +967,7 @@ export class BookingsService {
         booking.cancelledByDriverAt = new Date();
         const savedCustomerCancel = await this.bookingRepository.save(booking);
         await this.refreshDistanceFlags(savedCustomerCancel);
+        this.notifyBookingUnassigned(savedCustomerCancel, prevDriverName, cancelReason);
         return savedCustomerCancel;
       }
 
@@ -979,6 +990,7 @@ export class BookingsService {
       booking.cancelledByDriverAt = new Date();
       const savedCancel = await this.bookingRepository.save(booking);
       await this.refreshDistanceFlags(savedCancel);
+      this.notifyBookingUnassigned(savedCancel, prevDriverName, cancelReason);
       return savedCancel;
     }
 
@@ -1082,9 +1094,30 @@ export class BookingsService {
     // 담당 진단사에게 "예약 정보가 바뀌었어요" 알림을 보내기 위해, 덮어쓰기 전 값을 남겨둔다.
     const prevCustomerContact = booking.customerContact;
     const prevAdminMemo = booking.adminMemo;
+    // 방문 일시가 실제로 바뀐 경우만 슈퍼관리자에게 알린다(같은 값 재저장은 무시).
+    const prevPreferredDateTime = booking.preferredDateTime;
+    const scheduleChanged =
+      'preferredDateTime' in updateData &&
+      !!updateData.preferredDateTime &&
+      updateData.preferredDateTime !== booking.preferredDateTime;
 
     Object.assign(booking, updateData);
     const updated = await this.bookingRepository.save(booking);
+
+    if (scheduleChanged) {
+      // 아이콘은 담당 진단평가사 프로필 사진 — 누구 일정이 바뀐 건지 알림만 봐도 알 수 있게.
+      void (async () => {
+        const driver = updated.assignedDriverId
+          ? await this.driverRepository.findOne({ where: { id: Number(updated.assignedDriverId) } })
+          : null;
+        await this.notifySuperAdmins(
+          `예약시간 변경 · ${updated.carNumber}`,
+          `${prevPreferredDateTime || '미정'} → ${updated.preferredDateTime} · 담당 ${updated.assignedDriverName || '미배정'}`,
+          `${DASHBOARD_BASE_URL}/diagnosis/bookings?searchType=carNumber&searchText=${encodeURIComponent(updated.carNumber)}`,
+          driver?.photoUrl,
+        );
+      })().catch(e => console.error('[슈퍼관리자 알림] 예약시간변경 실패', e instanceof Error ? e.message : e));
+    }
 
     // 이미 배정된 건을 관리자가 나중에 수정한 경우, 담당 진단사에게 "확인해주세요" 알림.
     // 대상: (1) 없던 고객번호가 새로 채워짐, (2) 관리자메모가 바뀜. 셀프클레임 등 배정 자체를
@@ -1111,6 +1144,48 @@ export class BookingsService {
     }
 
     return updated;
+  }
+
+  // 진단사 취소로 담당자가 없어져 다시 배정해야 하는 건 — 관리자가 바로 손써야 하는 상황이라
+  // 알림 제목을 "미배정"으로 명확히 한다.
+  private notifyBookingUnassigned(booking: Booking, prevDriverName?: string | null, reason?: string) {
+    this.notifySuperAdmins(
+      `미배정 발생 · ${booking.carNumber}`,
+      `${prevDriverName || '진단사'} 취소(${reason || '사유 미기재'}) · 방문 ${booking.preferredDateTime || '미정'} · 재배정 필요`,
+      `${DASHBOARD_BASE_URL}/diagnosis/bookings?searchType=carNumber&searchText=${encodeURIComponent(booking.carNumber)}`,
+    ).catch(e => console.error('[슈퍼관리자 알림] 미배정 실패', e instanceof Error ? e.message : e));
+  }
+
+  // 재배정 없이 그대로 종료된 취소 건
+  private notifyBookingCancelled(booking: Booking, prevDriverName?: string | null, reason?: string) {
+    this.notifySuperAdmins(
+      `예약 취소 · ${booking.carNumber}`,
+      `${reason || '사유 미기재'} · 담당 ${prevDriverName || '-'} · 방문 ${booking.preferredDateTime || '미정'}`,
+      `${DASHBOARD_BASE_URL}/diagnosis/bookings?searchType=carNumber&searchText=${encodeURIComponent(booking.carNumber)}`,
+    ).catch(e => console.error('[슈퍼관리자 알림] 취소 실패', e instanceof Error ? e.message : e));
+  }
+
+  // 슈퍼관리자(발주사 소속이 아닌 관리자) 전원에게 브라우저 알림.
+  // inspection.service 등 다른 모듈에서도 쓰므로 public이다.
+  // 토큰은 브라우저 단위로 발급돼서 계정이 달라도 같을 수 있다 — 같은 브라우저에 여러 번
+  // 뜨지 않도록 토큰 기준으로 한 번만 보낸다(매입확정 알림과 동일한 이유).
+  async notifySuperAdmins(title: string, body: string, link: string, icon?: string | null) {
+    const admins = await this.userRepository.find({ where: { role: 'admin' } });
+    const seen = new Set<string>();
+    const targets = admins.filter(u => {
+      if (u.company || !u.webPushToken) return false; // 발주사 소속은 제외
+      if (seen.has(u.webPushToken)) return false;
+      seen.add(u.webPushToken);
+      return true;
+    });
+    if (targets.length === 0) return 0;
+    await Promise.all(
+      targets.map(u =>
+        this.notificationsService.sendWebPush(u.webPushToken!, title, body, link, {}, icon ?? undefined),
+      ),
+    );
+    console.log(`🔔 [슈퍼관리자 알림] ${title} → ${targets.length}명`);
+    return targets.length;
   }
 
   // 대시보드 매입팀 화면의 [매입완료] 버튼이 부르는 진입점.

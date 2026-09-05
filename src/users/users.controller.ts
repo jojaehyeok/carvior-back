@@ -104,6 +104,14 @@ export class UsersController {
 
   // 관리자 대시보드에서 브라우저 알림 권한을 허용하면 받은 FCM 토큰을 여기로 저장한다.
   // 로그인한 본인 계정에만 저장하므로 별도 권한 가드는 두지 않는다(기존 push-token과 동일).
+  // 슈퍼관리자 전용 — 대시보드 하드코딩 계정이라 :id가 숫자가 아니어서 아래 경로를 못 쓴다.
+  // 반드시 ':id/web-push-token'보다 위에 있어야 'super-admin'이 :id로 잡히지 않는다.
+  @Patch('super-admin/web-push-token')
+  async saveSuperAdminWebPushToken(@Body('webPushToken') webPushToken: string) {
+    await this.svc.updateSuperAdminWebPushToken(webPushToken);
+    return { success: true };
+  }
+
   @Patch(':id/web-push-token')
   async saveWebPushToken(@Param('id') id: string, @Body('webPushToken') webPushToken: string) {
     await this.svc.updateWebPushToken(Number(id), webPushToken);

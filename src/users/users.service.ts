@@ -172,6 +172,34 @@ export class UsersService {
     return this.repo.save(user);
   }
 
+  // 슈퍼관리자(대시보드 하드코딩 계정 'admin')는 users 테이블에 행이 없어서 토큰을 저장할
+  // 데가 없다. 로그인 방식은 그대로 두고, 알림을 켜는 순간 전용 행을 만들어 거기에 저장한다.
+  // company가 null이라 기존 코드에서 자연스럽게 SUPER_ADMIN으로 취급된다.
+  static readonly SUPER_ADMIN_EMAIL = 'superadmin@carvior.store';
+
+  async updateSuperAdminWebPushToken(webPushToken: string): Promise<void> {
+    let user = await this.repo.findOne({ where: { email: UsersService.SUPER_ADMIN_EMAIL } });
+    if (!user) {
+      user = this.repo.create({
+        email: UsersService.SUPER_ADMIN_EMAIL,
+        name: '슈퍼관리자',
+        role: 'admin',
+        company: null,
+        // 이 행으로는 로그인하지 않는다(로그인은 대시보드 하드코딩 계정). 비밀번호는 쓰이지 않지만
+        // 컬럼이 비면 안 되므로 로그인 불가능한 값을 넣어둔다.
+        password: 'disabled-login-notification-only',
+      });
+    }
+    user.webPushToken = webPushToken;
+    await this.repo.save(user);
+  }
+
+  // 슈퍼관리자용 웹 알림 수신 대상 — company가 없는 관리자 계정들
+  async findSuperAdminsWithWebPush(): Promise<User[]> {
+    const admins = await this.repo.find({ where: { role: 'admin' } });
+    return admins.filter(u => !u.company && u.webPushToken);
+  }
+
   async updateWebPushToken(id: number, webPushToken: string): Promise<void> {
     await this.repo.update(id, { webPushToken });
   }
