@@ -285,6 +285,13 @@ export class BookingsController {
     return await this.bookingsService.getDriverCancelStats(driverId);
   }
 
+  // GET: 간편신청 폼의 딜러 이름 자동완성 — 지난 접수 기록에서 이름으로 찾아 연락처를 돌려준다.
+  // 공개 폼에서 부르므로 발주사(source)를 반드시 받아 그 발주사 기록만 조회한다.
+  @Get('dealer-suggest')
+  async suggestDealers(@Query('source') source: string, @Query('q') q: string) {
+    return await this.bookingsService.suggestDealers(source, q);
+  }
+
   // GET: 진단사 앱 "예약 요청" 탭 실시간 갱신용 초경량 폴링 엔드포인트.
   // 목록 전체(/list)는 수백 KB라 10초마다 받으면 현장 모바일 데이터가 감당이 안 된다 —
   // 대기건의 "지문"(개수/최대 id/최근 수정시각)만 내려주고, 값이 바뀐 순간에만 앱이

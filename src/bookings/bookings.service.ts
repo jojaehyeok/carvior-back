@@ -850,6 +850,42 @@ export class BookingsService {
     });
   }
 
+  // 간편신청 폼에서 딜러 이름을 치면 지난 접수에서 쓰던 연락처를 찾아준다.
+  // 같은 딜러가 반복해서 접수하는데 매번 번호를 찾아 입력해야 해서 만든 기능이라,
+  // 별도 딜러 명부를 두지 않고 이미 쌓인 접수 기록(dealerName+contact)을 그대로 쓴다.
+  // 발주사별로 분리해서 다른 발주사 딜러 연락처가 섞이지 않게 한다.
+  async suggestDealers(source: string, q: string): Promise<{ dealerName: string; contact: string; count: number }[]> {
+    const keyword = (q || '').trim();
+    if (!source || keyword.length < 1) return [];
+
+    const rows = await this.bookingRepository.find({
+      where: { source, dealerName: Like(`%${keyword}%`) },
+      select: ['dealerName', 'contact', 'createdAt'],
+      order: { createdAt: 'DESC' },
+      take: 500,
+    });
+
+    // 같은 딜러가 여러 번 접수했으면 하나로 묶고, 자주 쓴 순 → 최근 순으로 정렬한다.
+    const map = new Map<string, { dealerName: string; contact: string; count: number; last: Date }>();
+    for (const r of rows) {
+      const name = (r.dealerName || '').trim();
+      const contact = (r.contact || '').replace(/[^0-9]/g, '');
+      if (!name || !contact) continue;
+      const key = `${name}|${contact}`;
+      const prev = map.get(key);
+      if (prev) {
+        prev.count += 1;
+        if (r.createdAt > prev.last) prev.last = r.createdAt;
+      } else {
+        map.set(key, { dealerName: name, contact, count: 1, last: r.createdAt });
+      }
+    }
+    return [...map.values()]
+      .sort((a, b) => b.count - a.count || b.last.getTime() - a.last.getTime())
+      .slice(0, 8)
+      .map(({ dealerName, contact, count }) => ({ dealerName, contact, count }));
+  }
+
   // 진단사 앱이 "예약 요청" 탭을 열어둔 동안 짧은 주기로 부르는 초경량 폴링용 —
   // 대기건 목록의 지문(개수·최대 id·최근 수정시각)만 돌려준다. 앱은 이 값이 직전과
   // 달라졌을 때만 무거운 /list를 다시 부르므로, 새 접수가 뜨는 데 새로고침이 필요 없으면서도
