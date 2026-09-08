@@ -866,22 +866,70 @@ export class BookingsService {
     });
 
     // 같은 딜러가 여러 번 접수했으면 하나로 묶고, 자주 쓴 순 → 최근 순으로 정렬한다.
-    const map = new Map<string, { dealerName: string; contact: string; count: number; last: Date }>();
+    //
+    // 폼에서 딜러 연락처가 선택 항목이라 번호 없이 들어온 접수가 적지 않다. 그런 이름도
+    // 후보에는 올리고(화면엔 "번호 없음"으로 보인다), 나중에 같은 이름으로 번호가 한 번이라도
+    // 들어오면 그때부터 번호 있는 항목이 대신 뜨고 번호 없이 접수했던 횟수도 거기에 합산된다 —
+    // 별도 등록 절차 없이 접수 기록만으로 저절로 채워진다.
+    type Entry = { dealerName: string; contact: string; count: number; last: Date };
+    const byName = new Map<
+      string,
+      { withContact: Map<string, Entry>; blank: { count: number; last: Date } | null }
+    >();
     for (const r of rows) {
       const name = (r.dealerName || '').trim();
+      if (!name) continue;
       const contact = (r.contact || '').replace(/[^0-9]/g, '');
-      if (!name || !contact) continue;
-      const key = `${name}|${contact}`;
-      const prev = map.get(key);
-      if (prev) {
-        prev.count += 1;
-        if (r.createdAt > prev.last) prev.last = r.createdAt;
+      let g = byName.get(name);
+      if (!g) {
+        g = { withContact: new Map(), blank: null };
+        byName.set(name, g);
+      }
+      if (contact) {
+        const prev = g.withContact.get(contact);
+        if (prev) {
+          prev.count += 1;
+          if (r.createdAt > prev.last) prev.last = r.createdAt;
+        } else {
+          g.withContact.set(contact, { dealerName: name, contact, count: 1, last: r.createdAt });
+        }
+      } else if (g.blank) {
+        g.blank.count += 1;
+        if (r.createdAt > g.blank.last) g.blank.last = r.createdAt;
       } else {
-        map.set(key, { dealerName: name, contact, count: 1, last: r.createdAt });
+        g.blank = { count: 1, last: r.createdAt };
       }
     }
-    return [...map.values()]
-      .sort((a, b) => b.count - a.count || b.last.getTime() - a.last.getTime())
+
+    const entries: Entry[] = [];
+    for (const [name, g] of byName) {
+      if (g.withContact.size === 0) {
+        // 번호가 한 번도 안 들어온 딜러 — 이름만 채워주고 번호는 직접 입력하게 둔다.
+        entries.push({
+          dealerName: name,
+          contact: '',
+          count: g.blank?.count ?? 0,
+          last: g.blank?.last ?? new Date(0),
+        });
+        continue;
+      }
+      const list = [...g.withContact.values()];
+      // 번호가 하나뿐이면 번호 없이 들어왔던 접수도 같은 딜러로 보고 횟수에 더한다.
+      if (list.length === 1 && g.blank) {
+        list[0].count += g.blank.count;
+        if (g.blank.last > list[0].last) list[0].last = g.blank.last;
+      }
+      entries.push(...list);
+    }
+
+    return entries
+      .sort(
+        (a, b) =>
+          // 번호가 있는 후보가 먼저 — 번호를 찾는 게 이 기능의 목적이다.
+          Number(!!b.contact) - Number(!!a.contact) ||
+          b.count - a.count ||
+          b.last.getTime() - a.last.getTime(),
+      )
       .slice(0, 8)
       .map(({ dealerName, contact, count }) => ({ dealerName, contact, count }));
   }
