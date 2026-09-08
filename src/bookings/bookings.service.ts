@@ -1599,8 +1599,8 @@ export class BookingsService {
         const assignedDriver = await this.driverRepository.findOne({ where: { id: Number(driverInfo.id) } });
         const kakaoVariables = {
           '#{진단사명}': driverInfo.name,
-          // 평가사 개인번호는 노출하지 않고 대표번호를 안내한다 — 대신 평가 차량번호로
-          // 방문한 차를 알아보게 한다(평가사가 앱에서 등록, 미등록이면 "미등록"으로 나감).
+          // 진단사 개인번호는 노출하지 않고 대표번호를 안내한다 — 대신 진단사 차량번호로
+          // 방문한 차를 알아보게 한다(진단사가 앱에서 등록, 미등록이면 "미등록"으로 나감).
           '#{진단사연락처}': '070-4138-2017',
           '#{차량번호}': saved.carNumber,
           '#{평가차량}': assignedDriver?.carNumber || '미등록',
