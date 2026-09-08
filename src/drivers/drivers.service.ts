@@ -78,6 +78,7 @@ export class DriversService {
     availableEndTime?: string;
     maxDailyBookings?: number;
     vehicleTypes?: string[];
+    carNumber?: string;
   }) {
     const driver = await this.driverRepository.findOne({ where: { id } });
     if (!driver) throw new NotFoundException('진단사를 찾을 수 없습니다.');

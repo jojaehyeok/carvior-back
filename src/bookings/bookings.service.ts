@@ -39,6 +39,22 @@ const KNOWN_B2C_SOURCES = new Set([
   'DEALER_PARTNER_INSPECTION',
 ]);
 
+// 배정·예약변경 알림톡을 "신청자 본인"에게 먼저 보내야 하는 출처.
+//
+// contact 컬럼은 신청자 번호라 출처마다 주인이 다르다 — 발주사 접수면 딜러가 신청자지만,
+// 고객 직접신청(구매동행)에서는 고객 본인이다. 반면 customerContact는 계약팀이 오더를
+// 진행하면서 채워 넣는 "차주" 번호라, 구매동행 건에서는 차를 파는 쪽 번호가 들어간다.
+// 그래서 직접신청 계열까지 customerContact를 우선하면 신청한 고객이 아니라 판매자에게
+// "진단사가 배정되었습니다"가 날아간다(실제 발생: booking #134 — 신청 01059342588인데
+// customerContact 01088975992로 발송됨). 이 출처들만 신청자(contact)를 먼저 쓴다.
+const APPLICANT_FIRST_SOURCES = new Set([
+  ...KNOWN_B2C_SOURCES,
+  // 상담 접수(buyer_requests)에서 전환된 건 — 신청자가 곧 구매 고객
+  'KARROT_FORM',
+  'META',
+  'YOUTUBE',
+]);
+
 // 자동배정은 "지금 이 순간 활성 상태인 진단사"만 보고 판단하는 즉시배정 로직이라,
 // 방문일이 접수 시점보다 한참 뒤인 예약건에 적용하면 실제 방문일의 스케줄과 무관하게
 // 배정되거나 반대로 충분히 가능한 진단사가 제외될 수 있다 — 이 기간을 넘는 예약은
@@ -103,6 +119,16 @@ export class BookingsService {
     if (KNOWN_B2C_SOURCES.has(company)) return false;
     const admin = await this.userRepository.findOne({ where: { role: 'admin', company } });
     return !admin;
+  }
+
+  // 배정·예약변경 알림톡을 받을 번호를 정한다(APPLICANT_FIRST_SOURCES 주석 참고).
+  // 둘 다 비어 있으면 null — 빈 번호로 솔라피를 부르면 에러 로그만 남고 의미가 없다.
+  private resolveNotifyTarget(booking: Booking): string | null {
+    const applicantFirst = APPLICANT_FIRST_SOURCES.has(booking.source || '');
+    const target = applicantFirst
+      ? booking.contact || booking.customerContact
+      : booking.customerContact || booking.contact;
+    return target?.trim() || null;
   }
 
   // preferredDateTime("YYYY-MM-DD HH:mm")의 날짜가 오늘(KST) 기준 AUTO_ASSIGN_DAYS_THRESHOLD일
@@ -1238,6 +1264,25 @@ export class BookingsService {
           `${DASHBOARD_BASE_URL}/diagnosis/bookings?searchType=carNumber&searchText=${encodeURIComponent(updated.carNumber)}`,
           driver?.photoUrl,
         );
+
+        // 신청한 쪽(딜러 또는 고객 본인)에게도 알린다 — 안 알리면 원래 시간에 나와서
+        // 기다리게 된다. 알림톡 실패가 예약 수정 자체를 되돌리면 안 되므로 따로 삼킨다.
+        const notifyTarget = this.resolveNotifyTarget(updated);
+        if (notifyTarget) {
+          try {
+            await this.solapiService.sendScheduleChangedAlimTalk(notifyTarget, {
+              '#{차량번호}': updated.carNumber,
+              '#{진단사명}': updated.assignedDriverName || '배정 예정',
+              '#{평가차량}': driver?.carNumber || '미등록',
+              '#{변경전일시}': prevPreferredDateTime || '미정',
+              '#{변경후일시}': updated.preferredDateTime,
+            });
+          } catch (e) {
+            console.error('❌ [예약변경 알림톡 발송 실패]', e instanceof Error ? e.message : e);
+          }
+        } else {
+          console.log(`🔕 [예약변경 알림톡 생략] ${updated.carNumber} — 신청자/고객 연락처 없음`);
+        }
       })().catch(e => console.error('[슈퍼관리자 알림] 예약시간변경 실패', e instanceof Error ? e.message : e));
     }
 
@@ -1507,15 +1552,19 @@ export class BookingsService {
 
     // 대시보드에서 배정할 때 실제로 타는 경로는 이 assign()이다 — 고객에게 배정완료
     // 알림톡이 안 갔던 원인은 이 메서드에 발송 로직 자체가 없었기 때문(진단사 앱 푸시만 있었음).
-    // 딜러번호(contact)/고객번호(customerContact) 둘 다 선택사항이라, 있는 쪽을 우선 사용(고객번호 우선)하고
-    // 둘 다 없으면 알림톡 자체를 건너뜀(빈 번호로 SOLAPI 호출하면 에러만 남고 의미 없음).
-    const notifyTarget = saved.customerContact || saved.contact;
+    // 수신자는 출처에 따라 다르다 — resolveNotifyTarget 참고.
+    const notifyTarget = this.resolveNotifyTarget(saved);
     if (notifyTarget) {
       try {
+        const assignedDriver = await this.driverRepository.findOne({ where: { id: Number(driverInfo.id) } });
         const kakaoVariables = {
           '#{진단사명}': driverInfo.name,
+          // 평가사 개인번호는 노출하지 않고 대표번호를 안내한다 — 대신 평가 차량번호로
+          // 방문한 차를 알아보게 한다(평가사가 앱에서 등록, 미등록이면 "미등록"으로 나감).
           '#{진단사연락처}': '070-4138-2017',
           '#{차량번호}': saved.carNumber,
+          '#{평가차량}': assignedDriver?.carNumber || '미등록',
+          '#{진단일시}': saved.preferredDateTime || '미정',
         };
         await this.solapiService.sendAlimTalk(notifyTarget, kakaoVariables);
         console.log(`✅ [알림톡 발송] 고객(${notifyTarget})께 배정 완료 알림 전송 (담당: ${driverInfo.name})`);

@@ -14,9 +14,19 @@ export class SolapiService {
     }
 
     // 진단사 배정 알림 (고객에게 발송)
-    async sendAlimTalk(to: string, variables: { '#{진단사명}': string; '#{진단사연락처}': string; '#{차량번호}': string }) {
+    //
+    // 평가 차량번호·진단일시를 넣은 새 템플릿은 카카오 재심사를 받아야 해서, 승인 전에는
+    // SOLAPI_TEMPLATE_ID_ASSIGNED_V2가 비어 있다 — 그 동안은 기존 템플릿(변수 3개)으로
+    // 그대로 나가게 두고, .env에 새 ID를 넣는 순간 자동으로 5개짜리로 바뀐다.
+    // 변수 개수가 템플릿과 다르면 솔라피가 발송을 거부하므로 반드시 짝을 맞춰 보낸다.
+    async sendAlimTalk(to: string, variables: { '#{진단사명}': string; '#{진단사연락처}': string; '#{차량번호}': string; '#{평가차량}'?: string; '#{진단일시}'?: string }) {
         try {
-            const templateId = this.configService.get<string>('SOLAPI_TEMPLATE_ID_ASSIGNED');
+            const v2Id = this.configService.get<string>('SOLAPI_TEMPLATE_ID_ASSIGNED_V2');
+            const templateId = v2Id || this.configService.get<string>('SOLAPI_TEMPLATE_ID_ASSIGNED');
+            if (!v2Id) {
+                delete variables['#{평가차량}'];
+                delete variables['#{진단일시}'];
+            }
             const senderNumber = this.configService.get<string>('SOLAPI_SENDER_NUMBER');
             const pfId = this.configService.get<string>('SOLAPI_PF_ID');
 
@@ -140,6 +150,39 @@ export class SolapiService {
             return response;
         } catch (error) {
             console.error('진단 배정 알림톡(평가사) 발송 에러:', JSON.stringify(error, null, 2));
+            throw error;
+        }
+    }
+
+    // 진단 예약일시 변경 알림 (신청자에게 발송)
+    //
+    // 관리자가 대시보드에서 방문 일시를 바꾸면 신청한 쪽(딜러 또는 고객 본인)이 모른 채
+    // 원래 시간에 기다리는 일이 있어서 만든 알림이다. 카카오 템플릿 승인 전에는
+    // SOLAPI_TEMPLATE_ID_SCHEDULE_CHANGED가 비어 있으므로 조용히 건너뛴다(발송 실패 로그로
+    // 도배되지 않게 — 승인되면 .env에 ID만 넣으면 바로 나간다).
+    async sendScheduleChangedAlimTalk(
+        to: string,
+        variables: { '#{차량번호}': string; '#{진단사명}': string; '#{평가차량}': string; '#{변경전일시}': string; '#{변경후일시}': string },
+    ) {
+        const templateId = this.configService.get<string>('SOLAPI_TEMPLATE_ID_SCHEDULE_CHANGED');
+        if (!templateId) {
+            console.log('🔕 [예약변경 알림톡 생략] SOLAPI_TEMPLATE_ID_SCHEDULE_CHANGED 미설정 — 템플릿 승인 후 .env에 추가 필요');
+            return null;
+        }
+        const senderNumber = this.configService.get<string>('SOLAPI_SENDER_NUMBER');
+        const pfId = this.configService.get<string>('SOLAPI_PF_ID');
+
+        try {
+            const response = await this.messageService.sendOne({
+                to,
+                from: senderNumber,
+                type: 'ATA',
+                kakaoOptions: { pfId, templateId, variables },
+            });
+            console.log(`✅ [예약변경 알림톡] → ${to} (${variables['#{차량번호}']})`);
+            return response;
+        } catch (error) {
+            console.error('예약변경 알림톡 발송 에러:', JSON.stringify(error, null, 2));
             throw error;
         }
     }
