@@ -121,14 +121,54 @@ export class BookingsService {
     return !admin;
   }
 
-  // 배정·예약변경 알림톡을 받을 번호를 정한다(APPLICANT_FIRST_SOURCES 주석 참고).
-  // 둘 다 비어 있으면 null — 빈 번호로 솔라피를 부르면 에러 로그만 남고 의미가 없다.
-  private resolveNotifyTarget(booking: Booking): string | null {
+  // 여러 후보 중 실제로 값이 있는 첫 번호를 고른다. 접수 데이터에 " 01012345678"처럼
+  // 앞뒤 공백이 섞여 들어오는 경우가 있어 반드시 trim 후 판단한다.
+  private pickPhone(...candidates: (string | null | undefined)[]): string | null {
+    return candidates.map(v => v?.trim()).find(Boolean) || null;
+  }
+
+  // 발주사 대표 연락처 — "관리자 계정 관리"에 등록된 그 발주사 관리자 계정의 번호를 쓴다.
+  // 같은 회사코드로 계정이 여러 개(사무장·매입팀 등)일 수 있어 항상 가장 먼저 만든 계정으로
+  // 고정한다(order 없이 findOne만 쓰면 계정을 추가하는 순간 수신 번호가 바뀌어버린다) —
+  // 진단완료 알림톡(inspection.service.ts)이 쓰는 규칙과 동일하게 맞춘 것.
+  // 고객 직접신청(구매동행) 출처에는 발주사 관리자 계정이 없으므로 자연히 null이 된다.
+  private async findPartnerAdminPhone(source?: string | null): Promise<string | null> {
+    if (!source) return null;
+    const admin = await this.userRepository.findOne({
+      where: { role: 'admin', company: source },
+      order: { id: 'ASC' },
+    });
+    return this.pickPhone(admin?.phone);
+  }
+
+  // 배정 알림톡 수신자 — 출처마다 contact의 주인이 달라서 우선순위가 다르다
+  // (APPLICANT_FIRST_SOURCES 주석 참고).
+  private async resolveAssignNotifyTarget(booking: Booking): Promise<string | null> {
     const applicantFirst = APPLICANT_FIRST_SOURCES.has(booking.source || '');
-    const target = applicantFirst
-      ? booking.contact || booking.customerContact
-      : booking.customerContact || booking.contact;
-    return target?.trim() || null;
+    const direct = applicantFirst
+      ? this.pickPhone(booking.contact, booking.customerContact)
+      : this.pickPhone(booking.customerContact, booking.contact);
+    if (direct) return direct;
+    // 딜러 연락처 없이 접수되는 건이 꽤 있다 — 그냥 두면 배정 사실이 발주사 쪽
+    // 누구에게도 안 가므로, 마지막 수단으로 발주사 대표에게 보낸다.
+    const partner = await this.findPartnerAdminPhone(booking.source);
+    if (partner) {
+      console.log('ℹ️ [배정 알림톡 대체수신] ' + booking.carNumber + ' — 신청자 연락처가 없어 발주사(' + booking.source + ') 대표에게 발송');
+    }
+    return partner;
+  }
+
+  // 예약변경 알림톡 수신자 — 시간 조율 자체는 보통 차주와 하지만, 바뀐 일정을 딜러도
+  // 알고 싶어하는 경우가 많아서 신청자(발주사 접수면 딜러, 직접신청이면 고객 본인)에게
+  // 먼저 보낸다. 딜러 연락처가 없으면 발주사 대표에게.
+  private async resolveScheduleNotifyTarget(booking: Booking): Promise<string | null> {
+    const direct = this.pickPhone(booking.contact, booking.customerContact);
+    if (direct) return direct;
+    const partner = await this.findPartnerAdminPhone(booking.source);
+    if (partner) {
+      console.log('ℹ️ [예약변경 알림톡 대체수신] ' + booking.carNumber + ' — 딜러 연락처가 없어 발주사(' + booking.source + ') 대표에게 발송');
+    }
+    return partner;
   }
 
   // preferredDateTime("YYYY-MM-DD HH:mm")의 날짜가 오늘(KST) 기준 AUTO_ASSIGN_DAYS_THRESHOLD일
@@ -1267,7 +1307,7 @@ export class BookingsService {
 
         // 신청한 쪽(딜러 또는 고객 본인)에게도 알린다 — 안 알리면 원래 시간에 나와서
         // 기다리게 된다. 알림톡 실패가 예약 수정 자체를 되돌리면 안 되므로 따로 삼킨다.
-        const notifyTarget = this.resolveNotifyTarget(updated);
+        const notifyTarget = await this.resolveScheduleNotifyTarget(updated);
         if (notifyTarget) {
           try {
             await this.solapiService.sendScheduleChangedAlimTalk(notifyTarget, {
@@ -1281,7 +1321,7 @@ export class BookingsService {
             console.error('❌ [예약변경 알림톡 발송 실패]', e instanceof Error ? e.message : e);
           }
         } else {
-          console.log(`🔕 [예약변경 알림톡 생략] ${updated.carNumber} — 신청자/고객 연락처 없음`);
+          console.log(`🔕 [예약변경 알림톡 생략] ${updated.carNumber} — 딜러/차주 연락처도, 발주사 대표 연락처도 없음`);
         }
       })().catch(e => console.error('[슈퍼관리자 알림] 예약시간변경 실패', e instanceof Error ? e.message : e));
     }
@@ -1552,8 +1592,8 @@ export class BookingsService {
 
     // 대시보드에서 배정할 때 실제로 타는 경로는 이 assign()이다 — 고객에게 배정완료
     // 알림톡이 안 갔던 원인은 이 메서드에 발송 로직 자체가 없었기 때문(진단사 앱 푸시만 있었음).
-    // 수신자는 출처에 따라 다르다 — resolveNotifyTarget 참고.
-    const notifyTarget = this.resolveNotifyTarget(saved);
+    // 수신자는 출처에 따라 다르다 — resolveAssignNotifyTarget 참고.
+    const notifyTarget = await this.resolveAssignNotifyTarget(saved);
     if (notifyTarget) {
       try {
         const assignedDriver = await this.driverRepository.findOne({ where: { id: Number(driverInfo.id) } });
@@ -1572,7 +1612,7 @@ export class BookingsService {
         console.error('❌ [배정완료 알림톡 발송 실패]', (error as Error).message);
       }
     } else {
-      console.log(`🔕 [배정완료 알림톡 생략] ${saved.carNumber} — 딜러/고객 연락처 둘 다 없음`);
+      console.log(`🔕 [배정완료 알림톡 생략] ${saved.carNumber} — 신청자/차주 연락처도, 발주사 대표 연락처도 없음`);
     }
 
     return saved;
