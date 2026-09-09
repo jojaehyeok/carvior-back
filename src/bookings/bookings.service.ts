@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Like, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { Booking } from './entities/booking.entity';
@@ -54,6 +54,17 @@ const APPLICANT_FIRST_SOURCES = new Set([
   'META',
   'YOUTUBE',
 ]);
+
+// 묶음 진단 — 같은 발주사가 같은 날 같은 장소에 여러 대를 접수한 건들을 하나로 묶어
+// 한 평가사가 한 번 이동해서 다 보게 한다. 500m는 같은 전시장/주차장 안에서 지오코딩
+// 결과가 건물 출입구 기준으로 조금씩 흔들리는 걸 흡수하는 값이다(너무 넓히면 옆 상사
+// 차까지 묶여버린다).
+const BUNDLE_RADIUS_KM = 0.5;
+
+// 묶음 하나를 1건으로 세는 집계용 헬퍼. 묶이지 않은 건은 각자 1건이다.
+function countBundles(rows: { id: number; bundleKey?: string | null }[]): number {
+  return new Set(rows.map(r => r.bundleKey || `single-${r.id}`)).size;
+}
 
 // 자동배정은 "지금 이 순간 활성 상태인 진단사"만 보고 판단하는 즉시배정 로직이라,
 // 방문일이 접수 시점보다 한참 뒤인 예약건에 적용하면 실제 방문일의 스케줄과 무관하게
@@ -171,6 +182,218 @@ export class BookingsService {
     return partner;
   }
 
+  // 방문지 좌표를 한 번 지오코딩해서 저장한다 — 묶음 판정과 거리 진단이 같은 좌표를 쓰게 해서
+  // 지오코딩 호출을 아끼고, 나중에 같은 장소인지 다시 물어볼 때도 재호출하지 않게 한다.
+  private async attachCoords(booking: Booking): Promise<void> {
+    if (booking.lat != null && booking.lng != null) return;
+    try {
+      const coords = await geocodeAddress(booking.address);
+      if (!coords) return;
+      await this.bookingRepository.update(booking.id, { lat: coords.lat, lng: coords.lng });
+      booking.lat = coords.lat;
+      booking.lng = coords.lng;
+    } catch (e) {
+      console.error('❌ [좌표 저장 실패]', (e as Error).message);
+    }
+  }
+
+  // 주소 문자열 비교용 정규화 — 지오코딩이 실패한 건끼리 같은 장소인지 볼 때만 쓴다.
+  // 공백·하이픈·괄호와 층/호 표기를 걷어내 "달미로10", "달미로 10", "달미로10 지하1층"을 같게 본다.
+  private normalizeAddress(v?: string | null): string {
+    return (v || '')
+      .replace(/\(.*?\)/g, '')
+      .replace(/(지하\s*)?[0-9]+\s*(층|호)/g, '')
+      .replace(/[\s-]/g, '')
+      .toLowerCase();
+  }
+
+  // 같은 발주사·같은 날·같은 장소(반경 500m)에 이미 잡혀 있는 건이 있으면 같은 묶음으로 잇는다.
+  // 발주사를 넘나들며 묶으면 대표건이 남의 발주사 것이 되어 한쪽만 할증을 면제받으므로
+  // source가 같은 건끼리만 묶는다. 취소·완료된 건은 묶어봐야 같이 갈 일이 없어 제외.
+  private async linkBundle(booking: Booking): Promise<Booking> {
+    const datePart = booking.preferredDateTime?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1];
+    if (!datePart || !booking.source) return booking;
+
+    const siblings = await this.bookingRepository.find({
+      where: {
+        source: booking.source,
+        preferredDateTime: Like(`${datePart}%`),
+        status: In(['PENDING', 'ASSIGNED', 'CONFIRMED']),
+      },
+    });
+
+    const sameSpot = siblings.filter(s => {
+      if (s.id === booking.id) return false;
+      if (booking.lat != null && booking.lng != null && s.lat != null && s.lng != null) {
+        return distanceKm(booking.lat, booking.lng, s.lat, s.lng) <= BUNDLE_RADIUS_KM;
+      }
+      // 좌표가 없는 쪽이 있으면 주소 문자열로 판단 — 지오코딩 실패건까지 놓치지 않게.
+      const a = this.normalizeAddress(booking.address);
+      return !!a && a === this.normalizeAddress(s.address);
+    });
+    if (sameSpot.length === 0) return booking;
+
+    // 이미 묶여 있으면 그 키를 따라가고, 아니면 가장 오래된 건의 id로 새 키를 만든다.
+    const existingKey = sameSpot.find(s => s.bundleKey)?.bundleKey;
+    const oldest = sameSpot.reduce((a, b) => (a.id < b.id ? a : b));
+    const key = existingKey ?? `B${Math.min(oldest.id, booking.id)}`;
+
+    const toTag = [booking, ...sameSpot].filter(b => b.bundleKey !== key);
+    await this.bookingRepository.update({ id: In(toTag.map(b => b.id)) }, { bundleKey: key });
+    toTag.forEach(b => { b.bundleKey = key; });
+
+    console.log(`🔗 [묶음 진단] ${key} — ${[booking, ...sameSpot].map(b => b.carNumber).join(', ')} (${datePart}, ${booking.source})`);
+    return booking;
+  }
+
+  // 같은 묶음에 이미 담당자가 있으면 그대로 물려받는다. 물려받을 사람이 없으면 null을
+  // 돌려줘서 호출부가 평소대로 자동배정을 돌리게 한다.
+  private async inheritBundleAssignment(booking: Booking): Promise<Booking | null> {
+    if (!booking.bundleKey || booking.assignedDriverId) return null;
+
+    const assignedSibling = await this.bookingRepository.findOne({
+      where: {
+        bundleKey: booking.bundleKey,
+        status: In(['ASSIGNED', 'CONFIRMED', 'COMPLETED']),
+      },
+      order: { id: 'ASC' },
+    });
+    if (!assignedSibling?.assignedDriverId) return null;
+
+    await this.bookingRepository.update(booking.id, {
+      assignedDriverId: assignedSibling.assignedDriverId,
+      assignedDriverName: assignedSibling.assignedDriverName,
+      status: 'ASSIGNED',
+    });
+    Object.assign(booking, {
+      assignedDriverId: assignedSibling.assignedDriverId,
+      assignedDriverName: assignedSibling.assignedDriverName,
+      status: 'ASSIGNED',
+    });
+
+    console.log(`🔗 [묶음 배정 승계] ${booking.carNumber} → ${assignedSibling.assignedDriverName} (${booking.bundleKey})`);
+    void this.notifyBundleAdded(booking).catch(e =>
+      console.error('[묶음 추가 알림 실패]', e instanceof Error ? e.message : e));
+    return booking;
+  }
+
+  // 담당자가 정해진 건과 같은 묶음의 미배정 건들을 같은 사람에게 몰아준다.
+  // 배정 경로가 여럿(자동배정/관리자 수동배정/평가사 셀프클레임)이라 배정이 확정되는
+  // 지점에서 한 번만 부르면 되도록 따로 뺐다.
+  private async propagateBundleAssignment(booking: Booking): Promise<void> {
+    if (!booking.bundleKey || !booking.assignedDriverId) return;
+    const siblings = await this.bookingRepository.find({
+      where: { bundleKey: booking.bundleKey, status: 'PENDING' },
+    });
+    const targets = siblings.filter(s => s.id !== booking.id && !s.assignedDriverId);
+    if (targets.length === 0) return;
+
+    await this.bookingRepository.update(
+      { id: In(targets.map(t => t.id)) },
+      {
+        assignedDriverId: booking.assignedDriverId,
+        assignedDriverName: booking.assignedDriverName,
+        status: 'ASSIGNED',
+      },
+    );
+    console.log(`🔗 [묶음 동시배정] ${booking.bundleKey} — ${targets.map(t => t.carNumber).join(', ')} → ${booking.assignedDriverName}`);
+  }
+
+  // 이미 배정이 끝난 평가사에게 "같은 장소에 한 대 더 붙었다"고 알린다.
+  private async notifyBundleAdded(booking: Booking): Promise<void> {
+    if (!booking.assignedDriverId) return;
+    const driver = await this.driverRepository.findOne({ where: { id: Number(booking.assignedDriverId) } });
+    if (!driver?.pushToken) return;
+    await this.notificationsService.sendPush(
+      driver.pushToken,
+      '묶음 진단 추가',
+      `${booking.address || ''} · ${booking.carNumber} 한 대가 같은 일정에 추가되었습니다.`,
+      { bookingId: booking.id },
+      PUSH_CHANNEL_BOOKING_UPDATED,
+    );
+  }
+
+  // 평가사가 현장에서 "같은 장소에 한 대 더 있다"고 앱에서 추가하는 경로.
+  // 접수(create)를 다시 타지 않는다 — 자동배정을 새로 돌리거나 관리자 알림톡을 다시 쏘면
+  // 안 되고, 방문지·일시·발주사·딜러는 원래 건과 같아야 하기 때문이다. 원본을 복사하고
+  // 담당자와 묶음키만 이어붙인다.
+  async addBundleVehicle(
+    id: number,
+    driverId: string,
+    data: { carNumber: string; carOwner?: string; carModel?: string },
+  ): Promise<Booking> {
+    const origin = await this.bookingRepository.findOne({ where: { id } });
+    if (!origin) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+
+    // 남의 건에 차를 붙이지 못하게 담당자 본인인지 확인한다.
+    if (String(origin.assignedDriverId) !== String(driverId)) {
+      throw new ForbiddenException('담당 진단사만 차량을 추가할 수 있습니다.');
+    }
+    const carNumber = (data.carNumber || '').trim();
+    if (!carNumber) throw new BadRequestException('차량번호를 입력해주세요.');
+
+    // 이미 같은 묶음(또는 같은 원본)에 같은 차량번호가 있으면 중복 추가를 막는다 —
+    // 현장에서 버튼을 두 번 누르는 일이 잦다.
+    const bundleKey = origin.bundleKey ?? `B${origin.id}`;
+    const dup = await this.bookingRepository.findOne({ where: { bundleKey, carNumber } });
+    if (dup) throw new ConflictException(`${carNumber}는 이미 이 묶음에 있습니다.`);
+
+    if (!origin.bundleKey) {
+      await this.bookingRepository.update(origin.id, { bundleKey });
+      origin.bundleKey = bundleKey;
+    }
+
+    const added = this.bookingRepository.create({
+      source: origin.source,
+      carNumber,
+      carOwner: data.carOwner?.trim() || origin.carOwner,
+      carModel: data.carModel?.trim() || null,
+      dealerName: origin.dealerName,
+      contact: origin.contact,
+      customerContact: origin.customerContact,
+      dealerContact: origin.dealerContact,
+      address: origin.address,
+      detailAddress: origin.detailAddress,
+      lat: origin.lat,
+      lng: origin.lng,
+      preferredDateTime: origin.preferredDateTime,
+      bundleKey,
+      assignedDriverId: origin.assignedDriverId,
+      assignedDriverName: origin.assignedDriverName,
+      assignSource: origin.assignSource,
+      assignedAt: new Date(),
+      status: 'ASSIGNED',
+      depositConfirmed: true,
+      adminMemo: `묶음 진단 현장 추가 (원본 #${origin.id} ${origin.carNumber})`,
+    });
+    const saved = await this.bookingRepository.save(added);
+
+    console.log(`➕ [묶음 차량 추가] ${bundleKey} — ${carNumber} (원본 #${origin.id}, 담당 ${origin.assignedDriverName})`);
+
+    // 현장에서 건이 늘어난 걸 관리자가 바로 알아야 청구·정산이 맞는다.
+    this.notifySuperAdmins(
+      `묶음 차량 추가 · ${saved.carNumber}`,
+      `${origin.assignedDriverName || '평가사'}가 ${origin.carNumber} 현장에서 추가 · ${saved.preferredDateTime || ''}`,
+      `${DASHBOARD_BASE_URL}/diagnosis/bookings?searchType=carNumber&searchText=${encodeURIComponent(saved.carNumber)}`,
+    ).catch(e => console.error('[슈퍼관리자 알림] 묶음 차량 추가 실패', e instanceof Error ? e.message : e));
+
+    return saved;
+  }
+
+  // 묶음 안에서 오지/긴급 할증을 받는 대표건인지. 가장 작은 id 하나만 대표다 —
+  // 한 번 이동해서 다 보는데 건마다 할증을 붙이면 발주사 청구도 평가사 추가금도 과다해진다.
+  // 대표건이 취소되면 남은 것 중 가장 작은 id가 자동으로 대표가 된다.
+  async isBundleLead(booking: Booking): Promise<boolean> {
+    if (!booking.bundleKey) return true;
+    const min = await this.bookingRepository
+      .createQueryBuilder('b')
+      .select('MIN(b.id)', 'minId')
+      .where('b.bundleKey = :key', { key: booking.bundleKey })
+      .andWhere('b.status != :cancelled', { cancelled: 'CANCELLED' })
+      .getRawOne<{ minId: number | null }>();
+    return Number(min?.minId ?? booking.id) === booking.id;
+  }
+
   // preferredDateTime("YYYY-MM-DD HH:mm")의 날짜가 오늘(KST) 기준 AUTO_ASSIGN_DAYS_THRESHOLD일
   // 이내인지 확인 — 날짜 파싱이 안 되면(형식이 다르거나 미입력) 기존처럼 즉시배정 대상으로 취급
   private isWithinAutoAssignWindow(preferredDateTime?: string): boolean {
@@ -200,6 +423,11 @@ export class BookingsService {
     }
     let saved = await this.bookingRepository.save(booking);
 
+    // 배정보다 먼저 좌표를 잡고 묶음을 이어야 한다 — 순서가 뒤바뀌면 같은 장소 2번째 건이
+    // 자동배정으로 엉뚱한 평가사에게 가버린 뒤에 묶이게 된다.
+    await this.attachCoords(saved);
+    saved = await this.linkBundle(saved);
+
     const restricted = await this.isRestrictedSource(saved.source);
     // "self-{company}"는 발주사가 자기 소유 차량을 자체적으로 처리하는 건 —
     // 진단사가 실제로 방문할 필요가 없으니 자동배정도, 전체 브로드캐스트 알림도 하지 않는다.
@@ -213,7 +441,10 @@ export class BookingsService {
     } else if (pendingDeposit) {
       console.log(`💰 [입금 확인 대기] ${saved.carNumber} — 계좌이체 신청, 관리자 입금 확인 전까지 배정 보류`);
     } else {
-      saved = await this.runAssignmentFlow(saved);
+      // 같은 묶음에 이미 담당자가 있으면 자동배정을 돌리지 않고 그 사람이 이어서 본다 —
+      // 한 장소를 두 평가사가 나눠 가면 묶음의 의미가 없다.
+      const inherited = await this.inheritBundleAssignment(saved);
+      saved = inherited ?? await this.runAssignmentFlow(saved);
     }
 
     // 오지/준오지·긴급후보 뱃지용 거리 진단 — 미등록 발주사 건은 어차피 관리자가 별도로
@@ -445,13 +676,17 @@ export class BookingsService {
   private async countBookingsOnSameDay(driverId: string, preferredDateTime?: string | null): Promise<number> {
     const datePart = preferredDateTime?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1];
     if (!datePart) return 1; // 날짜 파싱 안 되면 이 건 하나만 있는 것으로 표시
-    return this.bookingRepository.count({
+    // 묶음은 한 장소에서 이어 보는 거라 "오늘 3건"이 아니라 "오늘 1곳"으로 세야 평가사가
+    // 일정을 가늠할 수 있다 — 자동배정 로드밸런싱과 같은 기준.
+    const rows = await this.bookingRepository.find({
       where: {
         assignedDriverId: driverId,
         status: In(['ASSIGNED', 'CONFIRMED', 'COMPLETED']),
         preferredDateTime: Like(`${datePart}%`),
       },
+      select: ['id', 'bundleKey'],
     });
+    return countBundles(rows);
   }
 
   // /inspection 결제 폼의 방문시간 슬롯과 동일한 목록(30분 단위, 09:00~17:00)
@@ -545,7 +780,11 @@ export class BookingsService {
     }
 
     let nearestDriverKm: number | null = null;
-    const coords = await geocodeAddress(booking.address);
+    // attachCoords()가 접수 때 지오코딩해 저장해둔 좌표를 그대로 쓴다(없을 때만 재호출).
+    const coords =
+      booking.lat != null && booking.lng != null
+        ? { lat: booking.lat, lng: booking.lng }
+        : await geocodeAddress(booking.address);
     if (coords) {
       // 배정된 진단사가 있으면(ASSIGNED/CONFIRMED/COMPLETED) "가장 가까운 진단사" 일반 스냅샷 대신
       // 실제로 방문할 그 사람 기준 거리를 쓴다 — 배정 시점 이후 다른 사람이 배정되거나 위치가
@@ -728,14 +967,16 @@ export class BookingsService {
               status: In(['ASSIGNED', 'CONFIRMED', 'COMPLETED']),
               preferredDateTime: Like(`${visitDatePart}%`),
             },
-            select: ['id', 'assignSource'],
+            select: ['id', 'assignSource', 'bundleKey'],
           })
         // 방문예정일 파싱 실패 시(형식 이상·미입력) 접수일 기준으로 폴백
         : await this.bookingRepository.find({
             where: { assignedDriverId: String(driverId), createdAt: MoreThanOrEqual(todayStart) },
-            select: ['id', 'assignSource'],
+            select: ['id', 'assignSource', 'bundleKey'],
           });
-      const real = rows.filter(r => r.assignSource !== 'self').length;
+      // 묶음 진단은 한 장소에서 이어서 보는 거라 이동 부담이 1건분이다 — 3대를 3건으로 세면
+      // 묶음을 받은 평가사가 그날 다른 건을 못 받게 되므로 묶음 하나를 1건으로 센다.
+      const real = countBundles(rows.filter(r => r.assignSource !== 'self'));
       const penalty = await this.assignmentPenaltyRepository.count({
         where: { driverId: String(driverId), type: 'penalty', expiresAt: MoreThanOrEqual(new Date()) },
       });
@@ -1026,7 +1267,43 @@ export class BookingsService {
   // 앱 어느 화면에도 노출되지 않게 하기 위함(구버전 앱도 소급 적용됨). source를 명시하면
   // 정확히 일치하는 것만 가져오므로 이 필터와 무관 — "자체 진단 목록" 탭은 source에
   // "self-{company}"를 그대로 넘겨서 조회하니 영향 없음.
-  async findAll(source?: string, includeSelf = false, contact?: string): Promise<(Booking & { carHash?: string | null; firstCompletedAt?: Date | null })[]> {
+  // 묶음 정보(크기·대표 여부)를 목록에 붙인다. 대시보드 정산·예약목록, 앱 목록·정산내역이
+  // 각자 묶음을 다시 계산하면 기준이 어긋나므로 서버가 한 번만 판정해서 내려준다.
+  //
+  // 대표는 취소되지 않은 것 중 가장 작은 id다. 목록이 발주사·연락처로 걸러져 있어도 판정이
+  // 흔들리지 않게, 화면에 보이는 행이 아니라 DB의 묶음 전체를 다시 읽어서 센다.
+  private async attachBundleInfo<T extends Booking>(
+    rows: T[],
+  ): Promise<(T & { bundleSize?: number; isBundleLead?: boolean })[]> {
+    const keys = [...new Set(rows.map(r => r.bundleKey).filter((k): k is string => !!k))];
+    if (keys.length === 0) return rows.map(r => ({ ...r, bundleSize: 1, isBundleLead: true }));
+
+    const members = await this.bookingRepository.find({
+      where: { bundleKey: In(keys) },
+      select: ['id', 'bundleKey', 'status'],
+    });
+    const alive = members.filter(m => m.status !== 'CANCELLED');
+    const sizeByKey = new Map<string, number>();
+    const leadByKey = new Map<string, number>();
+    for (const m of alive) {
+      const key = m.bundleKey as string;
+      sizeByKey.set(key, (sizeByKey.get(key) ?? 0) + 1);
+      const cur = leadByKey.get(key);
+      if (cur == null || m.id < cur) leadByKey.set(key, m.id);
+    }
+
+    return rows.map(r => {
+      if (!r.bundleKey) return { ...r, bundleSize: 1, isBundleLead: true };
+      return {
+        ...r,
+        bundleSize: sizeByKey.get(r.bundleKey) ?? 1,
+        // 취소된 건은 대표가 될 수 없다 — 살아있는 형제가 대표를 물려받는다.
+        isBundleLead: r.status !== 'CANCELLED' && leadByKey.get(r.bundleKey) === r.id,
+      };
+    });
+  }
+
+  async findAll(source?: string, includeSelf = false, contact?: string): Promise<(Booking & { carHash?: string | null; firstCompletedAt?: Date | null; bundleSize?: number; isBundleLead?: boolean })[]> {
     const bookings = await this.bookingRepository.find({
       where: {
         ...(source ? { source } : {}),
@@ -1039,7 +1316,7 @@ export class BookingsService {
       : bookings;
 
     const completedIds = visible.filter(b => b.status === 'COMPLETED').map(b => b.id);
-    if (completedIds.length === 0) return this.attachExportBadge(visible);
+    if (completedIds.length === 0) return this.attachBundleInfo(await this.attachExportBadge(visible));
 
     const inspections = await this.inspectionRepository.find({
       where: { bookingId: In(completedIds) },
@@ -1048,11 +1325,11 @@ export class BookingsService {
     const hashMap = new Map(inspections.map(i => [i.bookingId, i.carHash]));
     const firstCompletedMap = new Map(inspections.map(i => [i.bookingId, i.firstCompletedAt]));
 
-    return this.attachExportBadge(visible.map(b => ({
+    return this.attachBundleInfo(await this.attachExportBadge(visible.map(b => ({
       ...b,
       carHash: hashMap.get(b.id) ?? null,
       firstCompletedAt: firstCompletedMap.get(b.id) ?? null,
-    })));
+    }))));
   }
 
   async update(
@@ -1242,6 +1519,9 @@ export class BookingsService {
       const claimed = await this.bookingRepository.findOneBy({ id });
       if (!claimed) throw new NotFoundException(`ID ${id}번에 해당하는 내역을 찾을 수 없습니다.`);
       await this.refreshDistanceFlags(claimed);
+      // 묶음 건을 확정하면 같은 장소의 나머지도 함께 가져간다 — 해제가 안 되는 구조라
+      // 확정 버튼을 누르는 순간 그 장소 전체를 맡는 것으로 본다(앱에서 "묶음 N건"으로 안내).
+      await this.propagateBundleAssignment(claimed);
       try {
         const driver = await this.driverRepository.findOne({ where: { id: Number(updateData.assignedDriverId) } });
         if (driver?.pushToken) {
@@ -1555,6 +1835,9 @@ export class BookingsService {
     const saved = await this.bookingRepository.save(booking);
     // 재배정 시점 기준 최신 진단사 위치로 오지/준오지 뱃지 갱신
     await this.refreshDistanceFlags(saved);
+    // 같은 묶음의 미배정 건들을 같은 사람에게 함께 넘긴다 — 자동배정·수동배정·에이전트
+    // 배정·평가사 셀프클레임이 전부 이 메서드를 지나므로 여기 한 곳에만 걸면 된다.
+    await this.propagateBundleAssignment(saved);
 
     try {
       const driver = await this.driverRepository.findOne({ where: { id: Number(driverInfo.id) } });

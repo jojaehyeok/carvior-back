@@ -292,6 +292,17 @@ export class BookingsController {
     return await this.bookingsService.suggestDealers(source, q);
   }
 
+  // POST: 평가사가 현장에서 같은 장소의 차량을 한 대 더 추가(묶음 진단).
+  // 담당 진단사 본인만 가능하며, 원본 건의 방문지·일시·발주사를 그대로 복사해
+  // 같은 묶음으로 붙인다. 자동배정을 다시 돌리지 않으므로 담당자도 그대로다.
+  @Post(':id/bundle-vehicle')
+  async addBundleVehicle(
+    @Param('id') id: string,
+    @Body() body: { driverId: string; carNumber: string; carOwner?: string; carModel?: string },
+  ) {
+    return await this.bookingsService.addBundleVehicle(Number(id), body.driverId, body);
+  }
+
   // GET: 진단사 앱 "예약 요청" 탭 실시간 갱신용 초경량 폴링 엔드포인트.
   // 목록 전체(/list)는 수백 KB라 10초마다 받으면 현장 모바일 데이터가 감당이 안 된다 —
   // 대기건의 "지문"(개수/최대 id/최근 수정시각)만 내려주고, 값이 바뀐 순간에만 앱이

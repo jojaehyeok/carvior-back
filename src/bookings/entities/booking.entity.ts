@@ -58,6 +58,22 @@ export class Booking {
 
   @Column({ default: false })
   urgentCandidate: boolean;
+
+  // 접수 시 지오코딩한 방문지 좌표 — 묶음 진단 판정(반경 비교)에 쓴다. 주소 문자열은
+  // "달미로10" / "달미로 10" / "달미로10 지하1층"처럼 제각각이라 문자열로는 같은 장소를
+  // 못 알아본다. 지오코딩이 실패하면 null로 남고, 그때는 정규화한 주소 문자열로 비교한다.
+  @Column({ type: 'double', nullable: true })
+  lat: number | null;
+
+  @Column({ type: 'double', nullable: true })
+  lng: number | null;
+
+  // 묶음 진단 — 같은 발주사가 같은 날 같은 장소(반경 500m)에 여러 대를 접수한 건들의 공통 키.
+  // 한 평가사가 한 번 이동해서 다 보므로, 오지/긴급 할증은 묶음 대표건(가장 작은 id) 하나에만
+  // 붙이고 나머지는 기본 단가로 계산한다(발주사 청구·평가사 추가금 양쪽 동일).
+  // 발주사를 넘나들며 묶으면 한쪽만 할인받는 셈이 되어, 같은 source 안에서만 묶는다.
+  @Column({ type: 'varchar', nullable: true })
+  bundleKey: string | null;
   // ------------------------------
 
   // /inspection(검차 신청 결제) 계좌이체 건 전용 — 카드/간편결제는 토스 결제 성공 콜백 이후에만
