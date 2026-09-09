@@ -380,20 +380,6 @@ export class BookingsService {
     return saved;
   }
 
-  // 묶음 안에서 오지/긴급 할증을 받는 대표건인지. 가장 작은 id 하나만 대표다 —
-  // 한 번 이동해서 다 보는데 건마다 할증을 붙이면 발주사 청구도 평가사 추가금도 과다해진다.
-  // 대표건이 취소되면 남은 것 중 가장 작은 id가 자동으로 대표가 된다.
-  async isBundleLead(booking: Booking): Promise<boolean> {
-    if (!booking.bundleKey) return true;
-    const min = await this.bookingRepository
-      .createQueryBuilder('b')
-      .select('MIN(b.id)', 'minId')
-      .where('b.bundleKey = :key', { key: booking.bundleKey })
-      .andWhere('b.status != :cancelled', { cancelled: 'CANCELLED' })
-      .getRawOne<{ minId: number | null }>();
-    return Number(min?.minId ?? booking.id) === booking.id;
-  }
-
   // preferredDateTime("YYYY-MM-DD HH:mm")의 날짜가 오늘(KST) 기준 AUTO_ASSIGN_DAYS_THRESHOLD일
   // 이내인지 확인 — 날짜 파싱이 안 되면(형식이 다르거나 미입력) 기존처럼 즉시배정 대상으로 취급
   private isWithinAutoAssignWindow(preferredDateTime?: string): boolean {
@@ -1267,43 +1253,36 @@ export class BookingsService {
   // 앱 어느 화면에도 노출되지 않게 하기 위함(구버전 앱도 소급 적용됨). source를 명시하면
   // 정확히 일치하는 것만 가져오므로 이 필터와 무관 — "자체 진단 목록" 탭은 source에
   // "self-{company}"를 그대로 넘겨서 조회하니 영향 없음.
-  // 묶음 정보(크기·대표 여부)를 목록에 붙인다. 대시보드 정산·예약목록, 앱 목록·정산내역이
-  // 각자 묶음을 다시 계산하면 기준이 어긋나므로 서버가 한 번만 판정해서 내려준다.
+  // 묶음 크기를 목록에 붙인다. 대시보드 정산·예약목록, 앱 목록·정산내역이 각자 묶음을
+  // 다시 세면 기준이 어긋나므로(=평가사에게 보이는 금액과 실지급액이 달라진다) 서버가
+  // 한 번만 세서 내려준다. 크기가 2 이상이면 오지/긴급 할증을 적용하지 않는다.
   //
-  // 대표는 취소되지 않은 것 중 가장 작은 id다. 목록이 발주사·연락처로 걸러져 있어도 판정이
-  // 흔들리지 않게, 화면에 보이는 행이 아니라 DB의 묶음 전체를 다시 읽어서 센다.
+  // 목록이 발주사·연락처로 걸러져 있어도 값이 흔들리지 않게, 화면에 보이는 행이 아니라
+  // DB의 묶음 전체를 다시 읽어서 센다. 취소된 건은 같이 갈 일이 없으니 크기에서 뺀다.
   private async attachBundleInfo<T extends Booking>(
     rows: T[],
-  ): Promise<(T & { bundleSize?: number; isBundleLead?: boolean })[]> {
+  ): Promise<(T & { bundleSize?: number })[]> {
     const keys = [...new Set(rows.map(r => r.bundleKey).filter((k): k is string => !!k))];
-    if (keys.length === 0) return rows.map(r => ({ ...r, bundleSize: 1, isBundleLead: true }));
+    if (keys.length === 0) return rows.map(r => ({ ...r, bundleSize: 1 }));
 
     const members = await this.bookingRepository.find({
       where: { bundleKey: In(keys) },
       select: ['id', 'bundleKey', 'status'],
     });
-    const alive = members.filter(m => m.status !== 'CANCELLED');
     const sizeByKey = new Map<string, number>();
-    const leadByKey = new Map<string, number>();
-    for (const m of alive) {
+    for (const m of members) {
+      if (m.status === 'CANCELLED') continue;
       const key = m.bundleKey as string;
       sizeByKey.set(key, (sizeByKey.get(key) ?? 0) + 1);
-      const cur = leadByKey.get(key);
-      if (cur == null || m.id < cur) leadByKey.set(key, m.id);
     }
 
-    return rows.map(r => {
-      if (!r.bundleKey) return { ...r, bundleSize: 1, isBundleLead: true };
-      return {
-        ...r,
-        bundleSize: sizeByKey.get(r.bundleKey) ?? 1,
-        // 취소된 건은 대표가 될 수 없다 — 살아있는 형제가 대표를 물려받는다.
-        isBundleLead: r.status !== 'CANCELLED' && leadByKey.get(r.bundleKey) === r.id,
-      };
-    });
+    return rows.map(r => ({
+      ...r,
+      bundleSize: r.bundleKey ? sizeByKey.get(r.bundleKey) ?? 1 : 1,
+    }));
   }
 
-  async findAll(source?: string, includeSelf = false, contact?: string): Promise<(Booking & { carHash?: string | null; firstCompletedAt?: Date | null; bundleSize?: number; isBundleLead?: boolean })[]> {
+  async findAll(source?: string, includeSelf = false, contact?: string): Promise<(Booking & { carHash?: string | null; firstCompletedAt?: Date | null; bundleSize?: number })[]> {
     const bookings = await this.bookingRepository.find({
       where: {
         ...(source ? { source } : {}),
