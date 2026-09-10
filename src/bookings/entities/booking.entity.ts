@@ -74,6 +74,13 @@ export class Booking {
   // 발주사를 넘나들며 묶으면 한쪽만 할인받는 셈이 되어, 같은 source 안에서만 묶는다.
   @Column({ type: 'varchar', nullable: true })
   bundleKey: string | null;
+
+  // 관리자가 대시보드에서 묶음을 해제한 건. 접수 담당자가 실수로 같은 장소에 두 번
+  // 신청하는 등 "같은 장소지만 묶으면 안 되는" 경우가 있어서 둔다.
+  // 이 표시가 없으면 나중에 같은 장소로 새 접수가 들어올 때 다시 묶여버려서
+  // 관리자가 해제한 판단이 조용히 뒤집힌다.
+  @Column({ default: false })
+  bundleExcluded: boolean;
   // ------------------------------
 
   // /inspection(검차 신청 결제) 계좌이체 건 전용 — 카드/간편결제는 토스 결제 성공 콜백 이후에만

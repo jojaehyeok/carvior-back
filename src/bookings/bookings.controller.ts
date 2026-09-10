@@ -292,6 +292,13 @@ export class BookingsController {
     return await this.bookingsService.suggestDealers(source, q);
   }
 
+  // PATCH: 관리자가 묶음을 해제한다(접수 실수로 같은 장소에 두 번 신청된 경우 등).
+  // 해제한 건은 나중에 같은 장소로 새 접수가 들어와도 다시 묶이지 않는다.
+  @Patch(':id/unbundle')
+  async unbundle(@Param('id') id: string) {
+    return await this.bookingsService.unbundle(Number(id));
+  }
+
   // POST: 평가사가 현장에서 같은 장소의 차량을 한 대 더 추가(묶음 진단).
   // 담당 진단사 본인만 가능하며, 원본 건의 방문지·일시·발주사를 그대로 복사해
   // 같은 묶음으로 붙인다. 자동배정을 다시 돌리지 않으므로 담당자도 그대로다.

@@ -213,6 +213,8 @@ export class BookingsService {
   private async linkBundle(booking: Booking): Promise<Booking> {
     const datePart = booking.preferredDateTime?.match(/^(\d{4}-\d{2}-\d{2})/)?.[1];
     if (!datePart || !booking.source) return booking;
+    // 관리자가 이미 "이 건은 묶지 말라"고 해제한 건은 다시 묶지 않는다.
+    if (booking.bundleExcluded) return booking;
 
     const siblings = await this.bookingRepository.find({
       where: {
@@ -224,6 +226,7 @@ export class BookingsService {
 
     const sameSpot = siblings.filter(s => {
       if (s.id === booking.id) return false;
+      if (s.bundleExcluded) return false;
       if (booking.lat != null && booking.lng != null && s.lat != null && s.lng != null) {
         return distanceKm(booking.lat, booking.lng, s.lat, s.lng) <= BUNDLE_RADIUS_KM;
       }
@@ -244,6 +247,30 @@ export class BookingsService {
 
     console.log(`🔗 [묶음 진단] ${key} — ${[booking, ...sameSpot].map(b => b.carNumber).join(', ')} (${datePart}, ${booking.source})`);
     return booking;
+  }
+
+  // 관리자가 대시보드에서 묶음을 푼다. 접수 담당자가 실수로 같은 장소에 두 번 신청한
+  // 경우처럼 자동 판정이 틀린 건을 되돌리는 용도라, 다시 묶이지 않게 표시까지 남긴다.
+  // 배정은 건드리지 않는다 — 담당자를 바꾸는 건 별개 판단이다.
+  async unbundle(id: number): Promise<{ success: true; carNumber: string; dissolved: boolean }> {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+    if (!booking.bundleKey) throw new BadRequestException('묶여 있지 않은 건입니다.');
+
+    const key = booking.bundleKey;
+    await this.bookingRepository.update(id, { bundleKey: null, bundleExcluded: true });
+
+    // 혼자 남은 묶음은 묶음이 아니다 — 키를 지워서 화면에 "묶음 1건"이 뜨지 않게 한다.
+    const rest = await this.bookingRepository.find({ where: { bundleKey: key } });
+    const alive = rest.filter(r => r.status !== 'CANCELLED');
+    const dissolved = alive.length <= 1;
+    if (dissolved && rest.length > 0) {
+      await this.bookingRepository.update({ id: In(rest.map(r => r.id)) }, { bundleKey: null });
+    }
+
+    const tail = dissolved ? ' (남은 건이 없어 묶음 해산)' : `, 남은 ${alive.length}건 유지`;
+    console.log(`🔓 [묶음 해제] ${key} — ${booking.carNumber} 제외${tail}`);
+    return { success: true, carNumber: booking.carNumber, dissolved };
   }
 
   // 같은 묶음에 이미 담당자가 있으면 그대로 물려받는다. 물려받을 사람이 없으면 null을
