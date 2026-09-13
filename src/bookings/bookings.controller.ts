@@ -113,6 +113,21 @@ export class BookingsController {
     return this.bookingsService.updateBuyerHidden(Number(id), contact, !!hidden, name);
   }
 
+  // POST: 계약서 미작성 건 가격 재안내 문자 — 딜러/차주를 골라 대상별 1회만 보낸다.
+  // 문구는 서버에 고정돼 있어 화면에서 바꿔 보낼 수 없다(bookings.service.ts PRICE_FOLLOWUP_MESSAGES).
+  @Post(':id/price-followup')
+  async sendPriceFollowup(
+    @Param('id') id: string,
+    @Body() body: { sendToDealer?: boolean | string; sendToCustomer?: boolean | string; dealerPhone?: string; customerPhone?: string },
+  ) {
+    return this.bookingsService.sendPriceFollowup(Number(id), {
+      sendToDealer: body.sendToDealer === true || body.sendToDealer === 'true',
+      sendToCustomer: body.sendToCustomer === true || body.sendToCustomer === 'true',
+      dealerPhone: body.dealerPhone,
+      customerPhone: body.customerPhone,
+    });
+  }
+
   // POST: 발주사(대시보드)가 명의이전 완료된 등록증 사진을 직접 업로드 — 애니원모터스 등 전용
   // 딜러/고객 전송 여부는 각각 체크박스로 선택하며, 둘 다 선택하지 않으면 SMS 없이 사진만
   // 교체된다(등록증을 잘못 올린 경우 재업로드 — 이미 보낸 단축링크가 새 사진으로 그대로 반영됨)

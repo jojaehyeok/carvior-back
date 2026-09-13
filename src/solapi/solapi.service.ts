@@ -187,6 +187,19 @@ export class SolapiService {
         }
     }
 
+    // 계약서 미작성 건 가격 재안내 문자(LMS) — 본문이 90byte를 훌쩍 넘어 SMS로는 접수가 거부된다.
+    // 발신번호는 SOLAPI_FOLLOWUP_SENDER_NUMBER가 있으면 그걸 쓴다. 발주사 대표 번호를 솔라피에
+    // 위임 등록하고 나면 설정만 바꿔 대표 번호로 나가게 하려는 것이고, 등록 전에는 기본
+    // 발신번호로 나간다(등록 안 된 번호를 넣으면 발송 자체가 거부된다).
+    async sendPriceFollowupLms(to: string, subject: string, text: string) {
+        const senderNumber =
+            this.configService.get<string>('SOLAPI_FOLLOWUP_SENDER_NUMBER') ||
+            this.configService.get<string>('SOLAPI_SENDER_NUMBER');
+        const phone = to.replace(/[^0-9]/g, '');
+        await this.messageService.sendOne({ to: phone, from: senderNumber, type: 'LMS', subject, text });
+        console.log(`[LMS 발송] 가격 재안내 → ${phone} (${Buffer.byteLength(text, 'utf-8')}byte)`);
+    }
+
     async sendSms(to: string, text: string) {
         try {
             const senderNumber = this.configService.get<string>('SOLAPI_SENDER_NUMBER');

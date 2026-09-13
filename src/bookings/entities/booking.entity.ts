@@ -285,6 +285,13 @@ export class Booking {
   @Column({ type: 'timestamp', nullable: true })
   registrationSentToCustomerAt: Date | null;
 
+  // 계약서 미작성 건 가격 재안내 문자를 보낸 시각 — 등록증 전송과 같이 대상별 1회만 보낸다
+  @Column({ type: 'timestamp', nullable: true })
+  priceFollowupSentToDealerAt: Date | null;
+
+  @Column({ type: 'timestamp', nullable: true })
+  priceFollowupSentToCustomerAt: Date | null;
+
   @Column({ type: 'text', nullable: true })
   adminMemo: string;
 

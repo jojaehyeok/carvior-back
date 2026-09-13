@@ -61,6 +61,24 @@ const APPLICANT_FIRST_SOURCES = new Set([
 // 차까지 묶여버린다).
 const BUNDLE_RADIUS_KM = 0.5;
 
+// 계약서 미작성 건 가격 재안내 문자(발주사별 원문). 발주사 대표가 확정한 문구를 서버에
+// 고정해 둔다 — 화면에서 문구를 받으면 대표 명의 문자를 누구나 고쳐 보낼 수 있게 된다.
+// 대시보드 booking-list.tsx의 미리보기 문구와 같아야 한다(실제 발송은 이쪽 문구).
+const PRICE_FOLLOWUP_MESSAGES: Record<string, { subject: string; text: string }> = {
+  'anyone-motors': {
+    subject: '애니원모터스 안내',
+    text: `안녕하세요, 고객님. 애니원모터스 대표 유진욱입니다. (010-7370-9569)
+
+지난번 검차 진행했던 차량 관련해서 편하게 의견 여쭙고자 연락드렸습니다.
+
+혹시 제가 제시해 드린 금액이 기대에 못 미치셨거나 조금 아쉬우셨을까요?
+
+검차량이 많다 보니 사고 이력이나 누유, 예상 수리비 산정 과정에서 시각 차이가 있었을 수 있습니다. 말씀해 주시는 부분은 꼼꼼히 다시 검토해 보고, 가격적인 부분도 조금이라도 더 올려서 차주님 기준에 최대한 맞춰보겠습니다.
+
+부담 갖지 마시고 편하게 의견 남겨주시면 감사하겠습니다.`,
+  },
+};
+
 // 묶음 하나를 1건으로 세는 집계용 헬퍼. 묶이지 않은 건은 각자 1건이다.
 function countBundles(rows: { id: number; bundleKey?: string | null }[]): number {
   return new Set(rows.map(r => r.bundleKey || `single-${r.id}`)).size;
@@ -2133,6 +2151,70 @@ export class BookingsService {
     const booking = await this.findBookingForCustomer(id, contact, name);
     booking.buyerHidden = hidden;
     return this.bookingRepository.save(booking);
+  }
+
+  // 계약서 미작성 건 가격 재안내 문자 — 검차 후 계약까지 가지 않은 건에 발주사 대표가
+  // "제시가가 아쉬우셨는지" 다시 묻는 연락이다. 이전등록증 전송과 같은 방식으로 딜러/차주를
+  // 골라 대상별 1회만 보내고, 건당 50원을 발주사 과금 장부에 남긴다.
+  async sendPriceFollowup(
+    id: number,
+    options: { sendToDealer: boolean; sendToCustomer: boolean; dealerPhone?: string; customerPhone?: string },
+  ) {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+
+    const company = booking.source?.startsWith('self-') ? booking.source.slice(5) : booking.source || '';
+    const template = PRICE_FOLLOWUP_MESSAGES[company];
+    if (!template) throw new BadRequestException('이 발주사는 가격 재안내 문자를 쓰지 않습니다.');
+    if (!options.sendToDealer && !options.sendToCustomer) {
+      throw new BadRequestException('보낼 대상을 선택해주세요.');
+    }
+
+    const targets: { target: 'dealer' | 'customer'; phone: string | null }[] = [];
+    if (options.sendToDealer) {
+      if (booking.priceFollowupSentToDealerAt) throw new BadRequestException('이미 딜러에게 보냈습니다.');
+      targets.push({ target: 'dealer', phone: this.pickPhone(options.dealerPhone, booking.contact) });
+    }
+    if (options.sendToCustomer) {
+      if (booking.priceFollowupSentToCustomerAt) throw new BadRequestException('이미 차주에게 보냈습니다.');
+      targets.push({ target: 'customer', phone: this.pickPhone(options.customerPhone, booking.customerContact) });
+    }
+
+    // 실패를 조용히 삼키면 실제로는 안 갔는데 "보냈습니다"로 보이고 다시 보낼 수도 없게
+    // 잠겨버린다 — 대상별 실패를 모아 응답에 담는다(등록증 전송과 같은 처리).
+    const failures: string[] = [];
+    for (const { target, phone } of targets) {
+      const label = target === 'dealer' ? '딜러' : '차주';
+      if (!phone) {
+        failures.push(`${label}: 연락처가 없습니다.`);
+        continue;
+      }
+      try {
+        await this.solapiService.sendPriceFollowupLms(phone, template.subject, template.text);
+      } catch (e) {
+        console.error(`[가격 재안내 문자 실패] booking ${booking.id} → ${target}`, e);
+        failures.push(`${label}: 문자 발송에 실패했습니다.`);
+        continue;
+      }
+      // 발송이 끝난 뒤에 잠근다 — 장부 기록이 실패해도 이미 나간 문자를 다시 보내면 안 된다.
+      if (target === 'dealer') booking.priceFollowupSentToDealerAt = new Date();
+      else booking.priceFollowupSentToCustomerAt = new Date();
+      try {
+        await this.smsBillingLogRepository.save({
+          source: booking.source,
+          bookingId: booking.id,
+          carNumber: booking.carNumber,
+          recipientContact: phone,
+          recipient: target,
+          purpose: 'price-followup',
+        });
+      } catch (e) {
+        console.error(`[과금 장부 기록 실패] price-followup booking ${booking.id}`, e);
+      }
+    }
+
+    const saved = await this.bookingRepository.save(booking);
+    return { ...saved, sendFailures: failures };
   }
 
   // 발주사(대시보드)가 명의이전 완료 후 등록증 사진을 직접 업로드
