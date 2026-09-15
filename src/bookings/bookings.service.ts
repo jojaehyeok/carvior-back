@@ -1272,6 +1272,23 @@ export class BookingsService {
       .map(({ dealerName, contact, count }) => ({ dealerName, contact, count }));
   }
 
+  // 애니원모터스 "등록증 전송 대기" 메뉴 옆 숫자 — 등록증 사진은 저장했는데 딜러·고객 누구에게도
+  // 아직 안 보낸 건 수. 대시보드 예약목록의 registrationPending 필터·초록 버튼과 같은 기준이어야
+  // 숫자와 목록 건수가 어긋나지 않는다. 메뉴가 화면 이동 때마다 부르므로 개수만 센다.
+  async countRegistrationPending(source: string): Promise<{ count: number }> {
+    if (!source) return { count: 0 };
+    const count = await this.bookingRepository
+      .createQueryBuilder('b')
+      .where('b.source = :source', { source })
+      .andWhere('b.transferredRegistrationUrl IS NOT NULL')
+      .andWhere("b.transferredRegistrationUrl != ''")
+      .andWhere('b.registrationSentToDealerAt IS NULL')
+      .andWhere('b.registrationSentToCustomerAt IS NULL')
+      .andWhere('b.status != :cancelled', { cancelled: 'CANCELLED' })
+      .getCount();
+    return { count };
+  }
+
   // 진단사 앱이 "예약 요청" 탭을 열어둔 동안 짧은 주기로 부르는 초경량 폴링용 —
   // 대기건 목록의 지문(개수·최대 id·최근 수정시각)만 돌려준다. 앱은 이 값이 직전과
   // 달라졌을 때만 무거운 /list를 다시 부르므로, 새 접수가 뜨는 데 새로고침이 필요 없으면서도

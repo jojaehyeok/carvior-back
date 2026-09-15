@@ -342,6 +342,13 @@ export class BookingsController {
     return await this.bookingsService.findAll(source, includeSelf === 'true', contact);
   }
 
+  // GET: 등록증 사진은 저장했지만 아직 딜러·고객 누구에게도 안 보낸 건 수(대시보드 메뉴 배지용).
+  // 반드시 아래 ":id" 라우트보다 위에 있어야 한다.
+  @Get('registration-pending-count')
+  async getRegistrationPendingCount(@Query('source') source: string) {
+    return await this.bookingsService.countRegistrationPending(source ?? '');
+  }
+
   // GET: 전화번호로 개별(B2C) 완료건수 확인 — 파트너패널 제안 자격 체크용
   @Get('individual-count')
   async getIndividualCount(@Query('phone') phone: string) {
