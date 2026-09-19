@@ -54,7 +54,7 @@ export class StoreItemsService {
 
   async findAll(): Promise<any[]> {
     const rows = await this.dataSource.query(`
-      SELECT si.*, i.carHash, i.firstCompletedAt, i.checkedDamages, i.repairCost, i.inspectionDetails AS inspectionData,
+      SELECT si.*, i.carHash, i.firstCompletedAt, i.checkedDamages, i.repairCost, i.inspectionDetails AS inspectionData, i.video360Url,
         CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
       FROM store_items si
       ${INSPECTION_JOIN}
@@ -133,7 +133,7 @@ export class StoreItemsService {
     // 이미 진단완료된 매물도 마이페이지에서 "검차 신청"이 다시 노출되는 버그가 있었음.
     const rows = await this.dataSource.query(
       `
-      SELECT si.*, i.carHash, i.firstCompletedAt, i.repairCost, i.inspectionDetails AS inspectionData,
+      SELECT si.*, i.carHash, i.firstCompletedAt, i.repairCost, i.inspectionDetails AS inspectionData, i.video360Url,
         CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
       FROM store_items si
       ${INSPECTION_JOIN}
@@ -175,6 +175,8 @@ export class StoreItemsService {
     'specs', 'options', 'views', 'likes', 'carHash', 'registeredAt',
     // 진단 요약(누유/경고등/주행/옵션) — 리포트 페이지에 이미 공개되는 항목이라 같이 내려준다.
     'inspectionData',
+    // 360 회전 뷰어용 한바퀴 영상 — 매물 사진과 같은 수준의 공개 정보.
+    'video360Url',
   ] as const;
 
   async findActiveForPublic(): Promise<any[]> {
@@ -206,7 +208,7 @@ export class StoreItemsService {
 
   async findOneForDealer(id: number): Promise<any> {
     const rows = await this.dataSource.query(`
-      SELECT si.*, i.carHash, i.firstCompletedAt, i.repairCost, i.inspectionDetails AS inspectionData,
+      SELECT si.*, i.carHash, i.firstCompletedAt, i.repairCost, i.inspectionDetails AS inspectionData, i.video360Url,
         CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
       FROM store_items si
       ${INSPECTION_JOIN}

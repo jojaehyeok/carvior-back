@@ -57,6 +57,11 @@ export class Inspection {
     @Column({ type: 'json', nullable: true })
     videoUrls: string[] | null;
 
+    // 차 주위를 한 바퀴 돌며 찍은 8~12초 영상 — 매물 상세에서 드래그로 돌려보는
+    // 360 뷰어의 소스. 스마트옥션 출품 대상만 찍으므로 대부분의 진단 건에서는 null.
+    @Column({ type: 'text', nullable: true })
+    video360Url: string | null;
+
     // 프런트엔드 payload 구조에 맞춘 상세 정보
     @Column({ type: 'json', nullable: true })
     inspectionDetails: {

@@ -250,6 +250,7 @@ export class InspectionService {
     inspection.vinImage = data.vinImage;
     inspection.exportVideoUrls = Array.isArray(data.exportVideoUrls) ? data.exportVideoUrls : null;
     inspection.videoUrls = Array.isArray(data.videoUrls) ? data.videoUrls : null;
+    inspection.video360Url = data.video360Url ?? null;
     inspection.photos = {
       exterior: data.photos?.exterior || [],
       wheel: data.photos?.wheel || [],
@@ -697,6 +698,7 @@ export class InspectionService {
     exportVideoUrls?: string[];
     engineNoiseVideoUrl?: string;
     videoUrls?: string[];
+    video360Url?: string;
     checklistPhotos?: { warning?: string[]; options?: string[]; leak?: string[]; drive?: string[]; engine?: string[] };
   }) {
     const inspection = await this.inspectionRepository.findOne({ where: { bookingId } });
@@ -735,6 +737,7 @@ export class InspectionService {
     if (data.exportVideoUrls !== undefined) inspection.exportVideoUrls = data.exportVideoUrls;
     if (data.engineNoiseVideoUrl !== undefined) inspection.engineNoiseVideoUrl = data.engineNoiseVideoUrl;
     if (data.videoUrls !== undefined) inspection.videoUrls = data.videoUrls;
+    if (data.video360Url !== undefined) inspection.video360Url = data.video360Url;
     if (data.checklistPhotos) {
       inspection.checklistPhotos = {
         warning: data.checklistPhotos.warning || [],
