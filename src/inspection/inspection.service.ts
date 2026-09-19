@@ -347,10 +347,25 @@ export class InspectionService {
         };
         await this.solapiService.sendCompletionAlimTalk(completionVariables, booking?.source);
 
+        // 비대면검차는 딜러가 고객 대신 검차를 의뢰한 건이라, 리포트는 딜러에게만 보내고
+        // 고객(차주)에게는 보내지 않는다 — 고객 전달은 딜러가 직접 한다.
+        // source(접수 경로)와 무관하게 requestType만 보므로, 상담에서 전환된 건도 걸린다.
+        // 딜러 번호는 dealerContact 우선 — contact는 직접신청 건이면 고객 번호일 수 있다.
+        if (booking?.requestType === 'REMOTE_INSPECTION') {
+          const dealerPhone = booking.dealerContact || booking.contact;
+          if (dealerPhone) {
+            console.log(`[알림톡] 비대면검차 딜러 발송 — ${inspection.carNumber} → ${dealerPhone}`);
+            this.solapiService
+              .sendCompletionAlimTalkTo(dealerPhone, completionVariables)
+              .catch((e) => console.error('[알림톡] 비대면검차 딜러 발송 실패', e));
+          } else {
+            console.log(`🔕 [비대면검차 딜러 알림톡 생략] ${inspection.carNumber} — 딜러 연락처 없음`);
+          }
+        }
         // 구매동행(카비어 검차 서비스, /inspection에서 결제한 건)은 중간에 발주사/딜러가
         // 없이 소비자 본인이 직접 신청한 거라, 완료되면 신청자 본인에게도 곧바로 리포트
         // 완료 알림톡을 보낸다(기존 완료 템플릿 재사용 — 문구가 중립적이라 그대로 사용 가능).
-        if (booking?.source === 'CARVIOR_INSPECTION') {
+        else if (booking?.source === 'CARVIOR_INSPECTION') {
           const customerPhone = booking.customerContact || booking.contact;
           if (customerPhone) {
             this.solapiService

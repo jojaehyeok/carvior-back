@@ -446,6 +446,12 @@ export class BookingsService {
     // 자동배정/브로드캐스트를 보류한다. 그 외(카드 결제 성공 콜백, 일반 접수 등)는 그대로 true.
     const pendingDeposit = data.paymentMethod === 'BANK_TRANSFER';
     const booking = this.bookingRepository.create({ ...data, depositConfirmed: !pendingDeposit });
+    // 상품 구분이 안 실려 들어온 접수는 출처로 기본값을 잡아준다(명시적으로 온 값은 건드리지 않음).
+    // 딜바타 제휴검차는 딜러 본인이 의뢰한 건이라 리포트가 딜러에게 가야 하므로 비대면검차.
+    if (!booking.requestType) {
+      if (booking.source === 'DEALER_PARTNER_INSPECTION') booking.requestType = 'REMOTE_INSPECTION';
+      else if (booking.source === 'CARVIOR_INSPECTION') booking.requestType = 'PURCHASE_ESCORT';
+    }
     // 딜러 접수폼(간편신청/당근/검차 등)은 전부 요청사항을 additionalMemo로 보내는데, 대시보드는
     // adminMemo만 표시·검색해서 접수 시점에 적은 요청사항이 관리자 눈에 안 띄는 문제가 있었다 —
     // adminMemo가 따로 없으면 접수 시 additionalMemo를 그대로 넣어 대시보드에 바로 보이게 한다.

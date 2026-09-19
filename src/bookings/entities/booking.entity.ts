@@ -181,6 +181,14 @@ export class Booking {
   @Column({ default: 'SNS_PROMOTION' })
   source: string;
 
+  // 상품 구분 — source(접수 경로)와 별개로 "어떤 서비스로 판 건인지"를 나타낸다.
+  // 리포트 알림톡 수신자가 이 값으로 갈린다:
+  //   PURCHASE_ESCORT(구매동행)  → 고객(차주)에게 발송 — 기존 동작
+  //   REMOTE_INSPECTION(비대면검차) → 딜러에게만 발송, 고객에게는 안 나감
+  // null인 기존 건은 전부 예전 동작(source 기준)을 그대로 따른다.
+  @Column({ type: 'varchar', nullable: true })
+  requestType: 'PURCHASE_ESCORT' | 'REMOTE_INSPECTION' | null;
+
   // --- 오더 기록 필드 ---
   @Column({ nullable: true })
   contractWriter: string; // 계약서 작성자
