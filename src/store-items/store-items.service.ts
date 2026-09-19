@@ -31,6 +31,15 @@ const INSPECTION_JOIN = `
   )
 `;
 
+// 매물 상세의 "카비어 진단 요약"(누유·경고등·주행·옵션)이 읽는 값. 이걸 안 내려주면
+// 프런트가 기본값("없음"/"이상 없음")을 그대로 그려서, 실제로 누유가 기록된 차도
+// 정상으로 보인다 — 반드시 목록/상세 모든 조회 경로에서 같이 내려줄 것.
+function parseInspectionData(raw: unknown) {
+  if (!raw) return null;
+  if (typeof raw !== 'string') return raw;
+  try { return JSON.parse(raw); } catch { return null; }
+}
+
 @Injectable()
 export class StoreItemsService {
   constructor(
@@ -45,7 +54,7 @@ export class StoreItemsService {
 
   async findAll(): Promise<any[]> {
     const rows = await this.dataSource.query(`
-      SELECT si.*, i.carHash, i.firstCompletedAt, i.checkedDamages, i.repairCost,
+      SELECT si.*, i.carHash, i.firstCompletedAt, i.checkedDamages, i.repairCost, i.inspectionDetails AS inspectionData,
         CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
       FROM store_items si
       ${INSPECTION_JOIN}
@@ -67,6 +76,8 @@ export class StoreItemsService {
         } catch { /* 파싱 실패 시 기존 accident 값 유지 */ }
       }
       delete r.checkedDamages;
+      // raw 쿼리라 json 컬럼이 문자열로 올 수 있다 — 프런트가 leakDesc 등을 바로 읽으므로 파싱해서 넘긴다.
+      r.inspectionData = parseInspectionData(r.inspectionData);
     }
 
     const now = new Date();
@@ -120,9 +131,9 @@ export class StoreItemsService {
     // findAll()과 동일하게 inspections를 JOIN해서 hasReport/carHash를 계산해야 함.
     // repo.find()로 store_items 원본만 반환하면 hasReport가 항상 기본값(false)이라
     // 이미 진단완료된 매물도 마이페이지에서 "검차 신청"이 다시 노출되는 버그가 있었음.
-    return this.dataSource.query(
+    const rows = await this.dataSource.query(
       `
-      SELECT si.*, i.carHash, i.firstCompletedAt, i.repairCost,
+      SELECT si.*, i.carHash, i.firstCompletedAt, i.repairCost, i.inspectionDetails AS inspectionData,
         CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
       FROM store_items si
       ${INSPECTION_JOIN}
@@ -131,6 +142,8 @@ export class StoreItemsService {
       `,
       [userId],
     );
+    for (const r of rows) r.inspectionData = parseInspectionData(r.inspectionData);
+    return rows;
   }
 
   async findOne(id: number): Promise<StoreItem> {
@@ -160,6 +173,8 @@ export class StoreItemsService {
     'transmission', 'color', 'colorKo', 'accident', 'priceKRW', 'priceUSD', 'category',
     'region', 'hasReport', 'location', 'doors', 'seats', 'inspectedAt', 'photos',
     'specs', 'options', 'views', 'likes', 'carHash', 'registeredAt',
+    // 진단 요약(누유/경고등/주행/옵션) — 리포트 페이지에 이미 공개되는 항목이라 같이 내려준다.
+    'inspectionData',
   ] as const;
 
   async findActiveForPublic(): Promise<any[]> {
@@ -191,7 +206,7 @@ export class StoreItemsService {
 
   async findOneForDealer(id: number): Promise<any> {
     const rows = await this.dataSource.query(`
-      SELECT si.*, i.carHash, i.firstCompletedAt, i.repairCost,
+      SELECT si.*, i.carHash, i.firstCompletedAt, i.repairCost, i.inspectionDetails AS inspectionData,
         CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
       FROM store_items si
       ${INSPECTION_JOIN}
@@ -199,6 +214,7 @@ export class StoreItemsService {
     `, [id]);
     if (!rows[0]) throw new NotFoundException(`스토어 아이템 ${id}를 찾을 수 없습니다.`);
     const { adminMemo, sellerContact, ...safe } = rows[0];
+    safe.inspectionData = parseInspectionData(safe.inspectionData);
     return safe;
   }
 
