@@ -73,6 +73,9 @@ export class StoreItemsService {
           if (Array.isArray(damages) && damages.some((d: any) => Array.isArray(d) && d.length > 0)) {
             r.accident = true;
           }
+          // 매물 상세의 "차량 상태"(부위별 손상 표시)가 쓰는 값 — 리포트에 이미 공개되는
+          // 정보라 같이 내려준다. 37개 부위 × 손상기호 배열(리포트 PART_NAMES와 같은 순서).
+          if (Array.isArray(damages)) r.damages = damages;
         } catch { /* 파싱 실패 시 기존 accident 값 유지 */ }
       }
       delete r.checkedDamages;
@@ -177,6 +180,8 @@ export class StoreItemsService {
     'inspectionData',
     // 360 회전 뷰어용 한바퀴 영상 — 매물 사진과 같은 수준의 공개 정보.
     'video360Url',
+    // 부위별 손상 마커 — 리포트에 이미 공개되는 정보.
+    'damages',
   ] as const;
 
   async findActiveForPublic(): Promise<any[]> {
@@ -208,15 +213,17 @@ export class StoreItemsService {
 
   async findOneForDealer(id: number): Promise<any> {
     const rows = await this.dataSource.query(`
-      SELECT si.*, i.carHash, i.firstCompletedAt, i.repairCost, i.inspectionDetails AS inspectionData, i.video360Url,
+      SELECT si.*, i.carHash, i.firstCompletedAt, i.repairCost, i.inspectionDetails AS inspectionData, i.video360Url, i.checkedDamages,
         CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
       FROM store_items si
       ${INSPECTION_JOIN}
       WHERE si.id = ?
     `, [id]);
     if (!rows[0]) throw new NotFoundException(`스토어 아이템 ${id}를 찾을 수 없습니다.`);
-    const { adminMemo, sellerContact, ...safe } = rows[0];
+    const { adminMemo, sellerContact, checkedDamages, ...safe } = rows[0];
     safe.inspectionData = parseInspectionData(safe.inspectionData);
+    const parsedDamages = parseInspectionData(checkedDamages);
+    safe.damages = Array.isArray(parsedDamages) ? parsedDamages : null;
     return safe;
   }
 
