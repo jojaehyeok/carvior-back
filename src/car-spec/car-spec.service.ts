@@ -1,5 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 
+// 회귀선(주행거리별 시세 추세)에 쓸 비교매물 표본 수.
+const LISTING_SAMPLE_SIZE = 60;
+// 세대 목록을 뽑기 위해 한 번에 떠보는 매물 수 — 표본이 작으면 매물이 적은 구형 세대가
+// 목록에서 통째로 빠지기 때문에 넉넉하게 잡는다(limit=500까지 정상 응답 확인).
+const GENERATION_SAMPLE_SIZE = 300;
+
 // EnCarAPI(encarapi.com) 프록시 — 앱에 API 키를 직접 넣으면 APK를 까서 유출될 수 있어서
 // 반드시 백엔드를 거쳐서만 호출한다. 트라이얼(5일 €9.99) → Starter(월 €149) 자동전환 계약이라
 // 실제로 계속 쓸지 확정되면 .env의 ENCAR_API_KEY만 갱신하면 됨(코드 변경 불필요).
@@ -49,22 +55,62 @@ export class CarSpecService {
     }));
   }
 
-  // 제조사/모델(+트림)로 실제 비교 매물(제원+실거래 시세)을 가져온다.
-  // 주의: 파라미터명이 "model"이 아니라 "model_group"이어야 한다(badge_group과 같은 규칙).
-  // model=으로 보내면 조용히 무시되고, 일부 차종(예: 기아 스포티지)은 결과가 아예 0건으로
-  // 나와서 실기기 테스트 중 발견함 — 반드시 model_group으로 유지할 것.
-  async listings(manufacturer: string, model: string, badge?: string) {
+  // 같은 모델그룹(예: 스포티지) 안에 있는 세대 목록을 뽑는다 — "NQ5 / 더 볼드 / 4세대..." 처럼
+  // 세대에 따라 시세가 완전히 다른데, /api/model-search는 세대(model)를 안 돌려주기 때문에
+  // catalog를 크게 한 번 떠서 실제 매물의 Model 값을 집계하는 방식으로 만든다.
+  // (EnCarAPI에 세대 목록 전용 엔드포인트가 없어서 이 방법밖에 없음 — /api/models 등은 404)
+  async generations(manufacturer: string, model: string, badge?: string) {
     const data = await this.call('/api/catalog', {
       manufacturer,
       model_group: model,
       badge_group: badge,
       lang: 'ko',
       count: 'true',
+      limit: String(GENERATION_SAMPLE_SIZE),
+    });
+    const results = (data?.SearchResults ?? []) as any[];
+    const byGeneration = new Map<string, { generation: string; count: number; yearMin: number; yearMax: number }>();
+    for (const r of results) {
+      const generation = r.Model;
+      if (!generation) continue;
+      const year = Number(r.FormYear) || 0;
+      const hit = byGeneration.get(generation);
+      if (!hit) {
+        byGeneration.set(generation, { generation, count: 1, yearMin: year, yearMax: year });
+      } else {
+        hit.count += 1;
+        if (year) {
+          if (!hit.yearMin || year < hit.yearMin) hit.yearMin = year;
+          if (year > hit.yearMax) hit.yearMax = year;
+        }
+      }
+    }
+    // 매물 많은 세대부터 — count는 표본(최대 GENERATION_SAMPLE_SIZE건) 안에서의 건수라
+    // 전체 매물 수가 아니라 "이 세대가 얼마나 흔한지"의 상대적 지표로만 쓴다.
+    return [...byGeneration.values()].sort((a, b) => b.count - a.count);
+  }
+
+  // 제조사/모델(+트림, +세대)로 실제 비교 매물(제원+실거래 시세)을 가져온다.
+  // 주의: 모델그룹은 파라미터명이 "model"이 아니라 "model_group"이어야 한다(badge_group과 같은 규칙).
+  // 반면 "model"은 세대(예: "스포티지 더 볼드") 필터로 실제 동작한다 — 예전 주석엔 무시된다고
+  // 적혀 있었지만 확인 결과 정상 동작함(스포티지 전체 4077건 → 더 볼드 682건). model_group을
+  // 빼고 model만 보내면 0건이 나오므로, 반드시 model_group과 같이 보낼 것.
+  async listings(manufacturer: string, model: string, badge?: string, generation?: string) {
+    const data = await this.call('/api/catalog', {
+      manufacturer,
+      model_group: model,
+      badge_group: badge,
+      model: generation,
+      lang: 'ko',
+      count: 'true',
+      // limit을 안 보내면 EnCarAPI 기본값이 20건이라, 아래 slice(0, 60)이 여태 아무 일도
+      // 하지 않고 표본이 20건뿐이었다. 회귀선 표본을 실제로 60건 받으려면 이걸 보내야 한다.
+      limit: String(LISTING_SAMPLE_SIZE),
     });
     const results = (data?.SearchResults ?? []) as any[];
     // 산점도 그래프(주행거리별 시세 추세선)를 그리려면 표본이 어느 정도 있어야 해서
     // 기존 20건 → 60건으로 늘림(회귀선 계산은 프론트에서 함, 여기선 표본만 더 줌).
-    return results.slice(0, 60).map((r) => ({
+    return results.slice(0, LISTING_SAMPLE_SIZE).map((r) => ({
       id: r.Id,
       model: r.Model,
       badge: r.Badge,
