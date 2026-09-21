@@ -280,6 +280,16 @@ export class BookingsController {
     return { success: true, data: updatedBooking };
   }
 
+  // PATCH: 평가사가 진단 현장에서 탁송 가능 여부를 표시
+  @Patch(':id/transport-status')
+  async setTransportStatus(
+    @Param('id') id: number,
+    @Body() body: { driverId: string; status: 'AVAILABLE' | 'CONDITIONAL' | 'UNAVAILABLE'; reasons?: string[]; note?: string },
+  ) {
+    const updatedBooking = await this.bookingsService.setTransportStatus(id, body);
+    return { success: true, data: updatedBooking };
+  }
+
   // PATCH: 일반 평가사가 담당 건 라운딩 요청
   @Patch(':id/request-rounding')
   async requestRounding(@Param('id') id: number, @Body() body: { driverId: string }) {

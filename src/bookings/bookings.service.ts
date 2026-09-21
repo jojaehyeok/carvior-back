@@ -2368,6 +2368,42 @@ export class BookingsService {
   }
 
   // 일반 평가사가 담당 건을 진단/에이전트 등급에게 "라운딩" 요청
+  // 평가사가 진단 시트에서 표시한 탁송 가능 여부를 저장한다.
+  // 진단 완료 건은 앱이 완료 후 2시간까지만 시트를 열어주지만, 프론트 잠금만으론
+  // API 직접 호출을 못 막으므로 여기서도 같은 기준으로 검증한다(리포트 수정과 동일).
+  async setTransportStatus(
+    id: number,
+    data: { driverId: string; status: 'AVAILABLE' | 'CONDITIONAL' | 'UNAVAILABLE'; reasons?: string[]; note?: string },
+  ) {
+    const booking = await this.bookingRepository.findOne({ where: { id } });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+    if (String(booking.assignedDriverId) !== String(data.driverId)) {
+      throw new BadRequestException('본인이 담당한 건만 표시할 수 있습니다.');
+    }
+    if (!['AVAILABLE', 'CONDITIONAL', 'UNAVAILABLE'].includes(data.status)) {
+      throw new BadRequestException('탁송 상태 값이 올바르지 않습니다.');
+    }
+
+    const inspection = await this.inspectionRepository.findOne({
+      where: { bookingId: id },
+      select: ['bookingId', 'firstCompletedAt'],
+    });
+    const EDIT_WINDOW_MS = 2 * 60 * 60 * 1000;
+    if (
+      inspection?.firstCompletedAt &&
+      Date.now() - new Date(inspection.firstCompletedAt).getTime() > EDIT_WINDOW_MS
+    ) {
+      throw new BadRequestException('수정 가능 시간(진단 완료 후 2시간)이 지났습니다.');
+    }
+
+    // 사유·기타메모는 조건부일 때만 의미가 있다. 가능/불가로 바꾸면 남아있던 사유를 비운다.
+    booking.transportStatus = data.status;
+    booking.transportReasons = data.status === 'CONDITIONAL' ? (data.reasons ?? []) : null;
+    booking.transportNote = data.status === 'CONDITIONAL' ? (data.note?.trim() || null) : null;
+    booking.transportCheckedAt = new Date();
+    return this.bookingRepository.save(booking);
+  }
+
   async requestRounding(id: number, driverId: string) {
     const booking = await this.bookingRepository.findOne({ where: { id } });
     if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
