@@ -17,6 +17,7 @@ import { extname } from 'path';
 import { BookingsService } from './bookings.service';
 import { Booking } from './entities/booking.entity';
 import { S3Service } from '../s3/s3.service';
+import { IntakeParserService } from './intake-parser.service';
 
 class CreateBookingDto {
   carNumber!: string;
@@ -27,6 +28,7 @@ export class BookingsController {
   constructor(
     private readonly bookingsService: BookingsService,
     private readonly s3Service: S3Service,
+    private readonly intakeParserService: IntakeParserService,
   ) {}
 
   // ✅ GET: 차량 번호 중복 체크 (신청 가능 여부 확인)
@@ -111,6 +113,13 @@ export class BookingsController {
   ) {
     if (!contact?.trim() && !name?.trim()) throw new BadRequestException('이름 또는 연락처 중 하나는 입력해주세요.');
     return this.bookingsService.updateBuyerHidden(Number(id), contact, !!hidden, name);
+  }
+
+  // POST: 딜러가 카톡으로 보낸 접수 내용을 간편신청 폼 항목으로 바꿔준다(자동 채우기 전용).
+  // 저장은 하지 않는다 — 화면에서 사람이 확인하고 평소대로 제출한다.
+  @Post('parse-intake')
+  async parseIntake(@Body('text') text: string) {
+    return await this.intakeParserService.parse(text ?? '');
   }
 
   // POST: 계약서 미작성 건 가격 재안내 문자 — 딜러/차주를 골라 대상별 1회만 보낸다.

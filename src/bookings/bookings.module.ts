@@ -15,6 +15,7 @@ import { S3Service } from 'src/s3/s3.service';
 import { SmsBillingLog } from 'src/sms-billing-logs/sms-billing-log.entity';
 import { DriverAssignmentPenalty } from 'src/driver-assignment-penalties/driver-assignment-penalty.entity';
 import { ReviewsModule } from 'src/reviews/reviews.module';
+import { IntakeParserService } from './intake-parser.service';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { ReviewsModule } from 'src/reviews/reviews.module';
     ReviewsModule,
   ],
   controllers: [BookingsController, BookingsRedirectController],
-  providers: [BookingsService, SolapiService, NotificationsService, S3Service],
+  providers: [BookingsService, SolapiService, NotificationsService, S3Service, IntakeParserService],
   exports: [BookingsService],
 })
 export class BookingsModule { }
