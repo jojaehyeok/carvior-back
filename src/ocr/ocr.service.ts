@@ -39,7 +39,8 @@ export class OcrService {
     return this.callClova(base64, format, mode);
   }
 
-  private async callClova(base64: string, format: string, mode: 'registration' | 'insurance' | 'dashboard') {
+  // Clova 호출 자체. 응답 가공 방식이 용도마다 달라서(등록증·보험·계기판·원문) 호출만 떼어냈다.
+  private async requestClova(base64: string, format: string, name: string): Promise<any | null> {
     const res = await fetch(this.clovaUrl, {
       method: 'POST',
       headers: {
@@ -51,17 +52,47 @@ export class OcrService {
         requestId: crypto.randomUUID(),
         timestamp: Date.now(),
         lang: 'ko',
-        images: [{ format, name: mode, data: base64 }],
+        images: [{ format, name, data: base64 }],
         enableTableDetect: false,
       }),
     });
-
     if (!res.ok) {
       this.logger.error(`[OCR] Clova 오류: ${res.status}`);
-      return { error: '인식 실패' };
+      return null;
+    }
+    return res.json();
+  }
+
+  // 사진에서 글자만 그대로 뽑는다(가공 없음). 카톡 화면 캡처처럼 양식이 정해지지 않은
+  // 이미지는 여기서 텍스트로 만든 뒤 접수 파서에 넘긴다.
+  // Clova는 토큰 단위로 주면서 줄 끝을 lineBreak로 알려준다 — 그 표시로 줄을 복원해야
+  // "라벨 : 값" 한 줄 단위로 읽는 파서가 제대로 동작한다.
+  async extractPlainText(file: Express.Multer.File): Promise<{ text: string }> {
+    const base64 = file.buffer.toString('base64');
+    const format = (file.mimetype || 'image/jpeg').split('/')[1] || 'jpg';
+    const json = await this.requestClova(base64, format, 'plain');
+    const img = json?.images?.[0];
+    if (!img || img.inferResult !== 'SUCCESS') {
+      this.logger.error('[OCR] 원문 추출 실패');
+      return { text: '' };
     }
 
-    const json = await res.json();
+    let line = '';
+    const lines: string[] = [];
+    for (const f of (img.fields ?? []) as Array<{ inferText?: string; lineBreak?: boolean }>) {
+      line += (line ? ' ' : '') + (f.inferText ?? '');
+      if (f.lineBreak) { lines.push(line.trim()); line = ''; }
+    }
+    if (line.trim()) lines.push(line.trim());
+
+    const text = lines.filter(Boolean).join('\n');
+    this.logger.log(`[OCR] 원문 추출 ${lines.length}줄 (${text.length}자)`);
+    return { text };
+  }
+
+  private async callClova(base64: string, format: string, mode: 'registration' | 'insurance' | 'dashboard') {
+    const json = await this.requestClova(base64, format, mode);
+    if (!json) return { error: '인식 실패' };
     const img  = json.images?.[0];
     if (img?.inferResult !== 'SUCCESS') return { error: 'OCR 실패' };
 

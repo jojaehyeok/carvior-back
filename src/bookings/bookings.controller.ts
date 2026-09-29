@@ -18,6 +18,7 @@ import { BookingsService } from './bookings.service';
 import { Booking } from './entities/booking.entity';
 import { S3Service } from '../s3/s3.service';
 import { IntakeParserService } from './intake-parser.service';
+import { OcrService } from 'src/ocr/ocr.service';
 
 class CreateBookingDto {
   carNumber!: string;
@@ -29,6 +30,7 @@ export class BookingsController {
     private readonly bookingsService: BookingsService,
     private readonly s3Service: S3Service,
     private readonly intakeParserService: IntakeParserService,
+    private readonly ocrService: OcrService,
   ) {}
 
   // ✅ GET: 차량 번호 중복 체크 (신청 가능 여부 확인)
@@ -120,6 +122,19 @@ export class BookingsController {
   @Post('parse-intake')
   async parseIntake(@Body('text') text: string) {
     return await this.intakeParserService.parse(text ?? '');
+  }
+
+  // POST: 카톡 화면 캡처·명함 사진에서 글자를 읽어 같은 방식으로 폼 항목을 만들어 준다.
+  // 사진 1장당 CLOVA OCR 호출 1건이 과금되므로(월 100건 무료, 초과 시 건당 약 3원)
+  // 글로 받은 내용은 위 parse-intake를 쓰고, 이 경로는 사진일 때만 쓴다.
+  // 읽어낸 원문(text)도 함께 돌려줘서 화면에서 사람이 눈으로 확인·수정할 수 있게 한다.
+  @Post('parse-intake/image')
+  @UseInterceptors(FileInterceptor('image', { storage: memoryStorage() }))
+  async parseIntakeImage(@UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('사진이 없습니다.');
+    const { text } = await this.ocrService.extractPlainText(file);
+    if (!text.trim()) throw new BadRequestException('사진에서 글자를 읽지 못했습니다. 더 또렷한 사진으로 올려주세요.');
+    return { ...this.intakeParserService.parse(text), text };
   }
 
   // POST: 계약서 미작성 건 가격 재안내 문자 — 딜러/차주를 골라 대상별 1회만 보낸다.

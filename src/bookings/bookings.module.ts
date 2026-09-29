@@ -16,12 +16,14 @@ import { SmsBillingLog } from 'src/sms-billing-logs/sms-billing-log.entity';
 import { DriverAssignmentPenalty } from 'src/driver-assignment-penalties/driver-assignment-penalty.entity';
 import { ReviewsModule } from 'src/reviews/reviews.module';
 import { IntakeParserService } from './intake-parser.service';
+import { OcrModule } from 'src/ocr/ocr.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([Booking, Driver, DriverCancelLog, Inspection, User, SmsBillingLog, DriverAssignmentPenalty]),
     ConfigModule,
     ReviewsModule,
+    OcrModule,
   ],
   controllers: [BookingsController, BookingsRedirectController],
   providers: [BookingsService, SolapiService, NotificationsService, S3Service, IntakeParserService],
