@@ -13,8 +13,7 @@ export class IntakeParserService {
   // 폼에 있는 칸만 돌려준다. 여기 없는 정보(주행거리·색상 등)는 additionalMemo로 모은다.
   private readonly FIELDS = [
     'carNumber', 'carOwner', 'carModel', 'carYear', 'desiredPrice', 'dealerName',
-    'contact', 'customerContact', 'address', 'detailAddress',
-    'vehicleCategory', 'additionalMemo',
+    'contact', 'customerContact', 'address', 'detailAddress', 'additionalMemo',
   ] as const;
 
   // 우리 쪽 계정 이름은 딜러가 아니다(카톡 말머리에서 딜러를 고를 때 제외).
@@ -125,7 +124,7 @@ export class IntakeParserService {
     // 차량명 — "제조사, 이름, 등급" 아래 줄에 적어 보내는 양식이 있다.
     if (!f.carModel) {
       const model = this.pick(lines, ['제조사, 이름, 등급', '제조사', '차량명', '모델명', '모델', '차종'], true);
-      if (model && !/포터|봉고|화물/.test(model)) f.carModel = model;
+      if (model) f.carModel = model;
     }
 
     // 연락처 — "차주/고객/소유자/휴대전화"가 붙은 번호는 고객, 나머지는 딜러로 본다.
@@ -162,9 +161,6 @@ export class IntakeParserService {
 
     const price = this.pick(lines, ['희망가', '희망 금액', '가격']);
     if (price) f.desiredPrice = this.digits(price.replace(/만\s*원?/g, ''));
-
-    const category = this.pick(lines, ['차종']);
-    if (/포터|봉고|화물/.test(category)) f.vehicleCategory = '포터·봉고';
 
     // 같은 값이 두 라벨에 걸리는 경우가 있다("사고유무"가 "사고"에도 잡힘) — 값 기준으로 한 번만 담는다.
     const seen = new Set<string>();
