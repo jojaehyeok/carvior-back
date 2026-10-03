@@ -122,6 +122,23 @@ export class InspectionService {
   }
 
   /**
+   * 보험이력(vin)처럼 화질을 건드리면 안 되는 사진용 — 리사이즈·재압축은 하지 않되,
+   * 아이폰 HEIC면 브라우저가 못 읽으므로 화질 손실을 최소화한 JPEG로만 바꿔준다.
+   */
+  private async keepOriginalUnlessHeic(buffer: Buffer, mimetype?: string): Promise<{ buffer: Buffer; contentType: string }> {
+    if (!isHeic(buffer)) {
+      return { buffer, contentType: mimetype || 'image/jpeg' };
+    }
+    try {
+      const decoded = await heicConvert({ buffer, format: 'JPEG', quality: 0.95 });
+      return { buffer: Buffer.from(decoded), contentType: 'image/jpeg' };
+    } catch (e) {
+      console.error('[HEIC 변환 실패(vin), 원본 사용]', e instanceof Error ? e.message : e);
+      return { buffer, contentType: mimetype || 'image/jpeg' };
+    }
+  }
+
+  /**
    * 이미 S3에 HEIC로 올라가 있는 사진을 JPEG로 되살린다(복구용, 관리자가 수동 호출).
    *
    * HEIC 폴백을 넣기 전에 올라간 아이폰 사진은 .jpg 이름을 달고 있어도 내용이 HEIC라,
@@ -213,7 +230,7 @@ export class InspectionService {
       // 보험이력(vin)은 보험개발원 사이트 등에서 캡처한 텍스트 위주 이미지라, 리사이즈·재압축을
       // 거치면 글자가 뭉개져 못 읽는 문제가 있었다 — 이 카테고리만 압축 없이 원본 그대로 올린다.
       const { buffer, contentType } = category === 'vin'
-        ? { buffer: file.buffer, contentType: file.mimetype || 'image/jpeg' }
+        ? await this.keepOriginalUnlessHeic(file.buffer, file.mimetype)
         : await this.compressImage(file.buffer, file.mimetype);
       await this.s3Client.send(
         new PutObjectCommand({
