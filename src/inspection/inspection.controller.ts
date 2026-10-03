@@ -22,6 +22,20 @@ export class InspectionController {
     return { url };
   }
 
+  // 1-a. 이미 올라간 HEIC 사진을 JPEG로 되살리기 (복구용, 관리자 수동 호출)
+  //
+  // 아이폰 HEIC가 변환 실패로 원본 그대로 올라가 있던 기간의 리포트를 고치는 용도다.
+  // 사진 URL은 그대로 두고 S3 파일 내용만 JPEG로 바꾸므로, 리포트 링크나 DB는 안 건드린다.
+  // 원본은 heic-backup/ 아래로 복사해둔다.
+  //
+  //   curl -X POST -H "x-internal-key: $KEY" \
+  //     https://carvior.store/api/v1/external/inspection/407/reconvert-photos
+  @Post(':inspectionId/reconvert-photos')
+  @UseGuards(InternalKeyGuard)
+  async reconvertPhotos(@Param('inspectionId') inspectionId: string) {
+    return await this.inspectionService.reconvertHeicPhotos(Number(inspectionId));
+  }
+
   // 1-b. 배치 이미지 업로드 (최대 70장 병렬 처리)
   @Post('upload/batch')
   @UseInterceptors(FilesInterceptor('files', 80)) // 최대 80개

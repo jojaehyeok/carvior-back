@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { ConfigService } from '@nestjs/config';
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand, CopyObjectCommand } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
 import archiver from 'archiver';
 // 타입 정의가 없는 패키지라 require로 가져온다. sharp(libheif)가 거부하는 아이폰 HEIC를
@@ -119,6 +119,75 @@ export class InspectionService {
     const isImage = (file.mimetype || '').startsWith('image/');
     const ext = isImage ? 'jpg' : (file.originalname.match(/\.(\w+)$/)?.[1] || (file.mimetype || '').split('/')[1] || 'bin');
     return file.originalname.replace(/\s/g, '_').replace(/\.\w+$/, `.${ext}`);
+  }
+
+  /**
+   * 이미 S3에 HEIC로 올라가 있는 사진을 JPEG로 되살린다(복구용, 관리자가 수동 호출).
+   *
+   * HEIC 폴백을 넣기 전에 올라간 아이폰 사진은 .jpg 이름을 달고 있어도 내용이 HEIC라,
+   * 안드로이드·PC 브라우저에선 리포트 사진이 아예 안 보인다. 사진 URL은 그대로 두고
+   * S3 객체 내용만 바꿔야 리포트 링크와 DB를 안 건드린다.
+   * 덮어쓰기 전에 원본을 heic-backup/ 아래로 복사해둔다.
+   */
+  async reconvertHeicPhotos(inspectionId: number) {
+    const inspection = await this.inspectionRepository.findOne({ where: { id: inspectionId } });
+    if (!inspection) throw new BadRequestException('진단 내역을 찾을 수 없습니다.');
+
+    const bucket = this.configService.get('AWS_S3_BUCKET_NAME') as string;
+    const urls: string[] = [];
+    const collect = (value: unknown) => {
+      if (typeof value === 'string') {
+        if (/^https?:\/\//.test(value)) urls.push(value);
+        return;
+      }
+      if (Array.isArray(value)) return value.forEach(collect);
+      if (value && typeof value === 'object') return Object.values(value).forEach(collect);
+    };
+    collect(inspection.photos);
+    collect(inspection.checklistPhotos);
+    [inspection.dashboardImage, inspection.regImage, inspection.vinImage].forEach(collect);
+
+    const readBody = async (stream: any): Promise<Buffer> => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) chunks.push(chunk as Buffer);
+      return Buffer.concat(chunks);
+    };
+
+    let converted = 0, skipped = 0, failed = 0;
+    for (const url of urls) {
+      const key = decodeURIComponent(new URL(url).pathname.replace(/^\//, ''));
+      try {
+        const obj = await this.s3Client.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+        const buffer = await readBody(obj.Body);
+        if (!isHeic(buffer)) { skipped++; continue; }
+
+        const decoded = await heicConvert({ buffer, format: 'JPEG', quality: 0.92 });
+        const out = await sharp(Buffer.from(decoded))
+          .rotate()
+          .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
+          .jpeg({ quality: 78 })
+          .toBuffer();
+
+        await this.s3Client.send(new CopyObjectCommand({
+          Bucket: bucket,
+          CopySource: encodeURI(`${bucket}/${key}`),
+          Key: `heic-backup/${key}`,
+        }));
+        await this.s3Client.send(new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: out,
+          ContentType: 'image/jpeg',
+        }));
+        converted++;
+      } catch (e) {
+        failed++;
+        console.error('[HEIC 복구 실패]', key, e instanceof Error ? e.message : e);
+      }
+    }
+
+    console.log(`[HEIC 복구] 진단${inspectionId} 변환 ${converted} / 이미JPEG ${skipped} / 실패 ${failed}`);
+    return { inspectionId, total: urls.length, converted, skipped, failed };
   }
 
   /**
