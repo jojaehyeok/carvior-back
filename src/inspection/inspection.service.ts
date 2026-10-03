@@ -4,6 +4,19 @@ import { ConfigService } from '@nestjs/config';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 import sharp from 'sharp';
 import archiver from 'archiver';
+// 타입 정의가 없는 패키지라 require로 가져온다. sharp(libheif)가 거부하는 아이폰 HEIC를
+// 순수 JS로 디코딩하는 폴백 용도 — compressImage 참고.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const heicConvert = require('heic-convert');
+
+// HEIC/HEIF는 ISO-BMFF 컨테이너라 파일 앞쪽 ftyp 박스의 브랜드로 가려낸다.
+// 앱이 보내는 mimetype은 믿을 수 없다 — 아이폰에서 올려도 "image/jpeg"로 들어오는 경우가 있다.
+function isHeic(buffer: Buffer): boolean {
+  if (buffer.length < 12) return false;
+  if (buffer.toString('latin1', 4, 8) !== 'ftyp') return false;
+  const brand = buffer.toString('latin1', 8, 12);
+  return ['heic', 'heix', 'hevc', 'hevx', 'heim', 'heis', 'hevm', 'hevs', 'mif1', 'msf1'].includes(brand);
+}
 import type { Response } from 'express';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -68,14 +81,29 @@ export class InspectionService {
     if (mimetype && !mimetype.startsWith('image/')) {
       return { buffer, contentType: mimetype };
     }
-    try {
-      const out = await sharp(buffer)
+    const shrink = (input: Buffer) =>
+      sharp(input)
         .rotate() // EXIF 방향 정보 반영 후 굽기
         .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
         .jpeg({ quality: 78 })
         .toBuffer();
-      return { buffer: out, contentType: 'image/jpeg' };
+
+    try {
+      return { buffer: await shrink(buffer), contentType: 'image/jpeg' };
     } catch (e) {
+      // 아이폰 사진(HEIC)은 sharp(libheif)가 거부한다 — 한 장을 여러 조각으로 쪼개 담는
+      // 형식이라 "iref 참조가 16개를 넘는다"는 보안 제한에 걸린다(실제 48개). 이걸 그냥
+      // 원본으로 올리면 .jpg 이름을 단 HEIC가 S3에 올라가서, 안드로이드·PC 브라우저에선
+      // 사진이 아예 안 보이고 아이폰에서도 용량 때문에 리포트가 중간부터 깨진다.
+      // 그래서 HEIC면 순수 JS 디코더로 한 번 더 시도한다.
+      if (isHeic(buffer)) {
+        try {
+          const decoded = await heicConvert({ buffer, format: 'JPEG', quality: 0.92 });
+          return { buffer: await shrink(Buffer.from(decoded)), contentType: 'image/jpeg' };
+        } catch (heicErr) {
+          console.error('[HEIC 변환 실패, 원본 사용]', heicErr instanceof Error ? heicErr.message : heicErr);
+        }
+      }
       console.error('[이미지 압축 실패, 원본 사용]', e instanceof Error ? e.message : e);
       return { buffer, contentType: mimetype || 'image/jpeg' };
     }
