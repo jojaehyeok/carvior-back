@@ -57,6 +57,7 @@ export class DashboardService {
       bookingCancelled,
       bookingVisitToday,
       bookingVisitTodayUnassigned,
+      bookingVisitTodayList,
       recentBookings,
 
       consultTotal,
@@ -90,6 +91,14 @@ export class DashboardService {
           { ...bookingBase, preferredDateTime: Like(`${todayKst}%`), status: Not('CANCELLED'), assignedDriverId: IsNull() },
           { ...bookingBase, preferredDateTime: Like(`${todayKst}%`), status: Not('CANCELLED'), assignedDriverId: '' },
         ],
+      }),
+      // 오늘 나가는 건 목록 자체 — 홈에서 바로 보라고 통계와 같이 내려준다.
+      // 시간 순으로 줘야 "지금 몇 시 건 차례"가 한눈에 보인다.
+      this.bookingRepo.find({
+        where: { ...bookingBase, preferredDateTime: Like(`${todayKst}%`), status: Not('CANCELLED') },
+        order: { preferredDateTime: 'ASC' },
+        take: 30,
+        select: ['id', 'carNumber', 'carModel', 'dealerName', 'status', 'address', 'preferredDateTime', 'assignedDriverName', 'assignedDriverId'],
       }),
       this.bookingRepo.find({
         where: bookingBase,
@@ -126,6 +135,7 @@ export class DashboardService {
         // 오늘 나가는 건과 그중 담당자 없는 건 — 홈 카드에서 바로 보라고 따로 센다
         visitToday: bookingVisitToday,
         visitTodayUnassigned: bookingVisitTodayUnassigned,
+        visitTodayList: bookingVisitTodayList,
         recent: recentBookings,
       },
       consultation: {
