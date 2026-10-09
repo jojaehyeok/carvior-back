@@ -5,11 +5,21 @@ export class DriverCancelLog {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column()
-  driverId: string;
+  // 관리자가 대시보드에서 취소한 건은 담당 평가사가 아예 없을 수도 있어서 비어 있을 수 있다.
+  // (배정된 상태에서 관리자가 취소했다면 그때 담당이던 평가사를 참고용으로 남긴다)
+  @Column({ type: 'varchar', nullable: true })
+  driverId: string | null;
 
-  @Column()
-  driverName: string;
+  @Column({ type: 'varchar', nullable: true })
+  driverName: string | null;
+
+  // 누가 취소했는지 — 'driver'(진단사 앱) | 'admin'(대시보드)
+  @Column({ type: 'varchar', default: 'driver' })
+  cancelledBy: 'driver' | 'admin';
+
+  // 관리자가 취소한 경우 그 관리자 로그인 아이디(users.login). 진단사 취소면 비어 있다.
+  @Column({ type: 'varchar', nullable: true })
+  adminLogin: string | null;
 
   @Column()
   bookingId: number;

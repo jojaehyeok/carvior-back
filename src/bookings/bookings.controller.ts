@@ -212,7 +212,7 @@ export class BookingsController {
   @Patch(':id/status')
   async updateStatus(
     @Param('id') id: number,
-    @Body() updateData: Partial<Booking> & { cancelReason?: string; cancelledByDriver?: boolean },
+    @Body() updateData: Partial<Booking> & { cancelReason?: string; cancelledByDriver?: boolean; adminLogin?: string },
   ) {
     const updatedBooking = await this.bookingsService.update(id, updateData);
     return {

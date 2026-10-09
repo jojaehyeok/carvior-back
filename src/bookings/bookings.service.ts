@@ -1388,6 +1388,8 @@ export class BookingsService {
       requestedDateTime?: string;
       // 판매자 노쇼일 때 앱이 즉석 촬영한 증빙 사진(URL + 촬영 시각·좌표).
       noshowProof?: { url: string; takenAt: string; lat?: number | null; lng?: number | null }[];
+      // 대시보드에서 취소했을 때 그 관리자 로그인 아이디 — 취소 로그에 누가 했는지 남긴다.
+      adminLogin?: string;
     },
   ): Promise<Booking> {
     const booking = await this.bookingRepository.findOneBy({ id });
@@ -1400,6 +1402,32 @@ export class BookingsService {
     // 고객 사유("판매자의 예약 취소")는 고객이 서비스 자체를 원하지 않는 것이므로
     // 다른 진단사에게 넘길 필요 없이 그대로 취소 종료. 진단사 사정/노쇼는 다른
     // 진단사가 대신 가야 하므로 기존대로 PENDING 복원해서 재배정 대상이 되게 한다.
+    // ── 관리자가 대시보드에서 취소한 경우: 누가 취소했는지 로그로 남긴다 ──
+    // 전엔 진단사 취소만 로그가 남아서, 관리자가 취소한 건은 나중에 "왜 취소됐지?"를
+    // 되짚을 방법이 없었다. 이미 취소된 건을 다시 저장하는 경우는 중복으로 안 쌓는다.
+    if (
+      updateData.status === 'CANCELLED' &&
+      !updateData.cancelledByDriver &&
+      booking.status !== 'CANCELLED'
+    ) {
+      try {
+        await this.cancelLogRepository.save({
+          cancelledBy: 'admin',
+          adminLogin: updateData.adminLogin || null,
+          // 배정돼 있던 건이면 그때 담당이던 평가사도 참고용으로 남긴다
+          driverId: booking.assignedDriverId || null,
+          driverName: booking.assignedDriverName || null,
+          bookingId: booking.id,
+          carNumber: booking.carNumber,
+          carOwner: booking.carOwner,
+          cancelReason: updateData.cancelReason || '',
+        });
+      } catch (e) {
+        // 로그 저장이 실패해도 취소 처리 자체는 막지 않는다
+        console.error('[관리자 취소 로그 저장 실패]', e instanceof Error ? e.message : e);
+      }
+    }
+
     if (updateData.status === 'CANCELLED' && updateData.cancelledByDriver) {
       const prevDriverId = booking.assignedDriverId;
       const prevDriverName = booking.assignedDriverName;

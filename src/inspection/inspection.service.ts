@@ -466,7 +466,12 @@ export class InspectionService {
         // 고객(차주)에게는 보내지 않는다 — 고객 전달은 딜러가 직접 한다.
         // source(접수 경로)와 무관하게 requestType만 보므로, 상담에서 전환된 건도 걸린다.
         // 딜러 번호는 dealerContact 우선 — contact는 직접신청 건이면 고객 번호일 수 있다.
-        if (booking?.requestType === 'REMOTE_INSPECTION') {
+        //
+        // ⚠ 단, 카비어에서 직접 신청·결제한 건(CARVIOR_INSPECTION)은 예외다. 돈을 낸 신청자가
+        // 리포트를 받아야 하는데, 비대면검차로 지정돼 있다는 이유로 딜러 쪽으로 새면 안 된다.
+        // (상담에서 전환된 건이 비대면검차로 잡히면서 실제로 그렇게 될 뻔했다 — 예약 526번)
+        const isSelfPaidBooking = booking?.source === 'CARVIOR_INSPECTION';
+        if (booking?.requestType === 'REMOTE_INSPECTION' && !isSelfPaidBooking) {
           const dealerPhone = booking.dealerContact || booking.contact;
           if (dealerPhone) {
             console.log(`[알림톡] 비대면검차 딜러 발송 — ${inspection.carNumber} → ${dealerPhone}`);
@@ -480,14 +485,17 @@ export class InspectionService {
         // 구매동행(카비어 검차 서비스, /inspection에서 결제한 건)은 중간에 발주사/딜러가
         // 없이 소비자 본인이 직접 신청한 거라, 완료되면 신청자 본인에게도 곧바로 리포트
         // 완료 알림톡을 보낸다(기존 완료 템플릿 재사용 — 문구가 중립적이라 그대로 사용 가능).
-        else if (booking?.source === 'CARVIOR_INSPECTION') {
-          const customerPhone = booking.customerContact || booking.contact;
-          if (customerPhone) {
+        else if (isSelfPaidBooking) {
+          // 신청자 번호는 contact다(/inspection 폼이 결제자 연락처를 여기에 넣는다).
+          // customerContact는 차주 번호라 신청자와 다른 사람일 수 있어 먼저 쓰면 안 된다.
+          const applicantPhone = booking.contact || booking.customerContact;
+          if (applicantPhone) {
+            console.log(`[알림톡] 직접신청 신청자 발송 — ${inspection.carNumber} → ${applicantPhone}`);
             this.solapiService
-              .sendCompletionAlimTalkTo(customerPhone, completionVariables)
-              .catch((e) => console.error('[알림톡] 구매동행 고객 발송 실패', e));
+              .sendCompletionAlimTalkTo(applicantPhone, completionVariables)
+              .catch((e) => console.error('[알림톡] 직접신청 신청자 발송 실패', e));
           } else {
-            console.log(`🔕 [구매동행 고객 알림톡 생략] ${inspection.carNumber} — 연락처 없음`);
+            console.log(`🔕 [직접신청 신청자 알림톡 생략] ${inspection.carNumber} — 연락처 없음`);
           }
         }
 
