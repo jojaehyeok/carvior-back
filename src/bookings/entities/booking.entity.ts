@@ -349,6 +349,11 @@ export class Booking {
   @Column({ default: false })
   buyerHidden: boolean;
 
+  // 이전 등록증 사진을 처음 올린 시각 — 올려놓고 전송을 깜빡하는 일이 잦아서,
+  // 24시간이 지나도 딜러에게 안 갔으면 자동으로 보내는 기준점으로 쓴다.
+  @Column({ type: 'timestamp', nullable: true })
+  registrationUploadedAt: Date | null;
+
   // 탁송 가능 여부 — 진단 현장에서 평가사가 직접 표시한다. 진단은 끝났는데 배터리가 방전돼
   // 있거나 시동이 안 걸려서 탁송 기사가 헛걸음하는 일을 줄이려는 값이라, 리포트가 아니라
   // 예약(배차가 보는 쪽)에 둔다. null은 "평가사가 아직 표시 안 함"이고 "탁송 가능"이 아니다.

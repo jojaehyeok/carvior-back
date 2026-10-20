@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Like, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { Booking } from './entities/booking.entity';
@@ -2300,6 +2301,9 @@ export class BookingsService {
     // 단축링크(/v1/r/:id)가 그대로 새 사진으로 리다이렉트되어 재전송 없이 바로잡힌다. 첨부가
     // 없으면(예: 딜러만 보내고 나중에 고객만 추가로 보내는 경우) 기존 사진 그대로 사용한다.
     if (url) booking.transferredRegistrationUrl = url;
+    // 자동발송(24시간)의 기준점. 잘못 올린 사진을 다시 올리는 경우까지 타이머가 밀리면
+    // 안 되므로 "처음 올린 시각"만 남긴다.
+    if (url && !booking.registrationUploadedAt) booking.registrationUploadedAt = new Date();
 
     if (targets.length === 0) {
       // 딜러/고객 둘 다 선택하지 않은 경우 = SMS 없이 사진만 교체
@@ -2345,6 +2349,57 @@ export class BookingsService {
 
     const saved = await this.bookingRepository.save(booking);
     return { ...saved, sendFailures: failures };
+  }
+
+  /**
+   * 등록증을 올려놓고 전송을 깜빡한 건을 24시간 뒤에 딜러에게 자동으로 보낸다.
+   *
+   * 사무장이 사진만 저장하고 체크박스를 안 누르면 아무에게도 안 가는데, 그 상태로
+   * 며칠씩 묵히는 일이 있었다. 수동으로 이미 보냈으면 당연히 건너뛴다.
+   * 대상은 애니원카 건만 — 다른 발주사는 지금처럼 수동이다(유저 지정).
+   */
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async autoSendPendingRegistrations() {
+    const DAY_MS = 24 * 60 * 60 * 1000;
+    const due = await this.bookingRepository
+      .createQueryBuilder('b')
+      .where('b.source IN (:...sources)', { sources: ['anyone-motors', 'self-anyone-motors'] })
+      .andWhere('b.transferredRegistrationUrl IS NOT NULL')
+      .andWhere("b.transferredRegistrationUrl != ''")
+      .andWhere('b.registrationSentToDealerAt IS NULL')
+      .andWhere('b.registrationUploadedAt IS NOT NULL')
+      .andWhere('b.registrationUploadedAt <= :cutoff', { cutoff: new Date(Date.now() - DAY_MS) })
+      .andWhere('b.status != :cancelled', { cancelled: 'CANCELLED' })
+      .getMany();
+
+    if (due.length === 0) return;
+    console.log(`[등록증 자동발송] 대상 ${due.length}건`);
+
+    for (const booking of due) {
+      const phone = booking.contact;
+      if (!phone) {
+        console.log(`🔕 [등록증 자동발송 생략] ${booking.carNumber} — 딜러 연락처 없음`);
+        continue;
+      }
+      try {
+        const text = `[카비어] 이전된 차량등록증을 보내드립니다.\nhttps://carvior.store/api/v1/r/${booking.id}`;
+        await this.solapiService.sendSms(phone, text);
+        await this.smsBillingLogRepository.save({
+          source: booking.source,
+          bookingId: booking.id,
+          carNumber: booking.carNumber,
+          recipientContact: phone,
+          recipient: 'dealer',
+          purpose: 'registration-send',
+        });
+        booking.registrationSentToDealerAt = new Date();
+        await this.bookingRepository.save(booking);
+        console.log(`[등록증 자동발송] ${booking.carNumber} → ${phone}`);
+      } catch (e) {
+        // 실패해도 registrationSentToDealerAt을 안 찍으므로 다음 주기에 다시 시도한다
+        console.error(`[등록증 자동발송 실패] booking ${booking.id}`, e instanceof Error ? e.message : e);
+      }
+    }
   }
 
   // SMS 90byte 제한 안에 넣으려고 S3 원본 URL 대신 이 짧은 리다이렉트 링크(/v1/r/:id)를 보낸다
