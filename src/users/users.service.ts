@@ -25,6 +25,20 @@ export class UsersService {
     }
   }
 
+  /**
+   * 이메일로 채팅용 토큰만 다시 발급한다(내부 호출 전용).
+   *
+   * 웹은 NextAuth 세션을 쓰는데, 토큰은 로그인하는 순간에만 세션에 실린다.
+   * 그래서 기능이 추가되기 전부터 로그인해 있던 사람은 토큰이 없다 — 다시 로그인하라고
+   * 하는 대신, 서버가 세션을 확인한 뒤 이 경로로 토큰을 받아다 쓴다.
+   * 비밀번호를 받지 않으므로 반드시 내부키로 막아야 한다(컨트롤러에서 InternalKeyGuard).
+   */
+  async issueTokenForEmail(email: string): Promise<{ token: string; userId: number } | null> {
+    const user = await this.repo.findOne({ where: { email } });
+    if (!user) return null;
+    return { token: this.issueToken(user.id), userId: user.id };
+  }
+
   async findByEmail(email: string): Promise<User | null> {
     return this.repo.findOne({ where: { email } });
   }

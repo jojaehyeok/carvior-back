@@ -50,6 +50,14 @@ export class UsersController {
     return this.svc.findOrCreateSocial(body);
   }
 
+  // 로그인된 웹 세션에 채팅용 토큰을 다시 실어주기 위한 내부 경로 — 비밀번호를 안 받으므로
+  // 반드시 내부키로 막는다(웹 서버에서만 호출한다).
+  @Post('issue-token')
+  @UseGuards(InternalKeyGuard)
+  issueToken(@Body() body: { email: string }) {
+    return this.svc.issueTokenForEmail(body.email);
+  }
+
   @Get('by-email')
   findByEmail(@Query('email') email: string) {
     return this.svc.findByEmail(email);
