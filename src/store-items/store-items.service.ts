@@ -86,7 +86,10 @@ export class StoreItemsService {
     const now = new Date();
 
     // 진단완료 후 4시간(수정 2h + 매니저 검토 2h) 지난 pending 매물 → 자동 게시
+    // 단, 개인 매물(listingType='personal')은 카비어가 눈으로 검토한 뒤에만 공개한다 —
+    // 개인이 올리는 매물이라 사진·가격·차량정보를 사람이 한 번 보고 올려야 한다.
     const toActivate = rows.filter((r: any) => {
+      if (r.listingType === 'personal') return false;
       if (r.status !== 'pending' || !r.carHash || !r.firstCompletedAt) return false;
       return now.getTime() - new Date(r.firstCompletedAt).getTime() >= AUTO_PUBLISH_DELAY_MS;
     });
@@ -161,7 +164,9 @@ export class StoreItemsService {
   async findActiveForDealer(): Promise<any[]> {
     const rows = await this.findAll();
     return rows
-      .filter((r: any) => r.status === 'active')
+      // 개인 정찰제 매물은 경매 대상이 아니다 — 딜러 경매장에는 안 뜬다.
+      // (딜러가 개인 매물을 보는 건 별도 화면이다)
+      .filter((r: any) => r.status === 'active' && r.listingType !== 'personal')
       .map((r: any) => {
         const { adminMemo, sellerContact, ...safe } = r;
         return safe;
@@ -183,6 +188,34 @@ export class StoreItemsService {
     // 부위별 손상 마커 — 리포트에 이미 공개되는 정보.
     'damages',
   ] as const;
+
+  /**
+   * 개인 정찰제 매물 목록(누구나 열람) — 개인끼리 직접 거래하는 매물이라 경매와 분리해서 낸다.
+   * 카비어가 검토해서 active로 올린 것만 보이고, 진단 리포트가 붙은 매물이 위로 간다
+   * (리포트가 있으면 사는 쪽이 믿고 보기 때문 — 검차를 받을 이유가 되기도 한다).
+   */
+  async findPersonalListings(): Promise<any[]> {
+    const rows = await this.findAll();
+    return rows
+      .filter((r: any) => r.status === 'active' && r.listingType === 'personal')
+      .map((r: any) => {
+        const safe: Record<string, unknown> = {};
+        for (const key of StoreItemsService.PUBLIC_FIELDS) safe[key] = r[key];
+        safe.askingPrice = r.askingPrice;
+        return safe;
+      });
+  }
+
+  async findOnePersonalListing(id: number): Promise<any> {
+    const row = await this.findOneForDealer(id);
+    if (row.status !== 'active' || row.listingType !== 'personal') {
+      throw new NotFoundException(`매물 ${id}를 찾을 수 없습니다.`);
+    }
+    const safe: Record<string, unknown> = {};
+    for (const key of StoreItemsService.PUBLIC_FIELDS) safe[key] = row[key];
+    safe.askingPrice = row.askingPrice;
+    return safe;
+  }
 
   async findActiveForPublic(): Promise<any[]> {
     const rows = await this.findAll();

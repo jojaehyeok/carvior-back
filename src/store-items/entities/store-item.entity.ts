@@ -44,6 +44,17 @@ export class StoreItem {
   @Column({ default: false })
   accident: boolean;
 
+  // 매물 종류 — 'auction'은 기존 스마트옥션(딜러 입찰), 'personal'은 개인 정찰제 매물.
+  // 기본값이 auction이라 기존 매물·로직은 그대로 돈다. 경매 조회에는 listingType='auction'
+  // 조건을 붙여서 개인 매물이 경매에 섞이지 않게 한다.
+  @Column({ type: 'varchar', default: 'auction' })
+  listingType: 'auction' | 'personal';
+
+  // 개인 매물의 정찰가(원). priceKRW는 경매에서 "판매자 희망가(참고용)"라는 뜻으로 쓰고 있어
+  // 의미가 정반대라 섞지 않고 따로 둔다.
+  @Column({ type: 'int', nullable: true })
+  askingPrice: number | null;
+
   @Column({ type: 'bigint', nullable: true })
   priceKRW: number;
 
