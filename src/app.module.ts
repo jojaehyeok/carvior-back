@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ScheduleModule } from '@nestjs/schedule';
+import { ChatModule } from './chat/chat.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { BookingsModule } from './bookings/bookings.module';
@@ -45,6 +46,7 @@ import { PartnerApiModule } from './partner-api/partner-api.module';
 
     // 예약 발송(1시간 뒤 파트너사 알림 등) 크론잡 활성화
     ScheduleModule.forRoot(),
+    ChatModule,
 
     // 2. TypeOrmModule 설정 (환경변수 로드)
     TypeOrmModule.forRootAsync({
