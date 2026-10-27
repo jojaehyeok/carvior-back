@@ -39,6 +39,14 @@ export class UsersService {
     return { token: this.issueToken(user.id), userId: user.id };
   }
 
+  // 같은 목적의 id 버전 — 세션에 있는 userId로 바로 찾는다(이메일이 없는 소셜 계정 대응)
+  async issueTokenForUserId(userId: number): Promise<{ token: string; userId: number } | null> {
+    if (!userId) return null;
+    const user = await this.repo.findOne({ where: { id: userId } });
+    if (!user) return null;
+    return { token: this.issueToken(user.id), userId: user.id };
+  }
+
   async findByEmail(email: string): Promise<User | null> {
     return this.repo.findOne({ where: { email } });
   }

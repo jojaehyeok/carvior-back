@@ -52,10 +52,12 @@ export class UsersController {
 
   // 로그인된 웹 세션에 채팅용 토큰을 다시 실어주기 위한 내부 경로 — 비밀번호를 안 받으므로
   // 반드시 내부키로 막는다(웹 서버에서만 호출한다).
+  // userId를 먼저 본다 — 소셜 로그인은 이메일이 없는 계정도 있어서 이메일만 받으면 못 찾는다
   @Post('issue-token')
   @UseGuards(InternalKeyGuard)
-  issueToken(@Body() body: { email: string }) {
-    return this.svc.issueTokenForEmail(body.email);
+  issueToken(@Body() body: { email?: string; userId?: number | string }) {
+    if (body?.userId) return this.svc.issueTokenForUserId(Number(body.userId));
+    return this.svc.issueTokenForEmail(body?.email ?? '');
   }
 
   @Get('by-email')
