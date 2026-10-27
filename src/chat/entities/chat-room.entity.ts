@@ -43,6 +43,20 @@ export class ChatRoom {
   @Column({ type: 'varchar', default: 'active' })
   status: 'active' | 'closed' | 'blocked';
 
+  // 차단한 사람(users.id) — 차단을 푸는 건 차단한 쪽만 할 수 있어야 한다
+  @Column({ type: 'int', nullable: true })
+  blockedByUserId: number | null;
+
+  // 거래완료 시각(거래완료는 판매자가 누른다)
+  @Column({ type: 'timestamp', nullable: true })
+  completedAt: Date | null;
+
+  // closed가 된 이유. completed: 이 사람과 거래가 끝났다 / sold_elsewhere: 판매자가
+  // 다른 사람과 거래를 끝내서 같이 닫혔다.
+  // ⚠ 후기는 completed인 방에서만 쓸 수 있다 — 구분이 없으면 거래하지 않은 사람도 별점을 준다.
+  @Column({ type: 'varchar', nullable: true })
+  closedReason: 'completed' | 'sold_elsewhere' | null;
+
   @CreateDateColumn()
   createdAt: Date;
 }

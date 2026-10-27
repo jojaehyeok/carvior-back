@@ -72,6 +72,15 @@ export class ChatGateway implements OnGatewayConnection {
     return saved;
   }
 
+  /**
+   * REST(차단·거래완료)에서 바뀐 상태를 방에 열려 있는 화면들에 알린다.
+   * 이게 없으면 상대는 새로고침할 때까지 차단된 걸 모르고 계속 입력한다.
+   */
+  announce(roomId: number, status: string, message?: unknown) {
+    if (message) this.server?.to(`room:${roomId}`).emit('message', message);
+    this.server?.to(`room:${roomId}`).emit('room', { roomId, status });
+  }
+
   @SubscribeMessage('read')
   async read(@ConnectedSocket() socket: Socket, @MessageBody() body: { roomId: number }) {
     await this.chat.markRead(Number(body.roomId), socket.data.userId as number);

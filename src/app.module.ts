@@ -4,7 +4,9 @@ import { ChatModule } from './chat/chat.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { BookingsModule } from './bookings/bookings.module';
+import { ReportsModule } from './reports/reports.module';
 import { ReviewsModule } from './reviews/reviews.module';
+import { TradeReviewsModule } from './trade-reviews/trade-reviews.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Booking } from './bookings/entities/booking.entity';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -76,7 +78,9 @@ import { PartnerApiModule } from './partner-api/partner-api.module';
     BookingsModule,
     InspectionModule,
     DriversModule,
+    ReportsModule,
     ReviewsModule,
+    TradeReviewsModule,
     ClassifyModule,
     BuyerRequestModule,
     BlurModule,

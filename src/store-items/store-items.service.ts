@@ -214,6 +214,24 @@ export class StoreItemsService {
     const safe: Record<string, unknown> = {};
     for (const key of StoreItemsService.PUBLIC_FIELDS) safe[key] = row[key];
     safe.askingPrice = row.askingPrice;
+    // 판매자 평점 — 개인 거래는 상대가 어떤 사람인지가 전부라 매물 단계에서 같이 보여준다.
+    // 후기 목록은 /v1/trade-reviews/users/:id 에서 따로 불러온다(이름은 첫 글자만 내려간다).
+    safe.sellerUserId = row.userId ?? null;
+    safe.sellerRating = null;
+    safe.sellerReviewCount = 0;
+    if (row.userId) {
+      try {
+        const [agg] = await this.dataSource.query(
+          'SELECT COUNT(*) AS cnt, AVG(rating) AS avg FROM trade_reviews WHERE targetUserId = ?',
+          [row.userId],
+        );
+        const cnt = Number(agg?.cnt ?? 0);
+        safe.sellerReviewCount = cnt;
+        safe.sellerRating = cnt > 0 ? Math.round(Number(agg.avg) * 10) / 10 : null;
+      } catch {
+        // 후기 테이블이 아직 없어도(첫 배포 직후) 매물 상세는 떠야 한다
+      }
+    }
     return safe;
   }
 

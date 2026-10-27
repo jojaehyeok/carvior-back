@@ -134,6 +134,7 @@ export class ChatService {
       throw new ForbiddenException('참여자만 보낼 수 있습니다.');
     }
     if (room.status === 'blocked') throw new ForbiddenException('차단된 대화입니다.');
+    if (room.status === 'closed') throw new ForbiddenException('이미 끝난 거래입니다.');
 
     const body = (text ?? '').trim();
     if (!body) throw new BadRequestException('내용이 비어 있습니다.');
@@ -150,6 +151,89 @@ export class ChatService {
     else room.sellerReadAt = saved.createdAt;
     await this.rooms.save(room);
 
+    return saved;
+  }
+
+  /**
+   * 상대 차단 — 방을 blocked로 바꿔 양쪽 모두 더 못 보내게 한다.
+   * 지우지 않는다. 사기 신고가 들어오면 운영이 대화 내용을 봐야 한다.
+   */
+  async blockRoom(roomId: number, userId: number) {
+    const room = await this.requireParticipant(roomId, userId);
+    if (room.status === 'closed') throw new BadRequestException('이미 끝난 거래입니다.');
+    room.status = 'blocked';
+    room.blockedByUserId = userId;
+    await this.rooms.save(room);
+    const msg = await this.system(roomId, '대화가 차단되었습니다. 차단을 푼 뒤에 다시 보낼 수 있습니다.');
+    return { ok: true, status: room.status, message: msg };
+  }
+
+  // 차단 해제는 차단한 쪽만 — 차단당한 사람이 스스로 풀 수 있으면 차단이 아니다
+  async unblockRoom(roomId: number, userId: number) {
+    const room = await this.requireParticipant(roomId, userId);
+    if (room.status !== 'blocked') return { ok: true, status: room.status };
+    if (room.blockedByUserId !== userId) {
+      throw new ForbiddenException('상대방이 차단한 대화는 풀 수 없습니다.');
+    }
+    room.status = 'active';
+    room.blockedByUserId = null;
+    await this.rooms.save(room);
+    const msg = await this.system(roomId, '차단이 해제되었습니다.');
+    return { ok: true, status: room.status, message: msg };
+  }
+
+  /**
+   * 거래완료 — 판매자만 누른다.
+   * 매물을 sold로 내리고, 같은 매물에 대한 다른 대화방도 같이 닫는다
+   * (안 닫으면 이미 팔린 차를 두고 계속 묻는 사람이 생긴다).
+   */
+  async completeTrade(roomId: number, userId: number) {
+    const room = await this.requireParticipant(roomId, userId);
+    if (room.sellerUserId !== userId) throw new ForbiddenException('판매자만 거래완료를 할 수 있습니다.');
+    if (room.status === 'closed') throw new BadRequestException('이미 거래완료된 거래입니다.');
+
+    const now = new Date();
+    room.status = 'closed';
+    room.closedReason = 'completed';
+    room.completedAt = now;
+    await this.rooms.save(room);
+    const msg = await this.system(roomId, '거래가 완료되었습니다. 상대방에게 후기를 남겨주세요.');
+
+    const item = await this.storeItems.findOne({ where: { id: room.storeItemId } });
+    if (item && item.status === 'active') {
+      item.status = 'sold';
+      await this.storeItems.save(item);
+    }
+
+    const others = await this.rooms.find({
+      where: { storeItemId: room.storeItemId, status: Not('closed') },
+    });
+    for (const other of others) {
+      if (other.id === room.id) continue;
+      other.status = 'closed';
+      other.closedReason = 'sold_elsewhere';
+      await this.rooms.save(other);
+      await this.system(other.id, '판매자가 다른 분과 거래를 완료해 이 매물은 판매완료되었습니다.');
+    }
+
+    return { ok: true, status: room.status, completedAt: now, message: msg };
+  }
+
+  private async requireParticipant(roomId: number, userId: number): Promise<ChatRoom> {
+    const room = await this.rooms.findOne({ where: { id: roomId } });
+    if (!room) throw new NotFoundException('대화방을 찾을 수 없습니다.');
+    if (room.buyerUserId !== userId && room.sellerUserId !== userId) {
+      throw new ForbiddenException('참여자만 할 수 있습니다.');
+    }
+    return room;
+  }
+
+  // 안내 한 줄 남기기 — 상태가 바뀐 이유가 대화 안에 남아야 나중에 서로 다투지 않는다
+  private async system(roomId: number, text: string) {
+    const saved = await this.messages.save(
+      this.messages.create({ roomId, senderUserId: 0, type: 'system', text }),
+    );
+    await this.rooms.update(roomId, { lastMessageAt: saved.createdAt, lastMessageText: text.slice(0, 120) });
     return saved;
   }
 
