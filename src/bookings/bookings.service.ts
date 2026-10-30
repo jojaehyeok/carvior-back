@@ -1427,6 +1427,31 @@ export class BookingsService {
         // 로그 저장이 실패해도 취소 처리 자체는 막지 않는다
         console.error('[관리자 취소 로그 저장 실패]', e instanceof Error ? e.message : e);
       }
+
+      // 배정돼 있던 평가사에게 취소를 알린다 — 이게 없으면 평가사는 모르고 현장에 간다.
+      // 사유를 본문에 같이 넣는다(앱을 열어보지 않고도 왜 취소됐는지 알 수 있게).
+      // 채널은 "예약 정보 수정"을 쓴다 — 배정 알림음("배정되었습니다")이 나면 안 된다.
+      if (booking.assignedDriverId) {
+        try {
+          const driver = await this.driverRepository.findOne({
+            where: { id: Number(booking.assignedDriverId) },
+          });
+          if (driver?.pushToken) {
+            const reason = (updateData.cancelReason || '').trim();
+            await this.notificationsService.sendPush(
+              driver.pushToken,
+              '배정된 진단건이 취소되었습니다',
+              `${booking.carOwner ?? ''} · ${booking.carNumber ?? ''}` +
+                (reason ? `\n사유: ${reason}` : ''),
+              { bookingId: booking.id, type: 'cancelled' },
+              PUSH_CHANNEL_BOOKING_UPDATED,
+            );
+          }
+        } catch (e) {
+          // 알림 실패로 취소 처리를 막지 않는다
+          console.error('[관리자 취소 알림 실패]', e instanceof Error ? e.message : e);
+        }
+      }
     }
 
     if (updateData.status === 'CANCELLED' && updateData.cancelledByDriver) {
