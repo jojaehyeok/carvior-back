@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, Query } from '@nestjs/common';
 import { StoreItemsService } from './store-items.service';
 
 // 개인 정찰제 매물 둘러보기 — 로그인·내부키 없이 완전 공개(웹 /market).
@@ -11,6 +11,16 @@ export class PersonalListingsController {
   @Get()
   findAll() {
     return this.service.findPersonalListings();
+  }
+
+  // 앱 무한스크롤용 — 카드에 그리는 값만, 커서(id)로 잘라서 내려준다.
+  // 위 findAll()은 웹 /market이 쓰고 있어서 그대로 둔다(응답 모양이 다르다).
+  //
+  //   GET /v1/public/personal-listings/feed?limit=20
+  //   GET /v1/public/personal-listings/feed?limit=20&cursor=<직전 응답의 nextCursor>
+  @Get('feed')
+  feed(@Query('cursor') cursor?: string, @Query('limit') limit?: string) {
+    return this.service.findPersonalFeed({ cursor: Number(cursor), limit: Number(limit) });
   }
 
   @Get(':id')

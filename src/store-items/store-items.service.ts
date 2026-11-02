@@ -206,6 +206,78 @@ export class StoreItemsService {
       });
   }
 
+  /**
+   * 개인 매물 피드(앱 무한스크롤용).
+   *
+   * 위 findPersonalListings()와 목적이 다르다. 저쪽은 전체를 한 번에 내려주고 사진·진단요약·
+   * 옵션까지 다 들어 있어서, 모바일에서 수십 대를 넘겨보면 수십 MB가 된다.
+   * 여기서는 목록 카드에 실제로 그리는 값만 추린다(상세는 /:id로 다시 받는다).
+   *
+   * 커서는 id다. registeredAt으로 자르면 같은 시각 매물이 끼어 중복·누락이 생긴다.
+   */
+  async findPersonalFeed(params: { cursor?: number; limit?: number }): Promise<{
+    items: any[];
+    nextCursor: number | null;
+  }> {
+    const limit = Math.min(Math.max(Number(params.limit) || 20, 1), 50);
+    const cursor = Number(params.cursor) || 0;
+
+    // 한 개 더 가져와서 "다음이 있는지"를 판단한다(따로 COUNT를 안 돌려도 된다)
+    const rows = await this.dataSource.query(
+      `
+      SELECT si.id, si.titleKo, si.trim, si.year, si.mileage, si.fuel, si.region,
+             si.accident, si.askingPrice, si.photos, si.registeredAt,
+             i.checkedDamages,
+             CASE WHEN i.carHash IS NOT NULL THEN 1 ELSE 0 END AS hasReport
+      FROM store_items si
+      ${INSPECTION_JOIN}
+      WHERE si.listingType = 'personal' AND si.status = 'active'
+        ${cursor ? 'AND si.id < ?' : ''}
+      ORDER BY si.id DESC
+      LIMIT ?
+      `,
+      cursor ? [cursor, limit + 1] : [limit + 1],
+    );
+
+    const hasMore = rows.length > limit;
+    const page = hasMore ? rows.slice(0, limit) : rows;
+
+    const items = page.map((r: any) => {
+      // 등록할 때 손으로 고른 accident보다 실제 진단 손상마커가 우선이다.
+      // 이걸 빼면 손상이 기록된 차가 목록에서 "무사고"로 보인다(findAll과 같은 규칙).
+      let accident = !!r.accident;
+      if (r.checkedDamages) {
+        try {
+          const damages =
+            typeof r.checkedDamages === 'string' ? JSON.parse(r.checkedDamages) : r.checkedDamages;
+          if (Array.isArray(damages) && damages.some((d: any) => Array.isArray(d) && d.length > 0)) {
+            accident = true;
+          }
+        } catch { /* 파싱 실패 시 입력값 유지 */ }
+      }
+
+      const photos = parseInspectionData(r.photos) as Record<string, string[]> | null;
+      const photo = photos?.exterior?.[0] ?? Object.values(photos ?? {}).flat()[0] ?? null;
+
+      return {
+        id: r.id,
+        titleKo: r.titleKo,
+        trim: r.trim,
+        year: r.year,
+        mileage: r.mileage,
+        fuel: r.fuel,
+        region: r.region,
+        accident,
+        askingPrice: r.askingPrice,
+        hasReport: !!r.hasReport,
+        photo,
+        registeredAt: r.registeredAt,
+      };
+    });
+
+    return { items, nextCursor: hasMore ? page[page.length - 1].id : null };
+  }
+
   async findOnePersonalListing(id: number): Promise<any> {
     const row = await this.findOneForDealer(id);
     if (row.status !== 'active' || row.listingType !== 'personal') {
