@@ -1892,6 +1892,43 @@ export class BookingsService {
   // source: 'auto'는 create()의 자동배정 성공 시에만 내부적으로 넘김 — 그 외(대시보드/지도에서
   // 관리자가 직접 배정)는 전부 기본값 'manual'로 처리되어 진단사에게 다른 문구로 알림이 감.
   /**
+   * 딜러 출장검차 출장비 — 주소 기준 거리 할증을 계산한다(접수 전이라 예약이 아직 없다).
+   *
+   * 기준: "활성화된 진단평가사 중 매물 위치와 가장 가까운 평가사"까지의 직선거리 × 2(왕복).
+   * 안내문에 그렇게 적혀 있으므로 계산도 똑같이 한다 — 활성(isActive)·위치 신선도까지
+   * 맞춰야 "가까운 사람이 있는 줄 알았는데 실제로는 아무도 못 가는" 금액이 안 나온다.
+   *
+   * 주소를 못 찾거나 좌표 있는 평가사가 없으면 km=null로 돌려주고 할증 0으로 접수받는다
+   * (접수를 막는 것보다 관리자가 보고 조정하는 편이 낫다).
+   */
+  async estimateDistanceSurcharge(address: string) {
+    const SURCHARGE_STEPS = [
+      { km: 100, fee: 40000 },
+      { km: 50, fee: 20000 },
+    ];
+
+    const empty = { km: null as number | null, roundTripKm: null as number | null, surcharge: 0 };
+    if (!address?.trim()) return empty;
+
+    const coords = await geocodeAddress(address);
+    if (!coords) return empty;
+
+    const drivers = await this.driverRepository.find({ where: { status: 'APPROVED' } });
+    const candidates = drivers.filter(
+      d => d.lat != null && d.lng != null && d.isActive && isLocationFresh(d),
+    );
+    if (candidates.length === 0) return empty;
+
+    const nearest = Math.min(
+      ...candidates.map(d => distanceKm(coords.lat, coords.lng, d.lat!, d.lng!)),
+    );
+    const roundTripKm = Math.round(nearest * 2 * 10) / 10;
+    const surcharge = SURCHARGE_STEPS.find(s => roundTripKm >= s.km)?.fee ?? 0;
+
+    return { km: Math.round(nearest * 10) / 10, roundTripKm, surcharge };
+  }
+
+  /**
    * 이 예약 기준 가까운 진단사 후보 — 대시보드 배정 칩이 쓴다.
    *
    * 자동배정(tryAutoAssign)과 달리 아무것도 거르지 않고 거리만 붙여서 돌려준다.

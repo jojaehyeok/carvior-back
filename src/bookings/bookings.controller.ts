@@ -432,6 +432,13 @@ export class BookingsController {
     return await this.bookingsService.deleteDriverPenalty(parseInt(id));
   }
 
+  // GET: 주소로 출장비(거리 할증) 미리보기 — 딜러 출장검차 신청 폼이 쓴다.
+  // 접수 전이라 예약이 아직 없으므로 주소만 받는다.
+  @Get('distance-estimate')
+  async getDistanceEstimate(@Query('address') address: string) {
+    return await this.bookingsService.estimateDistanceSurcharge(address ?? '');
+  }
+
   // GET: 이 예약에서 가까운 순으로 진단사 후보 (대시보드 배정 칩)
   // 배정은 하지 않는다 — 관리자가 보고 고르라고 거리만 계산해서 준다.
   @Get(':id/nearby-drivers')
