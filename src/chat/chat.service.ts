@@ -109,11 +109,25 @@ export class ChatService {
     const item = await this.storeItems.findOne({ where: { id: room.storeItemId } });
     return {
       ...room,
+      // 대화 중에 매물을 같이 볼 수 있어야 한다 — 차를 확인하러 다른 창을 열었다
+      // 돌아오면 대화 흐름이 끊긴다. 상세 화면에 있는 것 중 "물어보기 전에 확인하는 것"만 추린다.
       item: item
         ? {
             id: item.id,
             titleKo: item.titleKo,
+            trim: item.trim ?? null,
             askingPrice: item.askingPrice,
+            hidePrice: item.hidePrice ?? false,
+            year: item.year ?? null,
+            mileage: item.mileage ?? null,
+            fuel: item.fuel ?? null,
+            transmission: item.transmission ?? null,
+            region: item.region ?? null,
+            accident: item.accident ?? false,
+            hasReport: item.hasReport ?? false,
+            status: item.status ?? null,
+            options: Array.isArray(item.options) ? item.options : [],
+            photos: ((item.photos as { exterior?: string[] } | null)?.exterior ?? []).slice(0, 8),
             photo: (item.photos as { exterior?: string[] } | null)?.exterior?.[0] ?? null,
             carHash: null,
           }
