@@ -39,9 +39,21 @@ export class UsersService {
     return { token: this.issueToken(user.id), userId: user.id };
   }
 
+  // provider+providerId 버전 — 소셜 계정번호만 들고 있을 때 쓴다.
+  // 카카오는 이메일 동의를 안 받은 계정이 많아 이메일로는 못 찾는다.
+  async issueTokenForSocial(
+    provider: string,
+    providerId: string,
+  ): Promise<{ token: string; userId: number } | null> {
+    if (!provider || !providerId) return null;
+    const user = await this.repo.findOne({ where: { provider, providerId } });
+    if (!user) return null;
+    return { token: this.issueToken(user.id), userId: user.id };
+  }
+
   // 같은 목적의 id 버전 — 세션에 있는 userId로 바로 찾는다(이메일이 없는 소셜 계정 대응)
   async issueTokenForUserId(userId: number): Promise<{ token: string; userId: number } | null> {
-    if (!userId) return null;
+    if (!userId || Number.isNaN(userId)) return null;
     const user = await this.repo.findOne({ where: { id: userId } });
     if (!user) return null;
     return { token: this.issueToken(user.id), userId: user.id };

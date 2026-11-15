@@ -57,12 +57,27 @@ export class UsersController {
 
   // 로그인된 웹 세션에 채팅용 토큰을 다시 실어주기 위한 내부 경로 — 비밀번호를 안 받으므로
   // 반드시 내부키로 막는다(웹 서버에서만 호출한다).
-  // userId를 먼저 본다 — 소셜 로그인은 이메일이 없는 계정도 있어서 이메일만 받으면 못 찾는다
+  //
+  // 세 가지로 차례대로 찾는다. 하나만 보고 끝내면 안 된다:
+  //  1) userId     — 정상적인 경우
+  //  2) provider+providerId — 예전에 로그인해둔 소셜 세션은 userId 자리에 카카오/네이버
+  //     계정번호가 들어있어서 1)이 실패한다. 재로그인 없이 여기서 되찾는다.
+  //  3) email      — 이메일 가입 계정의 마지막 보루
   @Post('issue-token')
   @UseGuards(InternalKeyGuard)
-  issueToken(@Body() body: { email?: string; userId?: number | string }) {
-    if (body?.userId) return this.svc.issueTokenForUserId(Number(body.userId));
-    return this.svc.issueTokenForEmail(body?.email ?? '');
+  async issueToken(
+    @Body() body: { email?: string; userId?: number | string; provider?: string; providerId?: string },
+  ) {
+    if (body?.userId) {
+      const byId = await this.svc.issueTokenForUserId(Number(body.userId));
+      if (byId) return byId;
+    }
+    if (body?.provider && body?.providerId) {
+      const bySocial = await this.svc.issueTokenForSocial(body.provider, String(body.providerId));
+      if (bySocial) return bySocial;
+    }
+    if (body?.email) return this.svc.issueTokenForEmail(body.email);
+    return null;
   }
 
   // ── 휴대폰 번호 인증 ──────────────────────────────────────────────
