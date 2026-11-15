@@ -70,23 +70,38 @@ export class UsersController {
     @Body() body: { email?: string; userId?: number | string; provider?: string; providerId?: string },
   ) {
     const tried: string[] = [];
+    let found: { token: string; userId: number } | null = null;
     if (body?.userId) {
       tried.push('userId');
-      const byId = await this.svc.issueTokenForUserId(Number(body.userId));
-      if (byId) return byId;
+      found = await this.svc.issueTokenForUserId(Number(body.userId));
     }
-    if (body?.providerId) {
+    if (!found && body?.providerId) {
       tried.push('social');
-      const bySocial = await this.svc.issueTokenForSocial(body.provider, String(body.providerId));
-      if (bySocial) return bySocial;
+      found = await this.svc.issueTokenForSocial(body.provider, String(body.providerId));
     }
-    if (body?.email) {
+    if (!found && body?.email) {
       tried.push('email');
-      const byEmail = await this.svc.issueTokenForEmail(body.email);
-      if (byEmail) return byEmail;
+      found = await this.svc.issueTokenForEmail(body.email);
     }
+
+    if (found?.token) return found;
+
+    // ⚠ 계정은 찾았는데 토큰이 빈 문자열인 경우 — JWT 서명이 실패한 것이다.
+    // issueToken()이 예외를 삼키고 ''을 돌려주기 때문에(로그인까지 죽는 걸 막으려고),
+    // 부르는 쪽에서는 "계정 없음"과 구분이 안 됐다. 2026-11-16에 이것 때문에
+    // 서버 .env의 JWT_SECRET이 빠진 걸 며칠 동안 못 찾았다. 반드시 구분해서 돌려준다.
+    if (found) {
+      return {
+        token: null,
+        tokenError: 'jwt-sign-failed',
+        hint: '서버 .env의 JWT_SECRET을 확인하세요',
+        userId: found.userId,
+        tried,
+        build: BUILD_MARK,
+      };
+    }
+
     // null을 그대로 돌려주면 본문이 비어서, 부르는 쪽은 "왜 못 찾았는지"를 알 수 없다.
-    // 어떤 열쇠를 써봤는지와 빌드 표식을 같이 돌려준다.
     return { token: null, notFound: true, tried, build: BUILD_MARK };
   }
 
@@ -94,7 +109,9 @@ export class UsersController {
   // ⚠ @Get(':id') 류보다 위에 있어야 한다(지금은 없지만 나중에 생기면 가려진다).
   @Get('build-mark')
   buildMark() {
-    return { build: BUILD_MARK };
+    // jwtSecret은 있고 없음만 돌려준다 — 값은 절대 내보내지 않는다.
+    // 이게 false면 발급되는 토큰이 전부 빈 문자열이라 채팅·앱 인증이 통째로 죽는다.
+    return { build: BUILD_MARK, jwtSecret: !!process.env.JWT_SECRET };
   }
 
   // ── 휴대폰 번호 인증 ──────────────────────────────────────────────

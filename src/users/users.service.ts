@@ -21,6 +21,11 @@ export class UsersService {
     try {
       return this.jwt.sign({ sub: userId });
     } catch (e) {
+      // 조용히 ''을 돌려주면 "계정을 못 찾았다"로 오해된다. 로그에는 반드시 남긴다.
+      console.error(
+        '[users] JWT 서명 실패 — 서버 .env의 JWT_SECRET 확인 필요.',
+        (e as Error)?.message,
+      );
       return '';
     }
   }

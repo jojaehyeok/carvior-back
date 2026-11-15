@@ -3,4 +3,4 @@
 // "고쳤는데 그대로인데?" → "배포 안 하신 것 같은데요" 를 여러 번 반복했다.
 // 추측 대신 GET /v1/users/build-mark 한 번으로 끝내려고 둔다.
 // 배포 여부가 중요한 수정을 할 때마다 날짜/이름을 올릴 것.
-export const BUILD_MARK = '2026-11-16-chat-token';
+export const BUILD_MARK = '2026-11-16-jwt-secret';
