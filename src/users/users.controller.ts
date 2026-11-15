@@ -72,7 +72,7 @@ export class UsersController {
       const byId = await this.svc.issueTokenForUserId(Number(body.userId));
       if (byId) return byId;
     }
-    if (body?.provider && body?.providerId) {
+    if (body?.providerId) {
       const bySocial = await this.svc.issueTokenForSocial(body.provider, String(body.providerId));
       if (bySocial) return bySocial;
     }

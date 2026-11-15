@@ -42,11 +42,18 @@ export class UsersService {
   // provider+providerId 버전 — 소셜 계정번호만 들고 있을 때 쓴다.
   // 카카오는 이메일 동의를 안 받은 계정이 많아 이메일로는 못 찾는다.
   async issueTokenForSocial(
-    provider: string,
+    provider: string | undefined,
     providerId: string,
   ): Promise<{ token: string; userId: number } | null> {
-    if (!provider || !providerId) return null;
-    const user = await this.repo.findOne({ where: { provider, providerId } });
+    if (!providerId) return null;
+    if (provider) {
+      const exact = await this.repo.findOne({ where: { provider, providerId } });
+      if (exact) return { token: this.issueToken(exact.id), userId: exact.id };
+    }
+    // provider를 모르는 오래된 세션 구제용. providerId만으로 찾되, 짧은 값은 보지 않는다 —
+    // 이메일 가입자의 users.id(한두 자리)와 우연히 겹쳐 남의 계정을 내줄 수 있다.
+    if (providerId.length < 6) return null;
+    const user = await this.repo.findOne({ where: { providerId } });
     if (!user) return null;
     return { token: this.issueToken(user.id), userId: user.id };
   }
