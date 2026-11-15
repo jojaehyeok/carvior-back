@@ -126,6 +126,138 @@ export class CarSpecService {
   // listings()로 받은 매물 id로 상세 조회 — 실사진, 출고가, 사고/성능점검 여부, 옵션까지 나옴.
   // 주의: 이 vehicleId는 EnCar에 실제로 올라온 "매물"의 id다. 진단 중인 고객 차량의 차대번호(VIN)로
   // 조회하는 게 아니라, listings()가 돌려준 비교매물 중 하나를 더 자세히 보고 싶을 때만 쓸 수 있다.
+  /**
+   * 매물 링크 → 참고자료 한 묶음 (평가사가 검차 가기 전에 보는 용도).
+   *
+   * 딜러가 신청할 때 붙인 엔카/KB차차차/케이카 링크에서 매물 id를 뽑아
+   * 성능점검기록부·엔카진단·보험이력을 모아준다.
+   *
+   * ⚠ 이건 "남이 적어둔 기록"이지 우리 진단 결과가 아니다. 평가사가 현장에서 확인할
+   * 포인트를 미리 짚어주는 참고자료일 뿐이고, 리포트에 그대로 옮겨 쓰면 안 된다
+   * (기록부엔 없는데 실제로 교환인 경우를 잡아내는 게 우리 일이다).
+   *
+   * 마켓별로 나오는 게 다르다 — 엔카만 기록부·진단·이력이 다 나오고,
+   * KB차차차는 기록부가 있는 매물만, 케이카는 기록부 자체가 없다.
+   */
+  async listingLookup(input: string) {
+    const parsed = CarSpecService.parseListingRef(input);
+    if (!parsed) return { ok: false, reason: 'unsupported-url' as const };
+
+    const { source, id } = parsed;
+    // 엔카는 id 그대로, 나머지는 접두사가 붙는다(kbc:123, kcar:123)
+    const apiId = source === 'encar' ? id : `${source === 'kbchachacha' ? 'kbc' : 'kcar'}:${id}`;
+
+    // 하나가 404여도(그 매물엔 해당 자료가 없는 것) 나머지는 보여줘야 한다
+    const [vehicle, inspection, diagnosis, history] = await Promise.all([
+      this.call(`/api/vehicle/${apiId}`, {}),
+      this.call(`/api/inspection/${apiId}`, {}),
+      source === 'encar' ? this.call(`/api/diagnosis/${apiId}`, {}) : Promise.resolve(null),
+      source === 'encar' ? this.call(`/api/history/${apiId}`, {}) : Promise.resolve(null),
+    ]);
+
+    if (!vehicle && !inspection && !diagnosis) {
+      return { ok: false, reason: 'not-found' as const, source, id };
+    }
+
+    return {
+      ok: true as const,
+      source,
+      id,
+      fetchedAt: new Date().toISOString(),
+      vehicle: vehicle ? this.normalizeVehicle(vehicle) : null,
+      inspection: inspection ? CarSpecService.normalizeInspection(inspection) : null,
+      diagnosis: diagnosis ? CarSpecService.normalizeDiagnosis(diagnosis) : null,
+      // 보험이력은 매물마다 있을 때도 없을 때도 있다(404면 null)
+      hasHistory: !!history,
+    };
+  }
+
+  // 링크에서 "어느 사이트의 몇 번 매물인지"를 뽑는다. 숫자만 붙여넣어도 엔카로 본다.
+  static parseListingRef(raw: string): { source: 'encar' | 'kbchachacha' | 'kcar'; id: string } | null {
+    const s = (raw ?? '').trim();
+    if (!s) return null;
+    if (/^\d{6,}$/.test(s)) return { source: 'encar', id: s };
+
+    const q = (name: string) => new RegExp(`[?&]${name}=([^&#]+)`, 'i').exec(s)?.[1];
+
+    if (/encar\.com/i.test(s)) {
+      const id = q('carid') ?? /\/cars?\/detail\/(\d+)/i.exec(s)?.[1];
+      return id ? { source: 'encar', id } : null;
+    }
+    if (/kbchachacha\.com/i.test(s)) {
+      const id = q('carSeq') ?? /\/car\/(\d+)/i.exec(s)?.[1];
+      return id ? { source: 'kbchachacha', id } : null;
+    }
+    if (/kcar\.com/i.test(s)) {
+      const id = q('i_sCarCd') ?? q('carCd') ?? q('cardCd') ?? /\/detail\/(\w+)/i.exec(s)?.[1];
+      return id ? { source: 'kcar', id } : null;
+    }
+    return null;
+  }
+
+  // 성능점검기록부 — 평가사가 현장에서 대조할 것만 추린다(원본은 항목이 수백 개다)
+  private static normalizeInspection(d: any) {
+    const detail = d?.master?.detail ?? {};
+    const partList = (arr: any[] | undefined) =>
+      (Array.isArray(arr) ? arr : [])
+        .map((p: any) => ({
+          part: p?.type?.title ?? p?.title ?? null,
+          status: p?.statusType?.title ?? p?.status?.title ?? null,
+        }))
+        .filter(p => p.part);
+
+    return {
+      vin: detail.vin ?? null,
+      mileage: detail.mileage ?? null,
+      issueDate: detail.issueDate ?? null,        // 기록부 발행일(YYYYMMDD)
+      validityEndDate: detail.validityEndDate ?? null,
+      modelYear: (detail.modelYear ?? '').trim() || null,
+      recall: !!detail.recall,
+      tuning: !!detail.tuning,
+      waterlog: !!detail.waterlog,                 // 침수
+      carState: detail.carStateType?.title ?? null,
+      guaranty: detail.guarantyType?.title ?? null,
+      comments: detail.comments ?? null,
+      seriousTypes: (detail.seriousTypes ?? []).map((t: any) => t?.title ?? t).filter(Boolean),
+      // 교환·판금 부위 — 비어 있으면 기록상 무사고다
+      outers: partList(d?.outers),
+      inners: partList(d?.inners),
+      hasImages: Array.isArray(d?.images) && d.images.length > 0,
+    };
+  }
+
+  // 엔카진단 — 부위별 판정과 검수자 코멘트
+  private static normalizeDiagnosis(d: any) {
+    const items = Array.isArray(d?.items) ? d.items : [];
+    const comment = items.find((i: any) => i?.code === '006039')?.result ?? null;
+    return {
+      diagnosisDate: d?.realDiagnosisDate ?? d?.diagnosisDate ?? null,
+      comment,
+      // 정상이 아닌 것만 — 정상 수십 개를 평가사 화면에 깔아봐야 안 읽는다
+      abnormal: items
+        .filter((i: any) => i?.resultCode && i.resultCode !== 'NORMAL')
+        .map((i: any) => ({ name: i.name, result: i.result })),
+      normalCount: items.filter((i: any) => i?.resultCode === 'NORMAL').length,
+    };
+  }
+
+  private normalizeVehicle(data: any) {
+    return {
+      manufacturer: data.category?.manufacturerName ?? null,
+      model: data.category?.modelName ?? null,
+      grade: data.category?.gradeName ?? null,
+      year: data.category?.formYear ?? null,
+      mileage: data.spec?.mileage ?? null,
+      fuel: data.spec?.fuelName ?? null,
+      transmission: data.spec?.transmissionName ?? null,
+      color: data.spec?.colorName ?? null,
+      priceManwon: data.advertisement?.price ?? null,
+      photoUrls: Array.isArray(data.photos)
+        ? data.photos.slice(0, 12).map((p: any) => `${this.IMAGE_HOST}${p.location}`)
+        : [],
+    };
+  }
+
   async vehicleDetail(id: string) {
     const data = await this.call(`/api/vehicle/${id}`, {});
     if (!data) return null;

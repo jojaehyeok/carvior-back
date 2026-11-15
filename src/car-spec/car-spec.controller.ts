@@ -35,6 +35,14 @@ export class CarSpecController {
     return this.service.listings(manufacturer, model, badge, generation);
   }
 
+  // 매물 링크(엔카/KB차차차/케이카) → 기록부·진단 참고자료.
+  // 평가사가 검차 가기 전에 보는 용도라 키는 서버에만 두고 여기로만 나간다.
+  @Get('listing-lookup')
+  listingLookup(@Query('url') url: string) {
+    if (!url?.trim()) return { ok: false, reason: 'empty' };
+    return this.service.listingLookup(url.trim());
+  }
+
   @Get('vehicle/:id')
   vehicleDetail(@Param('id') id: string) {
     return this.service.vehicleDetail(id);
