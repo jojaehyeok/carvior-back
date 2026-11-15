@@ -158,6 +158,10 @@ export class UsersService {
       user.providerId = data.providerId;
       if (data.name)         user.name         = data.name;
       if (data.profileImage) user.profileImage = data.profileImage;
+      // 처음 만들 때 카카오가 이메일을 안 줬다면 비어 있다. 나중에 동의해서
+      // 들어오면 그때 채워준다 — 비어 있을 때만. 이미 있는 이메일을 덮으면
+      // 다른 계정과 충돌하거나 로그인 수단이 바뀐다.
+      if (!user.email && data.email) user.email = data.email;
       saved = await this.repo.save(user);
     } else {
       const newUser = this.repo.create({

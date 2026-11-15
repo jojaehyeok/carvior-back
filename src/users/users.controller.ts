@@ -7,6 +7,7 @@ import { InternalKeyGuard } from '../store-items/internal-key.guard';
 import { JwtService } from '@nestjs/jwt';
 import { PhoneVerificationService } from './phone-verification.service';
 import { userIdFromToken } from '../chat/chat-auth';
+import { BUILD_MARK } from '../build-info';
 
 @Controller('v1/users')
 export class UsersController {
@@ -68,16 +69,32 @@ export class UsersController {
   async issueToken(
     @Body() body: { email?: string; userId?: number | string; provider?: string; providerId?: string },
   ) {
+    const tried: string[] = [];
     if (body?.userId) {
+      tried.push('userId');
       const byId = await this.svc.issueTokenForUserId(Number(body.userId));
       if (byId) return byId;
     }
     if (body?.providerId) {
+      tried.push('social');
       const bySocial = await this.svc.issueTokenForSocial(body.provider, String(body.providerId));
       if (bySocial) return bySocial;
     }
-    if (body?.email) return this.svc.issueTokenForEmail(body.email);
-    return null;
+    if (body?.email) {
+      tried.push('email');
+      const byEmail = await this.svc.issueTokenForEmail(body.email);
+      if (byEmail) return byEmail;
+    }
+    // null을 그대로 돌려주면 본문이 비어서, 부르는 쪽은 "왜 못 찾았는지"를 알 수 없다.
+    // 어떤 열쇠를 써봤는지와 빌드 표식을 같이 돌려준다.
+    return { token: null, notFound: true, tried, build: BUILD_MARK };
+  }
+
+  // 배포 확인용 — 이 서버에 어떤 코드가 올라가 있는지 밖에서 볼 수 있게.
+  // ⚠ @Get(':id') 류보다 위에 있어야 한다(지금은 없지만 나중에 생기면 가려진다).
+  @Get('build-mark')
+  buildMark() {
+    return { build: BUILD_MARK };
   }
 
   // ── 휴대폰 번호 인증 ──────────────────────────────────────────────
@@ -111,7 +128,10 @@ export class UsersController {
     return this.svc.findByEmail(email);
   }
 
+  // ⚠ 전 회원 명단이다. 내부키 없이 열어두면 이메일·전화번호가 그대로 새어나간다.
+  // (2026-11-16 확인: 웹·대시보드·앱 어디에서도 부르지 않는다)
   @Get()
+  @UseGuards(InternalKeyGuard)
   findAll() {
     return this.svc.findAll();
   }
