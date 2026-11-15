@@ -432,6 +432,12 @@ export class BookingsController {
     return await this.bookingsService.deleteDriverPenalty(parseInt(id));
   }
 
+  // POST: 매물 참고자료 다시 받기 — 접수 때 링크가 없었거나 조회가 실패한 건을 수동으로
+  @Post(':id/refresh-listing-data')
+  async refreshListingData(@Param('id') id: string) {
+    return await this.bookingsService.refreshListingData(Number(id));
+  }
+
   // GET: 주소로 출장비(거리 할증) 미리보기 — 딜러 출장검차 신청 폼이 쓴다.
   // 접수 전이라 예약이 아직 없으므로 주소만 받는다.
   @Get('distance-estimate')

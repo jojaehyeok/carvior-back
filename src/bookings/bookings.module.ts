@@ -17,6 +17,7 @@ import { DriverAssignmentPenalty } from 'src/driver-assignment-penalties/driver-
 import { ReviewsModule } from 'src/reviews/reviews.module';
 import { IntakeParserService } from './intake-parser.service';
 import { OcrModule } from 'src/ocr/ocr.module';
+import { CarSpecModule } from 'src/car-spec/car-spec.module';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { OcrModule } from 'src/ocr/ocr.module';
     ConfigModule,
     ReviewsModule,
     OcrModule,
+    CarSpecModule,
   ],
   controllers: [BookingsController, BookingsRedirectController],
   providers: [BookingsService, SolapiService, NotificationsService, S3Service, IntakeParserService],

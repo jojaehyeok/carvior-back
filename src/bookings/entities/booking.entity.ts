@@ -157,6 +157,15 @@ export class Booking {
   @Column({ type: 'text', nullable: true })
   listingUrl: string;
 
+  // 위 매물 링크에서 긁어온 참고자료(성능점검기록부·엔카진단) — 평가사가 검차 가기 전에
+  // 보는 용도. 접수 시점에 한 번 받아서 그대로 저장한다.
+  //
+  // ⚠ 저장해두는 이유: 매물은 팔리면 내려간다. 검차 가는 날엔 링크가 죽어 있는 경우가 많아서
+  // 그때 다시 부르면 아무것도 안 나온다.
+  // ⚠ 이건 남이 적어둔 기록이지 우리 진단 결과가 아니다 — 리포트에 그대로 옮기면 안 된다.
+  @Column({ type: 'json', nullable: true })
+  listingData: any | null;
+
   @Column()
   contact: string;
 

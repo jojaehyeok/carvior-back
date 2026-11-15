@@ -6,6 +6,7 @@ import { In, Like, MoreThanOrEqual, Not, Repository } from 'typeorm';
 import { Booking } from './entities/booking.entity';
 import { SolapiService } from '../solapi/solapi.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { CarSpecService } from '../car-spec/car-spec.service';
 import { Driver } from '../drivers/entities/driver.entity';
 import { DriverCancelLog } from '../driver-cancel-logs/driver-cancel-log.entity';
 import { Inspection } from '../inspection/entities/inspection.entity';
@@ -121,6 +122,7 @@ export class BookingsService {
     private readonly solapiService: SolapiService,
     private readonly notificationsService: NotificationsService,
     private readonly reviewsService: ReviewsService,
+    private readonly carSpecService: CarSpecService,
   ) {}
 
   async checkOngoingBooking(carNumber: string): Promise<boolean> {
@@ -465,6 +467,9 @@ export class BookingsService {
     // 자동배정으로 엉뚱한 평가사에게 가버린 뒤에 묶이게 된다.
     await this.attachCoords(saved);
     saved = await this.linkBundle(saved);
+    // 매물 링크가 있으면 기록부·진단을 지금 받아둔다 — 매물은 팔리면 내려가서,
+    // 검차 가는 날 다시 부르면 아무것도 안 나온다. 실패해도 접수는 그대로 진행한다.
+    void this.attachListingData(saved.id, saved.listingUrl);
 
     const restricted = await this.isRestrictedSource(saved.source);
     // "self-{company}"는 발주사가 자기 소유 차량을 자체적으로 처리하는 건 —
@@ -1891,6 +1896,38 @@ export class BookingsService {
 
   // source: 'auto'는 create()의 자동배정 성공 시에만 내부적으로 넘김 — 그 외(대시보드/지도에서
   // 관리자가 직접 배정)는 전부 기본값 'manual'로 처리되어 진단사에게 다른 문구로 알림이 감.
+  /**
+   * 매물 링크에서 기록부·진단을 받아 예약에 붙여둔다.
+   *
+   * 접수를 막지 않으려고 기다리지 않고 돌린다(실패해도 접수는 이미 끝나 있다).
+   * 외부 API라 느리거나 죽을 수 있는데, 그것 때문에 접수가 실패하면 안 된다.
+   */
+  private async attachListingData(bookingId: number, listingUrl?: string | null) {
+    if (!listingUrl?.trim()) return;
+    try {
+      const data = await this.carSpecService.listingLookup(listingUrl);
+      if (!data?.ok) return;
+      await this.bookingRepository.update(bookingId, { listingData: data as any });
+      console.log(`[매물 참고자료] #${bookingId} ${data.source} ${data.id} 저장`);
+    } catch (e) {
+      console.error('[매물 참고자료] 실패', e instanceof Error ? e.message : e);
+    }
+  }
+
+  /**
+   * 이미 접수된 건의 참고자료를 다시 받는다 — 접수 때 링크가 없었거나(나중에 추가),
+   * 조회가 실패했던 건을 관리자가 수동으로 다시 당길 때.
+   */
+  async refreshListingData(bookingId: number) {
+    const booking = await this.bookingRepository.findOne({ where: { id: bookingId } });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+    if (!booking.listingUrl?.trim()) return { ok: false, reason: 'no-listing-url' };
+    const data = await this.carSpecService.listingLookup(booking.listingUrl);
+    if (!data?.ok) return data ?? { ok: false, reason: 'lookup-failed' };
+    await this.bookingRepository.update(bookingId, { listingData: data as any });
+    return data;
+  }
+
   /**
    * 딜러 출장검차 출장비 — 주소 기준 거리 할증을 계산한다(접수 전이라 예약이 아직 없다).
    *
