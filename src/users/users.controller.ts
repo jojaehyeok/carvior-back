@@ -1,15 +1,20 @@
-import { Controller, Post, Body, Get, Query, Patch, Param, UseGuards, UseInterceptors, UploadedFile } from '@nestjs/common';
+import { Controller, Post, Body, Get, Query, Patch, Param, UseGuards, UseInterceptors, UploadedFile, Headers } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
 import { UsersService } from './users.service';
 import { S3Service } from '../s3/s3.service';
 import { InternalKeyGuard } from '../store-items/internal-key.guard';
+import { JwtService } from '@nestjs/jwt';
+import { PhoneVerificationService } from './phone-verification.service';
+import { userIdFromToken } from '../chat/chat-auth';
 
 @Controller('v1/users')
 export class UsersController {
   constructor(
     private readonly svc: UsersService,
     private readonly s3: S3Service,
+    private readonly jwt: JwtService,
+    private readonly phoneVerification: PhoneVerificationService,
   ) {}
 
   @Post('upload-doc')
@@ -58,6 +63,32 @@ export class UsersController {
   issueToken(@Body() body: { email?: string; userId?: number | string }) {
     if (body?.userId) return this.svc.issueTokenForUserId(Number(body.userId));
     return this.svc.issueTokenForEmail(body?.email ?? '');
+  }
+
+  // ── 휴대폰 번호 인증 ──────────────────────────────────────────────
+  // 가입 번호와 다른 번호로 접수한 검차 건을 내 계정에 붙이기 위한 것.
+  // ⚠ 반드시 로그인 토큰으로 본인을 확인한다 — 인증 없이 번호만 받으면
+  // 남의 번호를 넣어 남의 검차 이력을 들여다볼 수 있다.
+  @Post('phone-verify/send')
+  sendPhoneCode(@Headers('authorization') auth: string, @Body('phone') phone: string) {
+    userIdFromToken(this.jwt, auth); // 로그인한 사람만
+    return this.phoneVerification.send(phone);
+  }
+
+  @Post('phone-verify/confirm')
+  confirmPhoneCode(
+    @Headers('authorization') auth: string,
+    @Body() body: { phone: string; code: string },
+  ) {
+    const userId = userIdFromToken(this.jwt, auth);
+    return this.phoneVerification.confirm(userId, body?.phone, body?.code);
+  }
+
+  // 내가 본인 것으로 확인한 번호 전부(가입 번호 + 인증한 추가 번호)
+  @Get('my-phones')
+  async myPhones(@Headers('authorization') auth: string) {
+    const userId = userIdFromToken(this.jwt, auth);
+    return { phones: await this.phoneVerification.phonesForUser(userId) };
   }
 
   @Get('by-email')

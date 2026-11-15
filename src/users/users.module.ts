@@ -7,6 +7,8 @@ import { User } from './entities/user.entity';
 import { UsersService } from './users.service';
 import { UsersController } from './users.controller';
 import { S3Service } from '../s3/s3.service';
+import { SolapiService } from '../solapi/solapi.service';
+import { PhoneVerificationService } from './phone-verification.service';
 
 @Module({
   imports: [
@@ -19,7 +21,7 @@ import { S3Service } from '../s3/s3.service';
     }),
   ],
   controllers: [UsersController],
-  providers: [UsersService, S3Service],
-  exports: [UsersService],
+  providers: [UsersService, S3Service, SolapiService, PhoneVerificationService],
+  exports: [UsersService, PhoneVerificationService],
 })
 export class UsersModule {}

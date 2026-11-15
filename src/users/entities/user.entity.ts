@@ -26,6 +26,15 @@ export class User {
   @Column({ type: 'varchar', nullable: true })
   profileImage: string | null;
 
+  // 본인 것으로 인증한 추가 휴대폰 번호들.
+  //
+  // 검차 예약(bookings)에는 userId가 없고 접수할 때 적은 번호(contact)만 있어서,
+  // 마이페이지는 번호로 내 신청을 찾는다. 가입 번호와 다른 번호로 접수한 건을 보려면
+  // 그 번호가 본인 것임을 문자 인증으로 확인한 뒤 여기 쌓는다.
+  // ⚠ 가입 번호(phone)는 건드리지 않는다 — 로그인·알림이 전부 그걸 기준으로 돈다.
+  @Column({ type: 'json', nullable: true })
+  altPhones: string[] | null;
+
   @Column({ default: 'user' })
   role: string; // 'user' | 'dealer' | 'admin'
 
