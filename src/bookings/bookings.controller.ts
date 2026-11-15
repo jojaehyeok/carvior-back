@@ -432,6 +432,13 @@ export class BookingsController {
     return await this.bookingsService.deleteDriverPenalty(parseInt(id));
   }
 
+  // GET: 이 예약에서 가까운 순으로 진단사 후보 (대시보드 배정 칩)
+  // 배정은 하지 않는다 — 관리자가 보고 고르라고 거리만 계산해서 준다.
+  @Get(':id/nearby-drivers')
+  async getNearbyDrivers(@Param('id') id: string) {
+    return await this.bookingsService.findNearbyDrivers(Number(id));
+  }
+
   @Patch(':id/assign')
   async assignDriver(
     @Param('id') id: string,

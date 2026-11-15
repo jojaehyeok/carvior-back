@@ -1891,6 +1891,47 @@ export class BookingsService {
 
   // source: 'auto'는 create()의 자동배정 성공 시에만 내부적으로 넘김 — 그 외(대시보드/지도에서
   // 관리자가 직접 배정)는 전부 기본값 'manual'로 처리되어 진단사에게 다른 문구로 알림이 감.
+  /**
+   * 이 예약 기준 가까운 진단사 후보 — 대시보드 배정 칩이 쓴다.
+   *
+   * 자동배정(tryAutoAssign)과 달리 아무것도 거르지 않고 거리만 붙여서 돌려준다.
+   * 관리자가 "활동중은 아니지만 바로 옆에 사는 사람"에게 전화해서 넣는 경우가 실제로 있어서,
+   * 여기서 걸러버리면 그 사람이 후보에 아예 안 뜬다. 대신 판단 재료(활동중·지역일치·
+   * 위치 신선도)를 같이 내려주고 화면에서 표시한다.
+   */
+  async findNearbyDrivers(bookingId: number) {
+    const booking = await this.bookingRepository.findOne({ where: { id: bookingId } });
+    if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
+
+    const drivers = await this.driverRepository.find({ where: { status: 'APPROVED' } });
+    const coords =
+      booking.lat != null && booking.lng != null
+        ? { lat: booking.lat, lng: booking.lng }
+        : await geocodeAddress(booking.address);
+
+    const rows = drivers.map(d => {
+      const km =
+        coords && d.lat != null && d.lng != null
+          ? Math.round(distanceKm(coords.lat, coords.lng, d.lat, d.lng) * 10) / 10
+          : null;
+      return {
+        id: d.id,
+        name: d.name,
+        phone: d.phone,
+        tier: d.tier,
+        km,
+        isActive: !!d.isActive,
+        locationFresh: isLocationFresh(d),
+        regionMatch: (d.regions ?? []).some(r => r && booking.address?.includes(r)),
+      };
+    });
+
+    // 거리 있는 사람 먼저(가까운 순), 좌표가 없는 사람은 지역이 맞는 경우에만 뒤에 붙인다.
+    const withKm = rows.filter(r => r.km != null).sort((a, b) => (a.km as number) - (b.km as number));
+    const withoutKm = rows.filter(r => r.km == null && r.regionMatch);
+    return [...withKm, ...withoutKm].slice(0, 12);
+  }
+
   async assign(id: number, driverInfo: { id: string; name: string }, source: 'auto' | 'manual' | 'agent' = 'manual', assignedByAgentId?: string) {
     const booking = await this.bookingRepository.findOne({ where: { id } });
     if (!booking) throw new NotFoundException('해당 신청 내역을 찾을 수 없습니다.');
