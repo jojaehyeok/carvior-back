@@ -408,6 +408,13 @@ export class BookingsController {
     return await this.bookingsService.listDriverPenalties();
   }
 
+  // GET: 주소로 출장비(거리 할증) 미리보기 — 딜러 출장검차 신청 폼이 쓴다.
+  // 접수 전이라 예약이 아직 없으므로 주소만 받는다.
+  @Get('distance-estimate')
+  async getDistanceEstimate(@Query('address') address: string) {
+    return await this.bookingsService.estimateDistanceSurcharge(address ?? '');
+  }
+
   // GET: 단건 조회(관리자용) — 대시보드 매입가 산출 페이지처럼 예약 하나만 필요할 때.
   // 반드시 위의 고정 경로(list/individual-count 등)들 다음에 와야 ":id"가 그것들을 가로채지 않는다.
   @Get(':id')
@@ -436,13 +443,6 @@ export class BookingsController {
   @Post(':id/refresh-listing-data')
   async refreshListingData(@Param('id') id: string) {
     return await this.bookingsService.refreshListingData(Number(id));
-  }
-
-  // GET: 주소로 출장비(거리 할증) 미리보기 — 딜러 출장검차 신청 폼이 쓴다.
-  // 접수 전이라 예약이 아직 없으므로 주소만 받는다.
-  @Get('distance-estimate')
-  async getDistanceEstimate(@Query('address') address: string) {
-    return await this.bookingsService.estimateDistanceSurcharge(address ?? '');
   }
 
   // GET: 이 예약에서 가까운 순으로 진단사 후보 (대시보드 배정 칩)
