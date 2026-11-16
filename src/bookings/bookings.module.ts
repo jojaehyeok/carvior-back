@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { JwtModule } from '@nestjs/jwt';
 import { BookingsService } from './bookings.service';
 import { BookingsController } from './bookings.controller';
 import { BookingsRedirectController } from './bookings-redirect.controller';
@@ -18,6 +19,7 @@ import { ReviewsModule } from 'src/reviews/reviews.module';
 import { IntakeParserService } from './intake-parser.service';
 import { OcrModule } from 'src/ocr/ocr.module';
 import { CarSpecModule } from 'src/car-spec/car-spec.module';
+import { AdminGuard } from 'src/auth/admin.guard';
 
 @Module({
   imports: [
@@ -26,9 +28,16 @@ import { CarSpecModule } from 'src/car-spec/car-spec.module';
     ReviewsModule,
     OcrModule,
     CarSpecModule,
+    // AdminGuard가 대시보드 로그인 토큰을 검증한다 — users.module.ts와 **같은** JWT_SECRET이어야
+    // 한다(그 토큰을 발급하는 곳이 users.service.ts의 issueToken이다).
+    // register()가 아니라 registerAsync()여야 하는 이유는 users.module.ts의 주석 참고 —
+    // register()는 .env가 로드되기 전에 평가돼서 secret이 undefined로 굳는다.
+    JwtModule.registerAsync({
+      useFactory: () => ({ secret: process.env.JWT_SECRET, signOptions: { expiresIn: '30d' } }),
+    }),
   ],
   controllers: [BookingsController, BookingsRedirectController],
-  providers: [BookingsService, SolapiService, NotificationsService, S3Service, IntakeParserService],
+  providers: [BookingsService, SolapiService, NotificationsService, S3Service, IntakeParserService, AdminGuard],
   exports: [BookingsService],
 })
 export class BookingsModule { }
