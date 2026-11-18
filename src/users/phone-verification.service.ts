@@ -69,6 +69,64 @@ export class PhoneVerificationService {
    * 가입할 때 쓴 번호(users.phone)는 그대로 두고 altPhones에만 쌓는다 —
    * 로그인·알림 등 기존 동작이 전부 users.phone을 기준으로 돌기 때문이다.
    */
+  /**
+   * 인증 확인 → 가입 번호가 비어 있으면 **가입 번호**로 삼는다.
+   *
+   * 소셜(카카오·네이버)로 들어온 분은 번호가 없다. 그런데 마이페이지는 번호로 검차
+   * 신청을 찾는다(bookings 에 userId 가 없다) — 번호가 비어 있으면 자기가 넣은 신청을
+   * 못 본다. 그래서 첫 번호만은 altPhones 가 아니라 users.phone 에 넣는다.
+   *
+   * 이미 번호가 있으면 건드리지 않고 confirm() 과 똑같이 추가 번호로 쌓는다.
+   * 가입 번호를 덮어쓰면 로그인·알림이 전부 따라 움직인다.
+   */
+  async confirmPrimary(userId: number, rawPhone: string, inputCode: string) {
+    const phone = this.checkCode(rawPhone, inputCode);
+
+    const user = await this.users.findOne({ where: { id: userId } });
+    if (!user) throw new BadRequestException('회원 정보를 찾을 수 없습니다.');
+
+    if (!this.normalize(user.phone)) {
+      user.phone = phone;
+      await this.users.save(user);
+      return { ok: true, phone, primary: true, phones: this.phonesOf(user) };
+    }
+
+    const current = user.altPhones ?? [];
+    const already = this.normalize(user.phone) === phone || current.some(p => this.normalize(p) === phone);
+    if (!already) {
+      user.altPhones = [...current, phone];
+      await this.users.save(user);
+    }
+    return { ok: true, phone, primary: false, phones: this.phonesOf(user) };
+  }
+
+  /**
+   * 인증번호가 맞는지만 본다. 맞으면 쓰고 버린다(한 번호는 한 번만 쓴다).
+   *
+   * confirm() 과 confirmPrimary() 가 같은 검사를 한다 — 한쪽만 고치는 일이 없도록
+   * 여기 한 곳에 둔다.
+   */
+  private checkCode(rawPhone: string, inputCode: string): string {
+    const phone = this.normalize(rawPhone);
+    const entry = this.codes.get(phone);
+
+    if (!entry || entry.expiresAt < Date.now()) {
+      this.codes.delete(phone);
+      throw new BadRequestException('인증번호가 만료되었습니다. 다시 받아주세요.');
+    }
+    if (entry.attempts >= this.MAX_ATTEMPTS) {
+      this.codes.delete(phone);
+      throw new BadRequestException('입력 횟수를 초과했습니다. 다시 받아주세요.');
+    }
+    entry.attempts += 1;
+    if (entry.code !== this.normalize(inputCode)) {
+      throw new BadRequestException('인증번호가 맞지 않습니다.');
+    }
+
+    this.codes.delete(phone);
+    return phone;
+  }
+
   async confirm(userId: number, rawPhone: string, inputCode: string) {
     const phone = this.normalize(rawPhone);
     const entry = this.codes.get(phone);

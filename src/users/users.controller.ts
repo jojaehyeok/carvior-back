@@ -133,6 +133,30 @@ export class UsersController {
     return this.phoneVerification.confirm(userId, body?.phone, body?.code);
   }
 
+  /**
+   * 소셜로 들어온 분에게 한 번 받는 자리 — 번호(문자 인증)와 이메일.
+   *
+   * 번호가 없으면 마이페이지에서 자기 검차 신청을 못 본다(bookings 는 번호로 찾는다).
+   * 이메일이 없으면 연락도 비밀번호 되찾기도 못 한다. 둘 다 비어 있을 때만 채운다.
+   *
+   * ⚠ 반드시 로그인 토큰으로 본인을 확인한다 — 인증 없이 받으면 남의 계정에
+   * 내 번호를 붙여 남의 검차 이력을 들여다볼 수 있다.
+   */
+  @Post('profile/complete')
+  async completeProfile(
+    @Headers('authorization') auth: string,
+    @Body() body: { phone: string; code: string; email?: string; name?: string; marketingConsent?: boolean },
+  ) {
+    const userId = userIdFromToken(this.jwt, auth);
+    const verified = await this.phoneVerification.confirmPrimary(userId, body?.phone, body?.code);
+    const saved = await this.svc.completeProfile(userId, {
+      email: body?.email,
+      name: body?.name,
+      marketingConsent: body?.marketingConsent,
+    });
+    return { ...saved, phone: verified.phone, primary: verified.primary };
+  }
+
   // 내가 본인 것으로 확인한 번호 전부(가입 번호 + 인증한 추가 번호)
   @Get('my-phones')
   async myPhones(@Headers('authorization') auth: string) {

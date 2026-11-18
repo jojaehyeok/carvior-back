@@ -181,6 +181,41 @@ export class UsersService {
     return { ...saved, token: this.issueToken(saved.id) };
   }
 
+  /**
+   * 소셜로 들어온 분의 빈 칸을 한 번 채운다.
+   *
+   * 카카오는 이메일 동의를 안 받은 계정이 많아서 소셜 가입자는 이메일이 비어 있는 일이
+   * 흔하다. 번호는 아예 받을 길이 없다. 그 상태로 두면 연락할 방법도, 비밀번호를
+   * 되찾을 길도 없는 회원이 쌓인다.
+   *
+   * **비어 있을 때만 채운다.** 이미 있는 값을 덮으면 로그인 수단이 바뀌어 버린다 —
+   * 여기는 "처음 한 번" 자리이지 정보 수정 자리가 아니다.
+   * 번호는 문자 인증을 거쳐야 해서 컨트롤러에서 먼저 확인하고 들어온다.
+   */
+  async completeProfile(
+    userId: number,
+    data: { email?: string; name?: string; marketingConsent?: boolean },
+  ) {
+    const user = await this.repo.findOneBy({ id: userId });
+    if (!user) throw new UnauthorizedException('회원 정보를 찾을 수 없습니다.');
+
+    const email = (data.email ?? '').trim();
+    if (email && !user.email) {
+      const taken = await this.repo.findOne({ where: { email } });
+      if (taken && taken.id !== user.id) {
+        throw new ConflictException('이미 다른 계정이 쓰고 있는 이메일입니다.');
+      }
+      user.email = email;
+    }
+
+    const name = (data.name ?? '').trim();
+    if (name && !user.name) user.name = name;
+    if (typeof data.marketingConsent === 'boolean') user.marketingConsent = data.marketingConsent;
+
+    const saved = await this.repo.save(user);
+    return { ok: true, id: saved.id, email: saved.email, phone: saved.phone, name: saved.name };
+  }
+
   async findAll(): Promise<User[]> {
     return this.repo.find({ order: { createdAt: 'DESC' } });
   }
