@@ -93,10 +93,13 @@ export class Booking {
   @Column({ default: true })
   depositConfirmed: boolean;
 
-  // 구매동행(/inspection) 신청 시 선택한 차량 구분 — 국산차/수입차에 따라 프로모션 결제
-  // 금액이 다르다(app/inspection/page.tsx의 CAR_TYPE_PRICING과 짝을 이룸).
+  // 신청 시 선택한 차량 구분 — 요금이 구분마다 다르다.
+  // 구매동행(/inspection)은 DOMESTIC·IMPORTED만 쓴다(CAR_TYPE_PRICING과 짝).
+  // 딜러 출장검차(/dealer-inspection)는 화물 두 종을 더 쓴다(CAR_PRICING과 짝).
+  // 값을 늘릴 땐 varchar라 마이그레이션은 필요 없지만 이 타입을 같이 넓혀야 한다 —
+  // 안 넓히면 실제 DB에 든 값이 타입에 없어서 분기 코드가 조용히 틀린다.
   @Column({ type: 'varchar', nullable: true })
-  carOrigin: 'DOMESTIC' | 'IMPORTED' | null;
+  carOrigin: 'DOMESTIC' | 'IMPORTED' | 'CARGO_SMALL' | 'CARGO_3_5T' | null;
 
   // 실제 결제(또는 계좌이체 신청) 금액 — VAT 포함, 프로모션 할인 적용된 최종 금액(원)
   @Column({ type: 'int', nullable: true })
