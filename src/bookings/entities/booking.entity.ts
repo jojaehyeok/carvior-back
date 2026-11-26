@@ -15,6 +15,12 @@ export class Booking {
   @Column({ type: 'varchar', nullable: true })
   assignedDriverName: string | null;
 
+  // 접수 후 1시간이 지나도록 배정이 안 붙어 신청자(딜러)에게 "지연 중" 문자를 보낸 시각.
+  // 값이 있으면 다시 보내지 않는다 — 한 건에 대해 평생 한 번만 나간다.
+  // (nullable 컬럼에 type을 안 적으면 TypeORM이 Date|null을 못 읽고 서버가 안 뜬다)
+  @Column({ type: 'timestamp', nullable: true })
+  unassignedAlertSentAt: Date | null;
+
   // 에이전트 진단평가사가 이 건을 다른 진단사에게 "지정 배정"했을 때 그 에이전트의 driver.id.
   // null이면 자동배정/일반 수동배정/본인 확정 — 에이전트가 배정한 건만 그 에이전트가
   // assignedDriverId와 무관하게 리포트를 대신 수정할 수 있게 하는 데 사용

@@ -81,6 +81,15 @@ const PRICE_FOLLOWUP_MESSAGES: Record<string, { subject: string; text: string }>
   },
 };
 
+// 솔라피 SMS의 90byte 제한은 EUC-KR 기준이라 한글 한 글자가 2byte다.
+// Buffer.byteLength(utf-8)는 한글을 3byte로 세서 실제보다 1.5배 크게 나온다 —
+// 그 값으로 자르면 충분히 들어가는 문장도 초과로 판정된다.
+function euckrBytes(text: string): number {
+  let n = 0;
+  for (const ch of text) n += ch.charCodeAt(0) > 127 ? 2 : 1;
+  return n;
+}
+
 // 묶음 하나를 1건으로 세는 집계용 헬퍼. 묶이지 않은 건은 각자 1건이다.
 function countBundles(rows: { id: number; bundleKey?: string | null }[]): number {
   return new Set(rows.map(r => r.bundleKey || `single-${r.id}`)).size;
@@ -2538,6 +2547,100 @@ export class BookingsService {
       } catch (e) {
         // 실패해도 registrationSentToDealerAt을 안 찍으므로 다음 주기에 다시 시도한다
         console.error(`[등록증 자동발송 실패] booking ${booking.id}`, e instanceof Error ? e.message : e);
+      }
+    }
+  }
+
+  /**
+   * 접수 후 1시간이 지나도록 배정이 안 붙은 건을 신청자(딜러)에게 알린다.
+   *
+   * 자동배정이 실패하는 경우(담당 지역 진단사 없음 · 전원 활동중지 · 스케줄 충돌)에는
+   * 관리자가 대시보드를 들여다볼 때까지 아무도 모르는 채로 시간만 흐른다. 딜러 입장에서는
+   * 접수만 하고 아무 연락이 없으니 그냥 기다리다 다른 업체에 맡기게 된다 — 그 공백을 메운다.
+   *
+   * ⚠ 기본값은 "안 보냄"이다. UNASSIGNED_ALERT_ENABLED=true 일 때만 실제로 발송하고,
+   *    그 전까지는 대상만 로그에 찍는다(ADMIN_API_STRICT와 같은 방식).
+   *    배포 직후 쌓여 있던 과거 미배정 건이 한꺼번에 날아가는 사고를 막기 위한 것이니,
+   *    로그에서 대상이 맞는지 하루 정도 보고 켤 것.
+   */
+  @Cron(CronExpression.EVERY_10_MINUTES)
+  async alertUnassignedBookings() {
+    const HOUR_MS = 60 * 60 * 1000;
+    const now = Date.now();
+    const enabled = process.env.UNASSIGNED_ALERT_ENABLED === 'true';
+
+    const candidates = await this.bookingRepository
+      .createQueryBuilder('b')
+      .where('b.status = :pending', { pending: 'PENDING' })
+      .andWhere('b.assignedDriverId IS NULL')
+      .andWhere('b.unassignedAlertSentAt IS NULL')
+      .andWhere('b.createdAt <= :cutoff', { cutoff: new Date(now - HOUR_MS) })
+      // 켜는 시점에 밀려 있던 옛날 건까지 전부 문자가 나가면 안 되니 최근 24시간 접수분만 본다.
+      .andWhere('b.createdAt >= :floor', { floor: new Date(now - 24 * HOUR_MS) })
+      .getMany();
+
+    const due = candidates.filter(b => {
+      // 방문일이 한참 뒤인 예약은 애초에 자동배정 대상이 아니다(AUTO_ASSIGN_DAYS_THRESHOLD).
+      // 그런 건에 "지연되고 있습니다"를 보내면 멀쩡한 예약을 사고처럼 알리는 꼴이 된다.
+      // preferredDateTime은 "YYYY-MM-DD HH:mm" 벽시계 문자열이다(타임존 없음).
+      const datePart = (b.preferredDateTime || '').slice(0, 10);
+      if (datePart.length !== 10) return true; // 날짜 미정 건은 빨리 알려주는 게 맞다
+      const visitMs = new Date(`${datePart}T00:00:00+09:00`).getTime();
+      if (Number.isNaN(visitMs)) return true;
+      const daysAhead = (visitMs - now) / (24 * HOUR_MS);
+      // 이미 방문일이 지난 건은 지금 알려도 의미가 없다(관리자가 취소/재접수로 처리할 몫).
+      return daysAhead >= -1 && daysAhead <= AUTO_ASSIGN_DAYS_THRESHOLD;
+    });
+
+    if (due.length === 0) return;
+    console.log(`[미배정 지연안내] 대상 ${due.length}건 (발송 ${enabled ? 'ON' : 'OFF — 로그만'})`);
+
+    for (const booking of due) {
+      // 수신자는 "신청한 사람"이다 — 발주사 접수면 딜러(contact), 없으면 고객,
+      // 둘 다 없으면 발주사 대표(배정 알림톡이 쓰는 폴백과 같은 규칙).
+      const phone =
+        this.pickPhone(booking.contact, booking.customerContact) ||
+        (await this.findPartnerAdminPhone(booking.source));
+      if (!phone) {
+        console.log(`🔕 [미배정 지연안내 생략] ${booking.carNumber} — 받을 번호가 없음`);
+        continue;
+      }
+
+      // 간편신청은 차량번호를 "미정"으로 접수하는 경우가 많다 — 그때는 번호 대신
+      // 방문 예정일로 어느 건인지 알아보게 한다.
+      const label =
+        booking.carNumber && booking.carNumber !== '미정'
+          ? booking.carNumber
+          : booking.preferredDateTime?.slice(5, 16).replace('-', '/') || '';
+      let text = `[카비어] ${label} 진단사 배정이 지연되고 있습니다. 확정되는 대로 안내드리겠습니다.`.replace('  ', ' ');
+      // SMS는 90byte를 넘으면 접수 자체가 거부된다 — 넘치면 차량번호를 떼고 보낸다.
+      // ⚠ 기준은 EUC-KR(한글 2byte)이다. Buffer.byteLength(utf-8)로 재면 한글이 3byte로
+      //    잡혀서 90byte 안에 충분히 들어가는 문장도 전부 초과로 판정된다.
+      if (euckrBytes(text) > 90) {
+        text = '[카비어] 진단사 배정이 지연되고 있습니다. 확정되는 대로 안내드리겠습니다.';
+      }
+
+      if (!enabled) {
+        console.log(`[미배정 지연안내·모의] #${booking.id} ${booking.carNumber} → ${phone} / ${text}`);
+        continue;
+      }
+
+      try {
+        await this.solapiService.sendSms(phone, text);
+        await this.smsBillingLogRepository.save({
+          source: booking.source,
+          bookingId: booking.id,
+          carNumber: booking.carNumber,
+          recipientContact: phone,
+          recipient: 'dealer',
+          purpose: 'unassigned-delay',
+        });
+        booking.unassignedAlertSentAt = new Date();
+        await this.bookingRepository.save(booking);
+        console.log(`[미배정 지연안내] #${booking.id} ${booking.carNumber} → ${phone}`);
+      } catch (e) {
+        // unassignedAlertSentAt를 안 찍으므로 다음 주기에 다시 시도한다.
+        console.error(`[미배정 지연안내 실패] #${booking.id}`, e instanceof Error ? e.message : e);
       }
     }
   }
