@@ -15,6 +15,20 @@ export class Booking {
   @Column({ type: 'varchar', nullable: true })
   assignedDriverName: string | null;
 
+  // 접수는 받았지만 방문 일정이 확정되지 않은 건.
+  //
+  // 담당 지역 평가사가 없거나 희망 날짜가 다 찼을 때, 접수를 막고 돌려보내면 손님은
+  // 그 자리에서 나간다. 그렇다고 상담(buyer_requests)으로 빼면 발주사 계정에서는
+  // 상담 목록 자체가 안 보여서(대시보드 메뉴가 슈퍼관리자 전용) 영영 묻힌다 —
+  // 그래서 예약으로 받아 두고 "미확정"으로 표시한다(2026-11-26 유저 지시).
+  // status는 PENDING 그대로다. 여기에 새 status를 만들면 상태를 보는 모든 화면이 깨진다.
+  @Column({ default: false })
+  unconfirmed: boolean;
+
+  // 왜 미확정인지 — "담당 평가사 없는 지역" / "희망 날짜 배정 불가" 등. 화면에 그대로 띄운다.
+  @Column({ type: 'varchar', nullable: true })
+  unconfirmedReason: string | null;
+
   // 접수 후 1시간이 지나도록 배정이 안 붙어 신청자(딜러)에게 "지연 중" 문자를 보낸 시각.
   // 값이 있으면 다시 보내지 않는다 — 한 건에 대해 평생 한 번만 나간다.
   // (nullable 컬럼에 type을 안 적으면 TypeORM이 Date|null을 못 읽고 서버가 안 뜬다)
