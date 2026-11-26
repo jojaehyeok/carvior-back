@@ -741,10 +741,14 @@ export class BookingsService {
     return countBundles(rows);
   }
 
-  // /inspection 결제 폼의 방문시간 슬롯과 동일한 목록(30분 단위, 09:00~17:00)
+  // 접수 폼들의 방문시간 슬롯과 같은 목록이어야 한다(30분 단위, 09:00~20:00).
+  // 폼이 더 길면 그 뒤 시간대는 가능 여부를 검증하지 않고 접수된다.
+  // 같이 고칠 곳: cavior의 app/inspection · app/dealer-inspection ·
+  // app/marketing/karrot · app/marketing/simple-request(+[id]).
   private readonly PUBLIC_BOOKING_TIME_SLOTS = [
     '09:00', '09:30', '10:00', '10:30', '11:00', '11:30', '12:00', '12:30',
     '13:00', '13:30', '14:00', '14:30', '15:00', '15:30', '16:00', '16:30', '17:00',
+    '17:30', '18:00', '18:30', '19:00', '19:30', '20:00',
   ];
 
   // 고객용 방문시간 미리보기(헤이딜러 스타일) — /inspection 폼에서 방문 주소+날짜를 고르면
